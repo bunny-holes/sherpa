@@ -9,6 +9,26 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-10-12 — `CLAUDE.md` removed by owner decision; the 2026-09-21 import is retired
+
+The owner decided on this date that the repository keeps one instruction file,
+`AGENTS.md`, because Codex and Claude Code share the checkout. `CLAUDE.md` was
+deleted, the rule in `AGENTS.md` now forbids it, and
+`scripts/checks/verify_docs.py` fails when a `CLAUDE.md` exists in any form
+instead of when it is missing. This replaces the `@AGENTS.md` import adopted in
+the 2026-09-21 entry below; that entry stays as the record of what was measured
+then.
+
+No new measurement was taken for this change. Whether a Claude Code session
+loads `AGENTS.md` without the import is unobserved here, and the conditions the
+2026-09-21 entry lists under which it does not (a `CLAUDE.md` in a directory
+above the checkout, a session that cannot fetch feature flags) were not
+re-tested. The owner accepted that risk.
+
+The check was run against scratch copies of the repository: no `CLAUDE.md`
+exited 0; a `CLAUDE.md` holding `@AGENTS.md`, a symbolic link to `AGENTS.md`,
+and a dangling symbolic link each exited 1 with the `CLAUDE.md: present` reason.
+
 ## 2026-10-05 — Plugin 0.7.8 startup behavior (Codex 0.160.0 and Claude Code 2.1.289)
 
 On macOS, a fresh ephemeral Codex session loaded the installed plugin 0.7.8. A

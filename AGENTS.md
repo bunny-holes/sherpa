@@ -11,11 +11,10 @@ manner: "규칙만 적고 근거는 ADR·live-evidence·스크립트 주석으�
 
 - Publish the agent plugin only through `XIYO/plug-hole` as `sherpa@plug-hole`.
   Keep its source and releases here without a repository marketplace.
-- This file is the single body of the repository instructions. `CLAUDE.md` holds
-  only the `@AGENTS.md` import so that Claude Code sessions load the same text;
-  add rules here, never there. It is an import rather than a symbolic link
-  because Git checks a committed link out as a plain one-line file in any clone
-  where `core.symlinks` is false, and that value is fixed per clone on Windows.
+- This file is the only instruction file of the repository. Do not add
+  `CLAUDE.md`, as an import, a symbolic link, or a copy (owner decision,
+  2026-10-12): Codex and Claude Code share this checkout, and a second file
+  lets the rules drift apart. `scripts/checks/verify_docs.py` rejects one.
 - Read `docs/architecture/README.md` and the matching document under
   `docs/contracts/` before changing a worker boundary, canonical reference,
   domain model, or SQLite storage.
