@@ -1,15 +1,17 @@
-# sherpa HANDOFF — 2026-11-20 14:40 KST
+# sherpa HANDOFF — 2026-11-20 15:30 KST
 
 ## 목표
 
-CLI 를 Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 0.8.0 을 실기에서
-증명하고 남은 결함·문서 부채를 닫는다. 근거와 결정은 `docs/adr/0008-bun-typescript-core.md`.
+Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 0.8.0 은 배포됐다. 남은
+소유자 조작 실측과 결함·문서 부채를 닫는다. 근거와 결정은 `docs/adr/0008-bun-typescript-core.md`.
 
 ## 끝난 것 (커밋·태그·실측 근거)
 
-- 브랜치 `feat/bun-core`: 코어(cli·journal·process·mail·imessage·kakaotalk·apple 프록시), Swift 를
-  `sherpa-apple` 로 축소(`SherpaJournalStore`), `reminder.list` 선택 키 버그 수정과 회귀 테스트, 문서 명령
-  검사 `scripts/checks/verify_doc_commands.py`, 스킬·README·아키텍처·배포 스크립트 갱신, 플러그인 0.8.0.
+- 0.8.0 머지(PR bunny-holes/sherpa#10, 머지 커밋 `6e1b035`): 코어(cli·journal·process·mail·imessage·
+  kakaotalk·apple 프록시), Swift 를 `sherpa-apple` 로 축소, `reminder.list` 선택 키 버그 수정과 회귀 테스트,
+  문서 명령 검사 `scripts/checks/verify_doc_commands.py`, 스킬·README·아키텍처·배포 스크립트, 플러그인 0.8.0.
+- 릴리스: 태그 `v0.8.0`, `XIYO/sherpa` 릴리스 자산 업로드·되읽기 확인, `XIYO/homebrew-tap` Formula `d055c43`.
+  이 Mac 의 `brew upgrade`·`brew test` 통과. 플러그인은 plug-hole 이 기본 브랜치를 따라가므로 머지로 배포됐다.
 - 실측(2026-11-20, 이 Mac): `docs/testing/live-evidence.md` 의 같은 날짜 항목. Mail 커서 28페이지 27,964건
   중복 0, Reminders 663건 0.67초, KakaoTalk setup 2.7초 복구·kakaocli 와 결과 동일, iMessage 가 imsg 0.21.1 과
   모든 필드 일치.
@@ -48,7 +50,7 @@ CLI 를 Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로
 
 ## 저장소·세션 상태 (브랜치, 미커밋, 미푸시, pane)
 
-- 작업 브랜치 `feat/bun-core`(기준 `main` 의 `5004cf6`). 원격은 `bunny-holes/sherpa`, 릴리스 자산과 Formula 는
-  `XIYO/sherpa`·`XIYO/homebrew-tap` 을 가리킨다.
+- `main` 은 `6e1b035` 이후다. 원격은 `bunny-holes/sherpa`(`XIYO/sherpa` 가 같은 저장소로 리다이렉트), Formula 는
+  `XIYO/homebrew-tap`.
 - 개발 실행: `cd core && bun run build`, `swift build --package-path apple/eventkit-service`, 그리고
   `SHERPA_APPLE_BIN=apple/eventkit-service/.build/debug/sherpa-apple core/dist/sherpa …`.
