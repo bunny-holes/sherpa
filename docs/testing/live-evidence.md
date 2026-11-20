@@ -54,6 +54,16 @@ temporary `XDG_CONFIG_HOME`, leaving the owner's `~/.homebrew/trust.json`
 untouched, and the smoke installs and `brew test`s 0.8.0, including a planner
 request from the installed core through the installed helper.
 
+Released the same day: tag `v0.8.0` on merge commit `6e1b035`, archive
+`sherpa-0.8.0-aarch64-apple-darwin.tar.gz` (sha256 `a5539a03…8fb896`) uploaded
+to `XIYO/sherpa` and read back by `scripts/package.sh --publish`, and the
+formula pushed to `XIYO/homebrew-tap` (`d055c43`). `brew upgrade
+xiyo/tap/sherpa` installed 0.8.0 on this Mac and `brew test` passed. The
+installed `sherpa` and `libexec/sherpa-apple` both report 0.8.0; incomplete
+`reminder.list` returned 56 reminders in 0.09 s, a 20-day `mail list` returned
+479 messages with `limit_reached: false`, `imessage chats --limit 20` returned
+20 chats, and `kakaotalk status` reported `ready: true`.
+
 Not observed: a real iMessage or Mail send through 0.8.0, the Automation
 permission prompt for the core's `osascript`, committing a KakaoTalk local
 checkpoint against the real store (one staged pending row was left), the
