@@ -30,7 +30,12 @@ every helper build. Measured on this Mac from the Claude host, statuses only:
   to the bundle identity, read `not_determined`.
 
 CLI 0.8.2 ships the helper as the Developer ID signed `libexec/SherpaHelper.app`
-(ADR-0009); the owner said they hold an Apple developer membership. Earlier in
+(ADR-0009); the owner said they hold an Apple developer membership. Released the
+same day (tag `v0.8.2`, archive sha256 `4f5afb49…b2b4f7`, tap `47b68ca`):
+after `brew upgrade` the installed bundle's signature still verified with the
+Developer ID chain, Calendar read `full_access` with no prompt (granted earlier
+to the test bundle), Reminders asked once and reached `full_access`, and the
+disposable suite against `/opt/homebrew/bin/sherpa` returned `verified` in 4 s. Earlier in
 the day a zsh loop sent malformed envelopes (`protocol.invalid_envelope`, no
 prompt); that was the operator's script, not Sherpa.
 
