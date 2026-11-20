@@ -169,7 +169,27 @@ public struct WorkerResponse: Codable, Sendable {
     public static func success(request: WorkerRequest, result: JSONObject, effect: WorkerEffectOutcome = .init(kind: .none, state: .notApplicable), evidence: WorkerEvidence? = nil) -> Self { .init(applicationContract: request.applicationContract, requestID: request.requestID, operationID: request.operationID, capability: request.capability, status: .succeeded, result: .object(result), effect: effect, evidence: evidence, error: nil, warnings: []) }
     public static func failure(request: WorkerRequest, code: String, retry: RetryDisposition = .never) -> Self { .init(applicationContract: request.applicationContract, requestID: request.requestID, operationID: request.operationID, capability: request.capability, status: .failed, result: nil, effect: .init(kind: .none, state: .notStarted), evidence: nil, error: .init(code: code, retry: retry), warnings: []) }
     public static func uncorrelatedFailure(code: String) -> Self { .init(applicationContract: "sherpa.planner.v2", requestID: "unknown", operationID: "unknown", capability: "unknown", status: .failed, result: nil, effect: .init(kind: .none, state: .notStarted), evidence: nil, error: .init(code: code, retry: .never), warnings: []) }
-    public func encoded(maximumBytes: Int = 8 * 1024 * 1024) throws -> Data { let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]; let data = try encoder.encode(self); guard data.count <= maximumBytes else { throw WorkerProtocolError.resultTooLarge }; return data }
+    public func encoded(maximumBytes: Int = 8 * 1024 * 1024) throws -> Data { let data = try sortedJSON(); guard data.count <= maximumBytes else { throw WorkerProtocolError.resultTooLarge }; return data }
+
+    /// Encodes the response within `maximumBytes`. A response that does not fit drops
+    /// its result and warnings but keeps its correlation and effect: an applied or
+    /// possibly applied effect stays `uncertain` or becomes `partial`, with its
+    /// evidence; anything else becomes `failed`. Both carry `protocol.result_too_large`
+    /// with `retry: never`, so a caller cannot repeat an effect that already happened.
+    public func fitted(maximumBytes: Int = 8 * 1024 * 1024) throws -> (response: Self, data: Data) {
+        let data = try sortedJSON()
+        if data.count <= maximumBytes { return (self, data) }
+        let effectStarted = effect.state == .applied || effect.state == .mayHaveApplied
+        let bounded = Self(
+            applicationContract: applicationContract, requestID: requestID, operationID: operationID,
+            capability: capability, status: effectStarted ? (status == .uncertain ? .uncertain : .partial) : .failed,
+            result: nil, effect: effect, evidence: effectStarted ? evidence : nil,
+            error: .init(code: WorkerProtocolError.resultTooLarge.stableCode, retry: .never), warnings: []
+        )
+        return (bounded, try bounded.encoded(maximumBytes: maximumBytes))
+    }
+
+    private func sortedJSON() throws -> Data { let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]; return try encoder.encode(self) }
 }
 
 public func readWorkerRequest(from handle: FileHandle = .standardInput, maximumBytes: Int = 64 * 1024) throws -> Data {

@@ -11,6 +11,22 @@ manner: "버전별로 Added·Changed·Fixed 를 나누고 긴 실측 근거는 l
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-11-20
+
+CLI 0.8.4 가 필요하다(`cli-contract.json` 의 `minimumVersion`).
+
+### Fixed
+
+- 헬퍼가 변경을 적용한 뒤 응답이 한도(EventKit 8 MiB, 비공개 Reminders 1 MiB, Mail 32 MiB)를 넘으면
+  `failed` 로 보고하던 결함. 이제 결과만 빼고 효과·근거를 남긴 `partial`(또는 `uncertain`) 응답과
+  `protocol.result_too_large`·`retry: never` 를 내고, 저널에도 같은 상태를 적는다. 읽기 초과는 그대로
+  `failed` 다. 회귀 시험은 `ProtocolTests.swift` 와 `JournalStoreTests.swift` 에 있다.
+
+### Changed
+
+- `planner` 스킬 8단계: `partial`·`uncertain` 에 `protocol.result_too_large` 가 붙으면 변경을 되풀이하지
+  말고 상태를 다시 읽는다.
+
 ## [0.8.3] - 2026-11-20
 
 CLI 0.8.3 이 필요하다(`cli-contract.json` 의 `minimumVersion`).

@@ -43,7 +43,13 @@ let package = Package(
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .target(
+            name: "SherpaShimResponse",
+            publicHeadersPath: "include",
+            linkerSettings: [.linkedFramework("Foundation")]
+        ),
+        .target(
             name: "SherpaMailShim",
+            dependencies: ["SherpaShimResponse"],
             publicHeadersPath: "include",
             cSettings: [.define("SHERPA_MAIL_LIBRARY")],
             linkerSettings: [
@@ -54,6 +60,7 @@ let package = Package(
         ),
         .target(
             name: "SherpaReminderKitShim",
+            dependencies: ["SherpaShimResponse"],
             publicHeadersPath: "include",
             cSettings: [.define("SHERPA_REMINDER_KIT_LIBRARY")],
             linkerSettings: [
@@ -109,7 +116,7 @@ let package = Package(
             name: "SherpaJournalStoreTests",
             dependencies: [
                 "SherpaMutationApplication", "SherpaJournalStore", "SherpaMailShim",
-                "SherpaReminderKitShim",
+                "SherpaReminderKitShim", "SherpaShimResponse",
             ]
         ),
     ]

@@ -46,6 +46,15 @@ when required evidence mismatched or was unavailable. `uncertain` preserves a
 the native outcome. Timeout and cancellation are stable error codes rather than
 statuses. Warnings are bounded to 128 rows.
 
+A response that does not fit the worker's response limit (8 MiB for EventKit,
+1 MiB for private Reminders, 32 MiB for Mail) drops its result and warnings but
+keeps its correlation, effect, and evidence. An `applied` or `may_have_applied`
+effect is reported as `partial` (or stays `uncertain`), anything else as
+`failed`, each with `protocol.result_too_large` and `retry: never`. The helper
+journals that same status, so an oversized result after an applied change never
+reads as a change that did not happen. `SherpaFittedResponseData` (Objective-C
+shims) and `WorkerResponse.fitted(maximumBytes:)` (Swift) carry the rule.
+
 ## Compatibility
 
 Major versions are incompatible. Every V2 envelope is exact-key and rejects V1

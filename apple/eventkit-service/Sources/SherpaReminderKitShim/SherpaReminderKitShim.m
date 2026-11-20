@@ -5,6 +5,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import "SherpaReminderKitShim.h"
+#import "SherpaShimResponse.h"
 
 static NSString *const ProtocolVersion = @"2.0.0";
 static NSString *const ApplicationContract = @"sherpa.reminder-private.v2";
@@ -116,34 +117,7 @@ static BOOL safeIdentifier(id value) {
 }
 
 static NSData *responseData(NSDictionary *response) {
-    NSError *error = nil;
-    NSData *data = [NSJSONSerialization dataWithJSONObject:response
-                                                   options:NSJSONWritingSortedKeys
-                                                     error:&error];
-    if (!data || error) return nil;
-    if (data.length > MaxResponseBytes) {
-        id requestID = [response[@"request_id"] isKindOfClass:[NSString class]]
-            ? response[@"request_id"] : @"unknown";
-        NSDictionary *bounded = @{
-            @"kind": @"response",
-            @"protocol_version": ProtocolVersion,
-            @"application_contract": ApplicationContract,
-            @"request_id": requestID,
-            @"operation_id": CurrentOperationID,
-            @"capability": CurrentCapability,
-            @"status": @"failed",
-            @"result": [NSNull null],
-            @"effect": @{ @"kind": @"none", @"state": @"not_started" },
-            @"evidence": [NSNull null],
-            @"error": @{ @"code": @"protocol.result_too_large", @"retry": @"never" },
-            @"warnings": @[],
-        };
-        data = [NSJSONSerialization dataWithJSONObject:bounded
-                                                options:NSJSONWritingSortedKeys
-                                                  error:&error];
-    }
-    if (!data || error || data.length > MaxResponseBytes) return nil;
-    return data;
+    return SherpaFittedResponseData(response, MaxResponseBytes);
 }
 
 static NSDictionary *failureWithRetry(NSString *requestID, NSString *code,
