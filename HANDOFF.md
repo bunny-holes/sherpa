@@ -1,4 +1,4 @@
-# sherpa HANDOFF — 2026-11-20 15:30 KST
+# sherpa HANDOFF — 2026-11-20 23:07 KST
 
 ## 목표
 
@@ -10,6 +10,9 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 - 0.8.0 머지(PR bunny-holes/sherpa#10, 머지 커밋 `6e1b035`): 코어(cli·journal·process·mail·imessage·
   kakaotalk·apple 프록시), Swift 를 `sherpa-apple` 로 축소, `reminder.list` 선택 키 버그 수정과 회귀 테스트,
   문서 명령 검사 `scripts/checks/verify_doc_commands.py`, 스킬·README·아키텍처·배포 스크립트, 플러그인 0.8.0.
+- 0.8.4 배포(PR bunny-holes/sherpa#19, 태그 `v0.8.4`, tap `28f7da6`): 변경 적용 뒤 응답이 한도를 넘으면
+  결과만 빼고 `partial`/`uncertain` + `protocol.result_too_large` 로 보고한다(planner·Mail·ReminderKit).
+  근거는 결정적 시험뿐이고 실기 초과 응답은 만들지 않았다. 0.8.3 → 0.8.4 업그레이드에서 권한이 이어졌다.
 - 0.8.3 배포(PR bunny-holes/sherpa#17, 태그 `v0.8.3`, tap `e2aba79`): 권한 창이 안 뜬 권한 요청을
   `eventkit.authorization_prompt_unavailable` 로 답한다. 0.8.2 → 0.8.3 업그레이드에서 권한이 창 없이 이어졌다.
 - 0.8.2 배포(PR bunny-holes/sherpa#15, 태그 `v0.8.2`, tap `47b68ca`): 헬퍼를 Developer ID 로 서명한
@@ -44,18 +47,15 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 
 ## 다음 행동
 
-1. 헬퍼의 8 MiB 응답 문제: `apple/eventkit-service/Sources/SherpaNative/main.swift` 의 `plannerRequest` 가
-   변경을 기록한 뒤 `encoded(maximumBytes: 8 MiB)` 로 인코딩해, 넘으면 `failed` 로 보고된다(코드로 확인,
-   재현 안 함). 초과 응답 시험을 먼저 세운다.
-2. plist 파서 중복 정리: `core/src/imessage/bplist.ts` 와 `core/src/kakaotalk/plist.ts`.
-3. 문서 부채: `docs/testing/verification-matrix.md` 를 Bun 코어 기준으로 재검토. `docs/` 21개 문서의 옛
-   front matter 키(`id`·`title`·`status`·`owner`). `docs/contracts/worker-protocol.md:85` 가
+1. plist 파서 중복 정리: `core/src/imessage/bplist.ts` 와 `core/src/kakaotalk/plist.ts`.
+2. 문서 부채: `docs/testing/verification-matrix.md` 를 Bun 코어 기준으로 재검토. `docs/` 21개 문서의 옛
+   front matter 키(`id`·`title`·`status`·`owner`). `docs/contracts/worker-protocol.md:94` 가
    가리키는 없는 `protocols/worker-v2.schema.json`.
-4. 웹 수집 소스(patchright 등)는 코어의 새 어댑터로 붙인다(소유자 방향, ADR-0008). 착수 전 대상 소스를 정한다.
+3. 웹 수집 소스(patchright 등)는 코어의 새 어댑터로 붙인다(소유자 방향, ADR-0008). 착수 전 대상 소스를 정한다.
 
 ## 저장소·세션 상태 (브랜치, 미커밋, 미푸시, pane)
 
-- `main` 은 `6e1b035` 이후다. 원격은 `bunny-holes/sherpa`(`XIYO/sherpa` 가 같은 저장소로 리다이렉트), Formula 는
+- `main` 은 `3ee4b7a`(0.8.4) 이후다. 원격은 `bunny-holes/sherpa`(`XIYO/sherpa` 가 같은 저장소로 리다이렉트), Formula 는
   `XIYO/homebrew-tap`.
 - 개발 실행: `cd core && bun run build`, `swift build --package-path apple/eventkit-service`, 그리고
   `SHERPA_APPLE_BIN=apple/eventkit-service/.build/debug/sherpa-apple core/dist/sherpa …`.

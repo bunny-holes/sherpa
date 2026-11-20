@@ -9,6 +9,24 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-20 — Oversized helper responses after an applied change (CLI 0.8.4)
+
+Before 0.8.4, `sherpa-apple planner request` journaled a mutation `completed`
+and then encoded its response under an 8 MiB limit; an oversized response
+became the command report `{"status":"failed"}` with exit 1, which reads as a
+change that did not happen. The Mail (32 MiB) and private Reminders (1 MiB)
+shims answered `failed` with effect `not_started` the same way. Found by code
+reading; no oversized response was produced live.
+
+0.8.4 (PR bunny-holes/sherpa#19, merge `3ee4b7a`, tag `v0.8.4`, tap `28f7da6`)
+keeps the effect and evidence, drops only the result, and answers `partial`
+(or `uncertain`) with `protocol.result_too_large` and `retry: never`; reads
+still fail. Proof is deterministic only: `ProtocolTests.swift` and
+`JournalStoreTests.swift`. `brew upgrade xiyo/tap/sherpa` installed 0.8.4,
+`brew test` passed, the bundle's signature verified, and both
+`*.authorization.status` reads stayed `full_access` with no prompt across the
+0.8.3 → 0.8.4 upgrade.
+
 ## 2026-11-20 — Grants carried across a Homebrew upgrade (CLI 0.8.2 → 0.8.3)
 
 Before the upgrade the installed 0.8.2 bundle read Calendar and Reminders
