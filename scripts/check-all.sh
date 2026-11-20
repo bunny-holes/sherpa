@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 저장소 게이트. push 전과 CI 에서 같은 것을 돌린다.
 #
-# 이 저장소는 brew 로 나가는 네이티브 CLI 와 plug-hole 에 등록된 에이전트
-# 플러그인을 배포한다. 게이트는 둘 다 본다.
+# 이 저장소는 brew 로 나가는 CLI(Bun 코어 + Swift Apple 헬퍼)와 plug-hole 에 등록된
+# 에이전트 플러그인을 배포한다. 게이트는 둘 다 본다.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -29,35 +29,50 @@ for package in $SWIFT_PACKAGES; do
     || fail "reason=swift_test_failed package=$package"
 done
 
+log info "check:swift:success" "packages=3"
+
+# 2. Bun + TypeScript 코어(ADR-0008). 포맷·린트·타입 검사, Bun 런타임 위의 vitest,
+#    그리고 배포와 같은 단일 실행 파일 빌드. 테스트를 `vp test` 로 돌리면 Node 에서 돌아
+#    bun:sqlite 를 못 읽는다.
+readonly CORE="$REPO_ROOT/core"
+log info "check:core:start" "root=core"
+(cd "$CORE" && bun install --frozen-lockfile >/dev/null) || fail "reason=core_install_failed"
+(cd "$CORE" && "$CORE/node_modules/.bin/vp" check >/dev/null) || fail "reason=core_check_failed"
+(cd "$CORE" && bun run test >/dev/null) || fail "reason=core_test_failed"
+(cd "$CORE" && bun run build >/dev/null) || fail "reason=core_build_failed"
+
 # --version 출력 형식은 계약이다. 스킬의 가드와 Formula 의 test 가 이 모양을 파싱한다.
-binary="$REPO_ROOT/apple/eventkit-service/.build/debug/sherpa"
+binary="$CORE/dist/sherpa"
+export SHERPA_APPLE_BIN="$REPO_ROOT/apple/eventkit-service/.build/debug/sherpa-apple"
 raw="$("$binary" --version)"
 printf '%s' "$raw" | grep -Eq '^sherpa [0-9]+\.[0-9]+\.[0-9]+$' \
   || fail "reason=version_format_broken output=$raw"
 cli_version="$(printf '%s' "$raw" | awk '{print $2}')"
+[ "$("$SHERPA_APPLE_BIN" --version)" = "sherpa-apple $cli_version" ] \
+  || fail "reason=helper_version_mismatch cli=$cli_version"
 
 # 실패는 이름 있는 오류 코드로 끝나야 한다. 최상위 catch 가 알 수 없는 실패를 stdout·stderr
 # 0 바이트로 끝내던 것을 이 호출로 재현했다. {} 는 봉투 검사에서 거부되므로 EventKit 과
-# 기록부에 닿기 전에 끝난다.
+# 기록부에 닿기 전에 끝난다. 코어가 헬퍼에 넘기고 헬퍼의 응답과 종료 코드를 그대로 돌려줘야 한다.
 if probe="$(printf '{}' | "$binary" planner request 2>/dev/null)"; then
   fail "reason=invalid_request_accepted"
 fi
 python3 -c 'import json, sys; assert json.loads(sys.argv[1]) == {"status": "failed", "error": "protocol.invalid_envelope"}' "$probe" \
   || fail "reason=failure_unnamed output=$probe"
-log info "check:swift:success" "packages=3 cli_version=$cli_version"
+log info "check:core:success" "cli_version=$cli_version"
 
-# 2. 에이전트 플러그인. 방금 빌드한 바이너리를 넘겨 스킬이 부르는 명령이 실제로
+# 3. 에이전트 플러그인. 방금 빌드한 바이너리를 넘겨 스킬이 부르는 명령이 실제로
 #    존재하는지까지 확인시킨다.
 SHERPA_BINARY="$binary" bash "$REPO_ROOT/plugins/sherpa/scripts/check.sh" \
   || fail "reason=plugin_check_failed"
 
-# 3. 자체 카탈로그가 다시 생기면 같은 플러그인이 두 목록에 보인다.
+# 4. 자체 카탈로그가 다시 생기면 같은 플러그인이 두 목록에 보인다.
 for catalog in "$REPO_ROOT/.claude-plugin/marketplace.json" "$REPO_ROOT/.agents/plugins/marketplace.json"; do
   [ ! -e "$catalog" ] || fail "reason=duplicate_marketplace_present file=${catalog#"$REPO_ROOT/"}"
 done
 log info "check:marketplace:success" "source=plug-hole"
 
-# 4. 스킬이 요구하는 최소 CLI 버전이 이 체크아웃의 CLI 로 만족되는가.
+# 5. 스킬이 요구하는 최소 CLI 버전이 이 체크아웃의 CLI 로 만족되는가.
 #    같은 저장소에서 나가는 둘이 서로 모순인 채 릴리스되는 것을 막는다.
 minimum="$(python3 -c "import json;print(json.load(open('$REPO_ROOT/plugins/sherpa/cli-contract.json'))['minimumVersion'])")"
 python3 - "$cli_version" "$minimum" <<'PY' || fail "reason=cli_older_than_contract"
@@ -68,11 +83,17 @@ if installed < minimum:
 PY
 log info "check:contract:success" "cli=$cli_version minimum=$minimum"
 
-# 5. 문서 구조. 제목 앞에 본문이 오면 렌더러가 제목 없는 문서로 읽는다.
+# 6. 문서 구조. 제목 앞에 본문이 오면 렌더러가 제목 없는 문서로 읽는다.
 python3 "$REPO_ROOT/scripts/checks/verify_docs.py" "$REPO_ROOT" || fail "reason=doc_structure_invalid"
-log info "check:docs:success" "structure and links"
+# 사용 문서가 안내하는 명령이 실제로 있는가. 0.7.1 의 live-validation.md 가 없는 명령을 안내했다.
+help_snapshot="$(mktemp "${TMPDIR:-/tmp}/sherpa-help.XXXXXX")"
+"$binary" --help > "$help_snapshot"
+python3 "$REPO_ROOT/scripts/checks/verify_doc_commands.py" "$REPO_ROOT" "$help_snapshot" \
+  || { rm -f "$help_snapshot"; fail "reason=doc_names_unknown_command"; }
+rm -f "$help_snapshot"
+log info "check:docs:success" "structure, links and commands"
 
-# 6. 릴리스 경로. brew 가 없으면(리눅스 CI 등) 건너뛰되 건너뛴 사실을 남긴다.
+# 7. 릴리스 경로. brew 가 없으면(리눅스 CI 등) 건너뛰되 건너뛴 사실을 남긴다.
 #    SHERPA_SKIP_RELEASE=1 로 명시적으로 끌 수 있다 — 반복 실행에서 느리기 때문이다.
 if [ "${SHERPA_SKIP_RELEASE:-0}" = "1" ]; then
   log warn "check:release:skipped" "reason=explicitly_disabled — release path is UNVERIFIED"
