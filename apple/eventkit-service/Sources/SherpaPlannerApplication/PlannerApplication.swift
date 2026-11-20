@@ -86,5 +86,10 @@ public struct EventCommandValidator: Sendable {
     }
     private static func validLocator(_ value: String) -> Bool { !value.isEmpty && value.utf8.count <= 4_096 && !value.contains("\0") }
     private static func validURL(_ value: String) -> Bool { value.utf8.count <= 16_384 && URL(string: value)?.scheme != nil }
-    private static func date(_ value: String) -> Date? { ISO8601DateFormatter().date(from: value) }
+    /// Same forms as the adapter's `parseDate`: internet date-time with or without fractional seconds.
+    private static func date(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
 }
