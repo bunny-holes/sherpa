@@ -10,6 +10,8 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 - 0.8.0 머지(PR bunny-holes/sherpa#10, 머지 커밋 `6e1b035`): 코어(cli·journal·process·mail·imessage·
   kakaotalk·apple 프록시), Swift 를 `sherpa-apple` 로 축소, `reminder.list` 선택 키 버그 수정과 회귀 테스트,
   문서 명령 검사 `scripts/checks/verify_doc_commands.py`, 스킬·README·아키텍처·배포 스크립트, 플러그인 0.8.0.
+- 0.8.2 배포(PR bunny-holes/sherpa#15, 태그 `v0.8.2`, tap `47b68ca`): 헬퍼를 Developer ID 로 서명한
+  `libexec/SherpaHelper.app` 번들로 낸다(ADR-0009). 설치본 Calendar·Reminders `full_access`, 검증 묶음 `verified`.
 - 0.8.1 배포(PR bunny-holes/sherpa#13, 태그 `v0.8.1`, tap `e9a968c`): 헬퍼가 권한 책임을 놓고 다시 떠
   `dev.xiyo.sherpa` 로 권한을 받는다. 이 Mac 의 설치본이 Calendar·Reminders `full_access`, 일회용 검증 묶음 `verified`.
 - 릴리스: 태그 `v0.8.0`, `XIYO/sherpa` 릴리스 자산 업로드·되읽기 확인, `XIYO/homebrew-tap` Formula `d055c43`.
@@ -43,8 +45,8 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 1. `*.authorization.request` 가 권한이 그대로 `not_determined` 여도 `succeeded`·증거 `matched` 로 답한다
    (`EventKitWorker.swift` 의 두 authorization request 분기, 2026-11-20 재현). 상태가 바뀌지 않았으면 이름 있는
    실패로 답하게 하고 결정적 시험을 세운다. 미수정.
-2. 0.8.2 를 brew 로 올린 뒤 Reminders 권한을 번들 식별자에 한 번 주고, 다음 판(0.8.3 이상)으로 올렸을 때
-   두 권한이 권한 창 없이 이어지는지 확인한다(ADR-0009 의 결과, 판을 넘는 실측은 아직 없음).
+2. 다음 판(0.8.3 이상)으로 `brew upgrade` 한 뒤 Calendar·Reminders 가 권한 창 없이 `full_access` 인지
+   확인한다. 0.8.2 설치본은 두 권한 모두 받았다. 판을 넘는 실측은 아직 없다(ADR-0009).
 3. 헬퍼의 8 MiB 응답 문제: `apple/eventkit-service/Sources/SherpaNative/main.swift` 의 `plannerRequest` 가
    변경을 기록한 뒤 `encoded(maximumBytes: 8 MiB)` 로 인코딩해, 넘으면 `failed` 로 보고된다(코드로 확인,
    재현 안 함). 초과 응답 시험을 먼저 세운다.
