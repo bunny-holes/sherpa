@@ -1,0 +1,31 @@
+{
+  "name": "sherpa",
+  "version": "0.8.0",
+  "private": true,
+  "description": "Sherpa CLI core: local-first macOS planning and context orchestrator",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "check": "vp check",
+    "fmt": "vp fmt",
+    "lint": "vp lint",
+    "test": "bun --bun vitest run",
+    "build": "bun build src/main.ts --compile --target=bun-darwin-arm64 --outfile dist/sherpa"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^7.0.2",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0",
+    "vite-plus": "^1.2.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "bun",
+      "version": "1.4.5",
+      "onFail": "download"
+    }
+  }
+}

@@ -29,7 +29,7 @@ public final class NativeMutationStore: MutationJournal, @unchecked Sendable {
         var opened: OpaquePointer?
         guard sqlite3_open_v2(
             url.path, &opened, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil
-        ) == SQLITE_OK, let opened else { throw NativeCommandError.failed }
+        ) == SQLITE_OK, let opened else { throw JournalStoreError.failed }
         database = opened
         try execute("PRAGMA journal_mode=WAL")
         try execute("PRAGMA synchronous=NORMAL")
@@ -63,7 +63,7 @@ public final class NativeMutationStore: MutationJournal, @unchecked Sendable {
 
     public func start(operationID: String, capability: String) throws {
         guard !operationID.isEmpty, operationID.utf8.count <= 128,
-              capability.utf8.count <= 128 else { throw NativeCommandError.invalidRequest }
+              capability.utf8.count <= 128 else { throw JournalStoreError.invalidRequest }
         let now = Int64(Date().timeIntervalSince1970)
         try statement(
             "INSERT INTO native_mutations(operation_id, capability, status, created_at, updated_at) VALUES(?, ?, 'started', ?, ?)",
@@ -76,14 +76,14 @@ public final class NativeMutationStore: MutationJournal, @unchecked Sendable {
         status: NativeMutationStatus,
         stableErrorCode: String? = nil
     ) throws {
-        guard status != .started else { throw NativeCommandError.invalidRequest }
+        guard status != .started else { throw JournalStoreError.invalidRequest }
         let now = Int64(Date().timeIntervalSince1970)
         lock.lock()
         defer { lock.unlock() }
         var prepared: OpaquePointer?
         guard sqlite3_prepare_v2(database,
             "UPDATE native_mutations SET status=?, stable_error_code=?, updated_at=? WHERE operation_id=? AND status='started'",
-            -1, &prepared, nil) == SQLITE_OK, let prepared else { throw NativeCommandError.failed }
+            -1, &prepared, nil) == SQLITE_OK, let prepared else { throw JournalStoreError.failed }
         defer { sqlite3_finalize(prepared) }
         bind(status.rawValue, at: 1, to: prepared)
         if let stableErrorCode { bind(stableErrorCode, at: 2, to: prepared) }
@@ -91,18 +91,18 @@ public final class NativeMutationStore: MutationJournal, @unchecked Sendable {
         sqlite3_bind_int64(prepared, 3, now)
         bind(operationID, at: 4, to: prepared)
         guard sqlite3_step(prepared) == SQLITE_DONE, sqlite3_changes(database) == 1 else {
-            throw NativeCommandError.failed
+            throw JournalStoreError.failed
         }
     }
 
     public func recent(limit: Int = 100) throws -> [NativeMutationRecord] {
-        guard (1 ... 1_000).contains(limit) else { throw NativeCommandError.invalidRequest }
+        guard (1 ... 1_000).contains(limit) else { throw JournalStoreError.invalidRequest }
         lock.lock()
         defer { lock.unlock() }
         var prepared: OpaquePointer?
         guard sqlite3_prepare_v2(database,
             "SELECT operation_id, capability, status, stable_error_code, created_at FROM native_mutations ORDER BY created_at DESC, operation_id DESC LIMIT ?",
-            -1, &prepared, nil) == SQLITE_OK, let prepared else { throw NativeCommandError.failed }
+            -1, &prepared, nil) == SQLITE_OK, let prepared else { throw JournalStoreError.failed }
         defer { sqlite3_finalize(prepared) }
         sqlite3_bind_int(prepared, 1, Int32(limit))
         var records: [NativeMutationRecord] = []
@@ -111,7 +111,7 @@ public final class NativeMutationStore: MutationJournal, @unchecked Sendable {
                   let capability = sqlite3_column_text(prepared, 1),
                   let statusText = sqlite3_column_text(prepared, 2),
                   let status = NativeMutationStatus(rawValue: String(cString: statusText))
-            else { throw NativeCommandError.failed }
+            else { throw JournalStoreError.failed }
             let error = sqlite3_column_text(prepared, 3).map { String(cString: $0) }
             records.append(.init(
                 operationID: String(cString: operation), capability: String(cString: capability),
@@ -123,7 +123,7 @@ public final class NativeMutationStore: MutationJournal, @unchecked Sendable {
 
     private func execute(_ sql: String) throws {
         guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
-            throw NativeCommandError.failed
+            throw JournalStoreError.failed
         }
     }
 
@@ -132,12 +132,12 @@ public final class NativeMutationStore: MutationJournal, @unchecked Sendable {
         defer { lock.unlock() }
         var prepared: OpaquePointer?
         guard sqlite3_prepare_v2(database, sql, -1, &prepared, nil) == SQLITE_OK,
-              let prepared else { throw NativeCommandError.failed }
+              let prepared else { throw JournalStoreError.failed }
         defer { sqlite3_finalize(prepared) }
         var index: Int32 = 1
         for value in text { bind(value, at: index, to: prepared); index += 1 }
         for value in integers { sqlite3_bind_int64(prepared, index, value); index += 1 }
-        guard sqlite3_step(prepared) == SQLITE_DONE else { throw NativeCommandError.failed }
+        guard sqlite3_step(prepared) == SQLITE_DONE else { throw JournalStoreError.failed }
     }
 
     private func bind(_ value: String, at index: Int32, to statement: OpaquePointer) {

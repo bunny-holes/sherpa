@@ -8,7 +8,7 @@ let package = Package(
     name: "sherpa",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "sherpa", targets: ["SherpaNative"]),
+        .executable(name: "sherpa-apple", targets: ["SherpaNative"]),
         .executable(
             name: "sherpa-eventkit-live-verify",
             targets: ["SherpaEventKitLiveVerifier"]
@@ -38,8 +38,8 @@ let package = Package(
         ),
         .target(name: "SherpaMutationApplication"),
         .target(
-            name: "SherpaNativeCommandAdapter",
-            dependencies: ["SherpaMailShim", "SherpaMutationApplication"],
+            name: "SherpaJournalStore",
+            dependencies: ["SherpaMutationApplication"],
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .target(
@@ -67,7 +67,7 @@ let package = Package(
             name: "SherpaNative",
             dependencies: [
                 "SherpaMutationApplication",
-                "SherpaNativeCommandAdapter",
+                "SherpaJournalStore",
                 "SherpaEventKitAdapter",
                 "SherpaMailShim",
                 "SherpaReminderKitShim",
@@ -106,9 +106,9 @@ let package = Package(
             dependencies: ["SherpaEventKitLiveVerifierSupport"]
         ),
         .testTarget(
-            name: "SherpaNativeCommandAdapterTests",
+            name: "SherpaJournalStoreTests",
             dependencies: [
-                "SherpaMutationApplication", "SherpaNativeCommandAdapter", "SherpaMailShim",
+                "SherpaMutationApplication", "SherpaJournalStore", "SherpaMailShim",
                 "SherpaReminderKitShim",
             ]
         ),
