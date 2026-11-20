@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 저장소 게이트. push 전과 CI 에서 같은 것을 돌린다.
+# 저장소 게이트. CI 가 없으므로 병합 전 macOS 에서 직접 돌린다(AGENTS.md).
 #
 # 이 저장소는 brew 로 나가는 CLI(Bun 코어 + Swift Apple 헬퍼)와 plug-hole 에 등록된
 # 에이전트 플러그인을 배포한다. 게이트는 둘 다 본다.
@@ -93,7 +93,7 @@ python3 "$REPO_ROOT/scripts/checks/verify_doc_commands.py" "$REPO_ROOT" "$help_s
 rm -f "$help_snapshot"
 log info "check:docs:success" "structure, links and commands"
 
-# 7. 릴리스 경로. brew 가 없으면(리눅스 CI 등) 건너뛰되 건너뛴 사실을 남긴다.
+# 7. 릴리스 경로. brew 가 없으면 건너뛰되 건너뛴 사실을 남긴다.
 #    SHERPA_SKIP_RELEASE=1 로 명시적으로 끌 수 있다 — 반복 실행에서 느리기 때문이다.
 if [ "${SHERPA_SKIP_RELEASE:-0}" = "1" ]; then
   log warn "check:release:skipped" "reason=explicitly_disabled — release path is UNVERIFIED"

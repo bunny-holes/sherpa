@@ -106,9 +106,9 @@ Sherpa는 불투명 참조만 돌려주며 제공자의 네이티브 식별자�
 
 ## 제한 사항
 
-- macOS 전용입니다. Windows와 Linux의 Claude Code도 SessionStart 훅은 실행하지만
-  거기서는 훅이 침묵하고, 스킬을 부르면 가드의 `unsupported` 응답에서 멈춥니다.
-  저장소의 Windows 검사는 매니페스트와 그 훅만 확인하고 나머지는 건너뜁니다.
+- macOS 전용입니다. Windows와 Linux는 지원하지 않으며 검사하지도 않습니다. 다른
+  OS의 Claude Code가 SessionStart 훅을 실행하면 훅은 침묵하고, 스킬을 부르면 가드의
+  `unsupported` 응답에서 멈춥니다.
 - `sherpa`는 어떤 서비스의 완전한 아카이브도 아닙니다.
 - CLI는 함께 묶이지 않습니다. 플러그인을 올려도 CLI는 올라가지 않습니다.
 

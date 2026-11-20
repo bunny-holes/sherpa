@@ -32,7 +32,7 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 
 - kakaocli 상류 이슈 등록(외부 게시)은 소유자 확인이 필요하다.
 - 실기 소유자 조작: 0.8.0 로 iMessage·Mail 한 통씩 실제 보내기와 Automation 권한 프롬프트 확인,
-  KakaoTalk 로컬 체크포인트 커밋, 로그인된 Claude Code·Codex 세션에서 스킬 호출, Windows 훅 침묵,
+  KakaoTalk 로컬 체크포인트 커밋, 로그인된 Claude Code·Codex 세션에서 스킬 호출,
   `SR-CX-013` 재검증, Discord 이모지·스티커 명령. 관측하면 `live-evidence.md` 에 날짜로 적고 여기서 지운다.
 
 ## 다음 행동

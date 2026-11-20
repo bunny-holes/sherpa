@@ -111,10 +111,9 @@ identifiers.
 
 ## Limitations
 
-- macOS only. Claude Code still runs the SessionStart hook on Windows and
-  Linux; there it stays silent, and a skill that is invoked stops at the guard's
-  `unsupported` answer. The Windows repository check verifies the manifests and
-  that hook, and skips the rest.
+- macOS only; Windows and Linux are not supported or tested. If Claude Code
+  runs the SessionStart hook on another OS, the hook stays silent and a skill
+  that is invoked stops at the guard's `unsupported` answer.
 - `sherpa` is not a complete archive of any service.
 - The CLI is not bundled. Upgrading the plugin does not upgrade the CLI.
 

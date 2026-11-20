@@ -9,6 +9,17 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-20 — Windows support removed (owner decision)
+
+The owner dropped Windows. The repository's only CI job (`windows-hook`, which
+ran `plugins/sherpa/scripts/check-windows.ps1` on `windows-latest`) and that
+script were deleted, and `verify_session_start.py` lost its Git Bash selection
+and CRLF Python cases. The open Windows items in ADR-0007 `## 미검증` and the
+"Windows hook silence" owner check in `HANDOFF.md` are closed as out of scope,
+not as observed. The hook's silence and the guard's `unsupported` answer on
+other operating systems remain and are still checked on macOS with a fake
+`uname`. Plugin 0.8.1.
+
 ## 2026-11-20 — CLI 0.7.1 field failures and the 0.8.0 Bun core (macOS 27.0.1, M4 Pro, KakaoTalk Mac 26.10.0)
 
 The owner used installed CLI 0.7.1 for a real investigation and bypassed it with

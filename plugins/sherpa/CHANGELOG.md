@@ -11,6 +11,16 @@ manner: "버전별로 Added·Changed·Fixed 를 나누고 긴 실측 근거는 l
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-20
+
+CLI 0.8.0 이 그대로 필요하다. 스킬 동작은 바뀌지 않았다.
+
+### Removed
+
+- Windows 지원(소유자 결정, 2026-11-20). `scripts/check-windows.ps1` 과 저장소 CI 의 Windows 잡을
+  지웠고, 훅 검사에서 Git Bash 고르기와 CRLF Python 케이스를 뺐다. 다른 OS 에서 훅이 침묵하고
+  가드가 `unsupported` 를 답하는 동작은 남겼고 macOS 게이트가 가짜 `uname` 으로 계속 검사한다.
+
 ## [0.8.0] - 2026-11-20
 
 CLI 0.8.0 이 필요하다(`cli-contract.json` 의 `minimumVersion`). CLI 코어가 Bun + TypeScript 로 바뀌었고
