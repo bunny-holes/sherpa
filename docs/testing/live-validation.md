@@ -49,9 +49,22 @@ update, complete/reopen, and delete against them, read each item back with
 native read-back evidence, and `sherpa operations list --limit 20` must show one
 terminal row per mutation.
 
-`sherpa-eventkit-live-verify` predates the helper split and starts its worker
-without arguments; it does not work against `sherpa` or `sherpa-apple` until it
-is updated (tracked in `HANDOFF.md`).
+`sherpa-eventkit-live-verify` runs the whole disposable suite in one command
+and leaves no residue:
+
+```bash
+SHERPA_EVENTKIT_LIVE=1 SHERPA_EVENTKIT_LIVE_CONFIRM=VERIFY_EVENTKIT_DISPOSABLE_CALENDAR_ON_THIS_MAC \
+  apple/eventkit-service/.build/debug/sherpa-eventkit-live-verify --worker "$(command -v sherpa)"
+```
+
+It starts the worker as `<worker> planner request` and replaces the worker's
+environment with only `TZ` for some calls, so a development core that needs
+`SHERPA_APPLE_BIN` must be wrapped in a script that sets it.
+
+Grants belong to the helper (`dev.xiyo.sherpa`), not to the terminal or agent
+app, and an unsigned rebuild or upgrade asks again. Run the
+`*.authorization.request` calls with `deadline_ms` at most 300000; a larger
+value is `protocol.invalid_envelope` before any prompt.
 
 ## 2. Private Reminder capability
 
