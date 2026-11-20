@@ -9,6 +9,58 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-20 — CLI 0.7.1 field failures and the 0.8.0 Bun core (macOS 27.0.1, M4 Pro, KakaoTalk Mac 26.10.0)
+
+The owner used installed CLI 0.7.1 for a real investigation and bypassed it with
+`kakaocli`, `imsg`, `sqlite3`, and AppleScript. Each failure was reproduced or
+explained on this Mac, and a development build of 0.8.0 (`core/dist/sherpa` with
+`sherpa-apple` from `apple/eventkit-service`) was run against the same data.
+Only counts, statuses, and timings were printed.
+
+- `sherpa context sync` → `{"error":"invalidRequest"}` on 0.7.1 and 0.8.0. The
+  command never existed in the Swift CLI; `live-validation.md` still named it
+  from the Rust era, and the `context` skill named no Mail or iMessage command.
+  The runbook was rewritten and `scripts/checks/verify_doc_commands.py` fails
+  the old text (`docs/testing/live-validation.md: sherpa context`).
+- Mail: 0.7.1 `mail list --limit 1000|5000|50000` over 2020-01-01..2026-11-21
+  returned 1000, 5000, and 27,964 messages (0.25 s, 0.87 s, 4.94 s). There was no
+  1000-row cap, only no signal that a page was full. 0.8.0 pages with
+  `--cursor`: 28 pages of 1000, 27,964 messages, 0 duplicate identifiers, 86 ms
+  in total.
+- Reminders: 0.7.1 `reminder.list` through EventKit returned 663 / 56 / 607
+  reminders (all / incomplete / completed) in 0.43 / 0.08 / 0.35 s. The
+  120-second timeout was the AppleScript `whose` query, not Sherpa. The same
+  request with only `schema` and `limit` failed with `protocol.invalid_payload`
+  because the helper required every optional key; 0.8.0 returns 663 reminders
+  in 0.67 s through the core and helper.
+- KakaoTalk: `kakaocli` 0.6.0 cannot find the account number on this KakaoTalk
+  version (all four detection strategies fail; its brute force stops after 10 s
+  at about 30 million candidates) and then opens the encrypted database without
+  a key, which surfaces as "file is not a database". 0.8.0 `kakaotalk setup`
+  recovered the number with 14 workers at about 88 million candidates per
+  second in 2.7 s, verified that the derived key opens the database, and stored
+  it in the login keychain. `kakaotalk status` reported `ready: true`. Compared
+  with `kakaocli` given the same database and key: three searches of 100 rows
+  each, 1,904 messages over three days, and 284 room names were identical.
+- iMessage: 0.8.0 reads `chat.db` directly with `PATH=/usr/bin:/bin` and no
+  `imsg`. Compared with `imsg` 0.21.1: 1000 chats, 18,505 messages across 999
+  chats, and four ranges of the largest chat (up to 10,000 messages each)
+  matched on every field.
+
+Homebrew 7.0.15 refused the release smoke's fresh tap ("Refusing to load
+formula … from untrusted tap"), so `brew audit` failed regardless of this
+change. `scripts/check-release.sh` now trusts its temporary tap inside a
+temporary `XDG_CONFIG_HOME`, leaving the owner's `~/.homebrew/trust.json`
+untouched, and the smoke installs and `brew test`s 0.8.0, including a planner
+request from the installed core through the installed helper.
+
+Not observed: a real iMessage or Mail send through 0.8.0, the Automation
+permission prompt for the core's `osascript`, committing a KakaoTalk local
+checkpoint against the real store (one staged pending row was left), the
+Homebrew-installed 0.8.0 on a second Mac, and that KakaoTalk stays untouched
+on screen during reads (no code path launches or activates it; the core reads
+only its `Info.plist` file).
+
 ## 2026-10-12 — `CLAUDE.md` removed by owner decision; the 2026-09-21 import is retired
 
 The owner decided on this date that the repository keeps one instruction file,

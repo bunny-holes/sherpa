@@ -34,38 +34,50 @@ authorizes, executes, journals, and verifies external effects.
 Human / LLM
     |
     v
-sherpa — one native Swift executable
-    |-- SherpaNative ---------------- argv parsing, bounded stdin, presentation
+sherpa — Bun + TypeScript core (one compiled executable, core/)
+    |-- cli/ -------------- argv parsing, bounded stdin, reports with remedies
+    |-- journal/ ---------- journal state of each external mutation (bun:sqlite)
+    |-- mail/ ------------- Mail.app envelope index reads with a keyset cursor,
+    |                       Mail.app send through osascript
+    |-- imessage/ --------- Messages chat.db reads, Messages send through osascript
+    |-- kakaotalk/ -------- KakaoTalk SQLCipher reads, key derivation, setup,
+    |                       local-text checkpoint
+    `-- apple/ ------------ hands Worker Protocol V2 requests to the helper
+            |
+            v
+sherpa-apple — Swift helper (apple/eventkit-service), started only by sherpa
     |-- SherpaPlannerApplication ---- approval, idempotency, candidate freshness
-    |-- SherpaMutationApplication --- journal state of each external mutation
+    |-- SherpaMutationApplication --- journal state of each planner mutation
     |-- SherpaPlannerContract ------- Worker Protocol V2 schemas
-    |-- references, journal, canonical local store
-    |
-    +-- SherpaEventKitAdapter ------- official Calendar and Reminders
-    +-- SherpaReminderKitShim ------- isolated optional private capabilities
-    +-- SherpaMailShim -------------- Mail.app aggregate read / send
-    `-- SherpaNativeCommandAdapter -- iMessage and KakaoTalk through their
-                                      own installed CLIs
+    |-- SherpaEventKitAdapter ------- official Calendar and Reminders
+    |-- SherpaReminderKitShim ------- isolated optional private capabilities
+    |-- SherpaMailShim -------------- Mail.app aggregate read / send
+    `-- SherpaJournalStore ---------- SQLite journal shared with the core
 ```
+
+The core owns every command, its validation, its journal entry and its output.
+What needs Apple frameworks and an executable with an embedded Info.plist —
+EventKit, private ReminderKit, and the Mail shim — stays in the Swift helper
+(ADR-0008). The core passes `planner request`, `mail request`, and
+`reminder-kit request` through unchanged on standard input and output; the
+helper validates the Worker Protocol V2 request, journals planner mutations,
+and writes the response. Worker Protocol V2 is a contract for callers, not a
+long-lived worker process, and it has no V1 runtime fallback.
 
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of
 truth for Calendar and Reminders; Messages, KakaoTalk, and Mail.app remain the
-source of truth for communication content. Sherpa does not retain message or
-mail bodies in a long-lived content archive. It stores a minimal owner-only
-control/provenance ledger and keeps selected exact evidence in memory or an
-encrypted hard-TTL spill for one workflow.
+source of truth for communication content. Sherpa reads their local stores
+read-only and never retains message or mail bodies in a long-lived content
+archive. It stores a minimal owner-only control/provenance ledger and keeps
+selected exact evidence in memory or an encrypted hard-TTL spill for one
+workflow.
 
-There is no separate worker process to supervise. What used to be a cross-
-language boundary is now one executable: the same binary parses argv, validates
-the request, reaches Apple frameworks through its adapters, and renders public
-output. Worker Protocol V2 survives that collapse as the request/response schema
-for `planner request`, `mail request`, and `reminder-kit request`, which read
-strict JSON on standard input. It is a contract for callers, not a process
-boundary, and it has no V1 runtime fallback.
-
-Two external CLIs remain genuinely out of process — the installed iMessage CLI
-and the official `kakaocli`. Sherpa invokes them with a fixed argv, bounds their
-output, and never lets their bytes become execution authority.
+No external messaging CLI is involved. iMessage reads `~/Library/Messages/chat.db`
+and KakaoTalk reads its SQLCipher database with a key derived in the core from
+this Mac's platform UUID and the account number that `sherpa kakaotalk setup`
+keeps in the login keychain. Sherpa never launches, activates, or automates the
+KakaoTalk app. Sends go to Messages.app and Mail.app through `osascript` with
+a fixed script and the content on standard input.
 
 ## Dependency rule
 
@@ -73,11 +85,17 @@ Application code owns the ports it needs. Adapters depend inward to implement
 those ports. The composition roots choose implementations.
 
 ```text
-SherpaNative (composition root)
-    -> SherpaPlannerApplication + SherpaMutationApplication + adapters + presentation
+core/src/main.ts (composition root)
+    -> cli + journal + mail + imessage + kakaotalk + apple helper proxy
+
+core adapters (mail, imessage, kakaotalk) -> cli/errors, process/runner, log
+journal                                   -> cli/errors, log
+
+SherpaNative (helper composition root)
+    -> SherpaPlannerApplication + SherpaMutationApplication + adapters
 
 SherpaEventKitAdapter        -> SherpaPlannerApplication + SherpaPlannerContract
-SherpaNativeCommandAdapter   -> SherpaMutationApplication + SherpaMailShim
+SherpaJournalStore           -> SherpaMutationApplication
 SherpaPlannerApplication     -> SherpaPlannerContract
 SherpaMutationApplication    -> no Sherpa target
 SherpaPlannerContract        -> SherpaWorkerProtocol only
@@ -90,17 +108,17 @@ terminal I/O, or provider-specific payloads. Those live in the adapter targets.
 Private Apple framework code stays behind its own shim and is never a startup
 dependency.
 
-`SherpaMutationApplication` owns the journal state of every external mutation
-the CLI makes itself: `planner request` mutations, `imessage send`, and
-`mail send`. It defines the `MutationJournal` port, and the SQLite store in
-`SherpaNativeCommandAdapter` implements it. The attempt and each journal write
+The core's `journal/` and the helper's `SherpaMutationApplication` own the
+journal state of every external mutation the CLI makes itself: the helper for
+`planner request` mutations, the core for `imessage send` and `mail send`. Both
+write the same `native_mutations` table. The attempt and each journal write
 are separate error boundaries. The terminal status comes from the attempt
 alone: `failed` only when the effect never started, `uncertain` once a
 mutation command was handed its input and its outcome could not be
 established. A journal write that fails never changes that status and is never
 retried as another one. The row stays `started`, and the command names the
-journal failure in its output. The native command runner reports what happened
-to a command and never writes the journal.
+journal failure in its output. The command runner reports what happened to a
+command and never writes the journal.
 
 Context collection commands are compiled, read-only operations inside the same
 executable. Every request names one source, an explicit half-open
@@ -234,7 +252,7 @@ bulk changes require an exact target preview and explicit confirmation.
 
 ## Roadmap
 
-1. **Planner Authority** — Swift execution core, EventKit Calendar and
+1. **Planner Authority** — Swift Apple helper, EventKit Calendar and
    Reminders, isolated private Reminder capabilities, PlanningCandidate flow.
 2. **Context Intelligence** — bounded native fresh reads for iMessage, mail, and
    KakaoTalk; minimal control ledger; progressive evidence; live Planner
@@ -243,9 +261,11 @@ bulk changes require an exact target preview and explicit confirmation.
    per-account IMAP is added only when its SLA or coverage gate fails; SMTP is a
    separate capability.
 
-Homebrew is the canonical product installer. A release contains one relocatable
-executable and nothing else; a prebuilt archive prevents compilation on the
-user's Mac and the Formula declares no runtime dependency. Agent skills are not
+Homebrew is the canonical product installer. A release contains the compiled
+core at `bin/sherpa` and the Swift helper at `libexec/sherpa-apple`, and nothing
+else; a prebuilt archive prevents compilation on the user's Mac. The Formula
+declares one runtime dependency, `sqlcipher`, whose library the core loads to
+read the KakaoTalk database. Agent skills are not
 part of that archive — they install from this repository's plugin marketplace,
 and the Formula never registers them.
 
@@ -283,3 +303,4 @@ Homebrew upgrade.
 - [ADR-0002](../adr/0002-conservative-supply-comparison.md)
 - [ADR-0003](../adr/0003-context-outbound-and-mail-access.md)
 - [Unsigned Homebrew distribution](../adr/0005-unsigned-homebrew-distribution.md)
+- [Bun + TypeScript core](../adr/0008-bun-typescript-core.md)

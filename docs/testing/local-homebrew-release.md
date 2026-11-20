@@ -25,8 +25,10 @@ brew install xiyo/tap/sherpa
 
 Keep these objects distinct:
 
-1. `bash scripts/package.sh` creates a versioned, checksum-pinned release
-   archive, `target/dist/sherpa-<version>-aarch64-apple-darwin.tar.gz`.
+1. `bash scripts/package.sh` builds the Bun core and the Swift helper and
+   creates a versioned, checksum-pinned release archive,
+   `target/dist/sherpa-<version>-aarch64-apple-darwin.tar.gz`, holding
+   `bin/sherpa` and `libexec/sherpa-apple`.
 2. It renders two Formulas from one template. They differ only in the `url`
    line:
    - `target/dist/Formula/sherpa.rb` names the archive as the release asset of
@@ -45,8 +47,11 @@ Homebrew does not inspect source changes to discover a newer version. A new
 release must bump the canonical version and publish the regenerated Formula
 before `brew upgrade` can detect it.
 
-The canonical version is the string `main.swift` prints for `--version`; the
-help banner and both `Info.plist` files carry the same value.
+The canonical version is `SHERPA_VERSION` in `core/src/version.ts`, which the
+core prints for `--version` and in its help banner. The helper's `main.swift`
+(`sherpa-apple <version>` and its help), `core/package.json`, and both
+`Info.plist` files carry the same value; the packager refuses a helper whose
+version differs.
 `scripts/package.sh` reads it back from the built binary and refuses to package
 anything whose output does not match `sherpa X.Y.Z`, because the plugin's
 version guard parses exactly that shape.
@@ -66,7 +71,8 @@ uploaded the archive; a Formula from any other run pins a different checksum.
 
 ## Release
 
-1. Increment the canonical version in `main.swift` and both `Info.plist` files.
+1. Increment the version in `core/src/version.ts`, `core/package.json`, the
+   helper's `main.swift`, and both `Info.plist` files.
    The repository gate checks it against the plugin's `cli-contract.json`.
 2. Run the whole gate on macOS and confirm it exits 0:
 

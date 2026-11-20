@@ -11,6 +11,26 @@ manner: "버전별로 Added·Changed·Fixed 를 나누고 긴 실측 근거는 l
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-20
+
+CLI 0.8.0 이 필요하다(`cli-contract.json` 의 `minimumVersion`). CLI 코어가 Bun + TypeScript 로 바뀌었고
+명령과 출력은 0.7.1 과 호환한다(ADR-0008).
+
+### Added
+
+- `context` 스킬이 Mail·iMessage 읽기 명령을 직접 적는다. 0.7.x 의 이 스킬은 Mail·iMessage 명령을 하나도
+  적지 않아 에이전트가 없는 `context sync` 를 지어 불렀다(2026-11-20 소유자 실측, `invalidRequest`).
+- `mail list` 의 `limit_reached`·`next_cursor`·`--cursor` 로 끝까지 읽는 절차. 0.7.1 은 다음 페이지 신호가
+  없어 1000건에서 잘린 듯 보였고 호출자가 기간을 손으로 쪼갰다.
+- `planner` 스킬에 `reminder.list`·`event.list` 요청 모양. AppleScript·SQLite 로 Reminders 를 읽지 말라는
+  규칙(실측: AppleScript `whose` 120초 타임아웃, EventKit `reminder.list` 663건 0.43초).
+- `kakaotalk-local-search` 스킬에 `kakaotalk status`·`kakaotalk setup`.
+
+### Changed
+
+- 로컬 KakaoTalk 읽기는 `kakaocli` 없이 DB 를 직접 읽는다. 스킬은 `kakaocli` 와 그 `status`(앱을 활성화한다)를
+  부르지 말라고 적는다. 실패의 `remedy` 를 그대로 보고하고 `sqlite3`·AppleScript·`imsg`·`kakaocli` 로 우회하지 않는다.
+
 ## [0.7.13] - 2026-10-07
 
 ### Changed

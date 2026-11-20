@@ -7,6 +7,30 @@ description: Use Sherpa to read bounded KakaoTalk, iMessage or Mail context from
 
 Sherpa owns source checkpoints, bounded reads, disposition summaries, and outbound confirmation. Use Agent Messenger for server-backed KakaoTalk reads, media, and explicitly approved sends. When the user chooses the Mac database as the read source, use the `kakaotalk-local-search` archive and its separate local-text checkpoint. Neither local source is a completeness or send authority.
 
+## Commands
+
+Sherpa has no context subcommand. Read each source with its own bounded command,
+argv only, and never pass user text as an argument:
+
+```sh
+sherpa mail list --from 2026-11-01T00:00:00+09:00 --to 2026-11-21T00:00:00+09:00 --limit 1000 --max-body-bytes 16384
+sherpa mail list --from 2026-11-01T00:00:00+09:00 --to 2026-11-21T00:00:00+09:00 --limit 1000 --max-body-bytes 16384 --cursor '<next_cursor>'
+sherpa mail read --message-id '<source_message_id>' --max-body-bytes 1048576
+sherpa imessage chats --limit 100
+sherpa imessage history --chat-id <id> --start 2026-11-01T00:00:00+09:00 --end 2026-11-21T00:00:00+09:00 --limit 1000
+```
+
+`mail list` is newest first. While `limit_reached` is true, call it again with
+the same `--from` and `--to` and `--cursor` set to `next_cursor`; never split the
+range by hand and never stop at the first page when absence matters. Use
+`mail read` only for messages whose stored summary is not enough. For the local
+KakaoTalk database use the `kakaotalk-local-search` commands.
+
+A failure prints one JSON line with `error` and, when the user can fix it,
+`remedy` (for example Full Disk Access, or `sherpa kakaotalk setup`). Report the
+remedy as written; do not fall back to `sqlite3`, AppleScript, `imsg`, or
+`kakaocli`.
+
 ## Workflow
 
 1. Before the first Sherpa command in a session, run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/require-cli.sh"` once. Continue only when it prints `"status":"ready"`; otherwise stop and report its JSON. `missing` and `mismatch` carry the command or remedy that fixes the CLI; `unsupported` means this device is not macOS, where the Sherpa CLI cannot run, so say that the plugin is macOS-only and do not suggest an install command. The plugin and the CLI ship separately, so `cli-contract.json` holds the minimum CLI version this skill needs.

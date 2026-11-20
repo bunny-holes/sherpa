@@ -47,8 +47,8 @@ start, so an open session keeps the version it already loaded.
 
 - macOS 14 or newer, Apple silicon
 - Calendar and Reminders permission, granted on first read
-- Full Disk Access for the host application, for Mail and iMessage
-- The official `kakaocli` binary, for local KakaoTalk reads
+- Full Disk Access for the host application, for Mail, iMessage and local KakaoTalk reads
+- `sherpa kakaotalk setup` run once before the first local KakaoTalk read
 
 ## First use
 
