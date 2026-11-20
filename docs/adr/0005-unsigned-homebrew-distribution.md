@@ -9,6 +9,11 @@ manner: "Keep the decision; state changed facts in the dated note and point to t
 
 # ADR-0005: Unsigned Homebrew Distribution with Explicit Agent Installation
 
+> **정정 (2026-11-20).** Developer ID·Team ID·유료 멤버십을 영구 제외한 부분은
+> [ADR-0009](0009-developer-id-signed-helper-bundle.md)가 대체한다. 헬퍼는 Developer ID 로 서명한 앱
+> 번들로 나가 업그레이드 뒤에도 macOS 권한이 이어진다. Homebrew 배포, 공증·App Store 를 하지 않는다는
+> 결정은 그대로다.
+>
 > **결정은 유효하나 맥락이 낡았다 (2026-08-27).** 서명·공증 없이 Homebrew 로 배포한다는
 > 결정은 그대로다. 다만 본문이 말하는 구성은 바뀌었다 — Rust 와 Python 워커는 사라졌고
 > 릴리스는 Swift 실행 파일 하나다. `cargo xtask package` 는 `scripts/package.sh` 가

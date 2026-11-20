@@ -25,8 +25,9 @@ era — does not exist; do not run it. Use a development build with
 `SHERPA_APPLE_BIN=apple/eventkit-service/.build/debug/sherpa-apple`) or the
 installed `sherpa`.
 
-Developer ID enrollment is not required. An unsigned rebuild may be treated as
-a different privacy identity by macOS and require authorization again.
+The installed helper is a Developer ID signed bundle, so its grants survive
+upgrades. A development helper from `swift build` is a bare executable keyed by
+path and code hash, and asks again after every rebuild.
 
 ## 1. Calendar and Reminders
 

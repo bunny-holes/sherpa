@@ -40,7 +40,8 @@ manner: "규칙만 적고 근거는 ADR·live-evidence·스크립트 주석으�
   `core/src/version.ts` (`--version` and the help banner), `core/package.json`,
   the helper's `main.swift` (`sherpa-apple --version` and its help) and both
   `Info.plist` files;
-  its tag is `v<version>`, which `scripts/package.sh --publish` requires. The
+  its tag is `v<version>`, which `scripts/package.sh --publish` requires along
+  with the owner's Developer ID Application certificate in the keychain. The
   plugin version lives in both plugin manifests and `plugins/sherpa/CHANGELOG.md`
   and gets no tag. Bump it whenever `plugins/sherpa/` changes, because Claude
   Code compares only that version. `minimumVersion` in `cli-contract.json`

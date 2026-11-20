@@ -33,12 +33,15 @@ Sherpa operation after the CLI is installed.
   resource resolves relative to the installed runtime and never depends on a
   source checkout or developer-machine path.
 - `FR-DP-003`: The Formula installs the executables directly and needs no
-  `post_install` step. The core finds the helper at `../libexec/sherpa-apple`
-  relative to its own resolved path, so Homebrew's `bin` symlink works.
-- `FR-DP-004`: The archive carries exactly two files, the compiled Bun core
-  `bin/sherpa` and the Swift Apple helper `libexec/sherpa-apple`, both with a
-  valid ad-hoc signature, and the packager refuses to build one that carries
-  anything else or whose helper reports another version. The generated
+  `post_install` step. The core finds the helper at
+  `../libexec/SherpaHelper.app/Contents/MacOS/sherpa-apple` relative to its own
+  resolved path, so Homebrew's `bin` symlink works.
+- `FR-DP-004`: The archive carries exactly the compiled Bun core `bin/sherpa`
+  (ad-hoc signed) and the Swift Apple helper bundle `libexec/SherpaHelper.app`
+  (its executable, `Info.plist`, and signature), and the packager refuses to
+  build one that carries anything else or whose helper reports another version.
+  A published helper bundle is signed with the owner's Developer ID
+  Application certificate (ADR-0009). The generated
   Formula pins the archive SHA-256, and the version in the archive name it
   references — the one Homebrew scans, since the Formula carries no `version`
   line — is read back from the built binary rather than written by hand.
@@ -55,10 +58,11 @@ Sherpa operation after the CLI is installed.
 
 ## Safety requirements
 
-- `SR-DP-001`: Sherpa permanently requires no Developer ID, Team ID, paid Apple
-  developer membership, notarization, or hardened-runtime distribution flow.
-  Identity-free ad-hoc Mach-O signatures may satisfy the operating system, and
-  an upgrade may require the owner to grant macOS privacy permissions again.
+- `SR-DP-001`: A release signs the Apple helper bundle with the owner's
+  Developer ID Application certificate so macOS privacy grants, keyed to the
+  bundle identifier and team, survive Homebrew upgrades (ADR-0009). Releases are
+  not notarized and use no hardened runtime; installing never requires the
+  user to hold an Apple identity.
 - `SR-DP-002`: Formula installation never changes Codex or Claude Code user
   configuration in `post_install`. Agent integration requires a separate,
   visible Sherpa command after the CLI installation succeeds.
@@ -77,8 +81,8 @@ Sherpa operation after the CLI is installed.
 - Installing Homebrew itself.
 - Installing or managing Codex or Claude Code.
 - Automatically registering an agent plugin during `brew install`.
-- Paid Apple distribution identity, notarization, App Store distribution, or a
-  marketing claim that Sherpa is an Apple-verified developer product.
+- Notarization, App Store distribution, or a marketing claim that Sherpa is an
+  Apple-verified developer product.
 - Purging owner data as a side effect of `brew uninstall`.
 
 ## Acceptance

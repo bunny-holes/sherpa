@@ -55,8 +55,9 @@ Anything not listed here is not proven by the gate.
   (`scripts/checks/verify_doc_commands.py`). That check exists because
   `live-validation.md` still named the Rust-era context sync command in 0.7.1.
 - **Release smoke** (`scripts/check-release.sh`): packages the archive with
-  exactly `bin/sherpa` and `libexec/sherpa-apple`, renders both Formulas,
-  installs the local one with Homebrew and runs the installed CLI.
+  exactly `bin/sherpa` and `libexec/SherpaHelper.app`, renders both Formulas,
+  installs the local one with Homebrew, checks the installed bundle signature,
+  and runs the installed CLI.
 
 ## Live tests
 

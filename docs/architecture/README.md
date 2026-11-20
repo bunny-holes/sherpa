@@ -269,7 +269,7 @@ bulk changes require an exact target preview and explicit confirmation.
    separate capability.
 
 Homebrew is the canonical product installer. A release contains the compiled
-core at `bin/sherpa` and the Swift helper at `libexec/sherpa-apple`, and nothing
+core at `bin/sherpa` and the Swift helper bundle at `libexec/SherpaHelper.app`, and nothing
 else; a prebuilt archive prevents compilation on the user's Mac. The Formula
 declares one runtime dependency, `sqlcipher`, whose library the core loads to
 read the KakaoTalk database. Agent skills are not
@@ -285,12 +285,13 @@ archive in a local tap; that does not change the installer boundary. In either
 mode, the release version must be incremented and the generated Formula
 published before `brew upgrade` can discover it.
 
-Developer ID, Team ID, paid Apple developer membership, hardened-runtime
-distribution, and notarization are permanently excluded. Compiler-produced
-identity-free ad-hoc signatures remain an operating-system requirement on
-Apple silicon. macOS keys an ad-hoc signed helper's privacy grants to its code
-hash, so every rebuild or Homebrew upgrade asks for Calendar and Reminders
-access again (observed 2026-11-20 between two debug builds).
+The Apple helper ships as `libexec/SherpaHelper.app`, signed with the owner's
+Developer ID Application certificate (ADR-0009). macOS keys privacy grants for
+a bare executable to its path, and for a signed bundle to its bundle identifier
+and team, so the bundle keeps Calendar and Reminders access across Homebrew
+upgrades even though each version installs under a new Cellar path (observed
+2026-11-20). Releases are not notarized and use no hardened runtime; the core
+stays ad-hoc signed.
 
 ## Related
 
