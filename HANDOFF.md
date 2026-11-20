@@ -10,6 +10,8 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 - 0.8.0 머지(PR bunny-holes/sherpa#10, 머지 커밋 `6e1b035`): 코어(cli·journal·process·mail·imessage·
   kakaotalk·apple 프록시), Swift 를 `sherpa-apple` 로 축소, `reminder.list` 선택 키 버그 수정과 회귀 테스트,
   문서 명령 검사 `scripts/checks/verify_doc_commands.py`, 스킬·README·아키텍처·배포 스크립트, 플러그인 0.8.0.
+- 0.8.1 배포(PR bunny-holes/sherpa#13, 태그 `v0.8.1`, tap `e9a968c`): 헬퍼가 권한 책임을 놓고 다시 떠
+  `dev.xiyo.sherpa` 로 권한을 받는다. 이 Mac 의 설치본이 Calendar·Reminders `full_access`, 일회용 검증 묶음 `verified`.
 - 릴리스: 태그 `v0.8.0`, `XIYO/sherpa` 릴리스 자산 업로드·되읽기 확인, `XIYO/homebrew-tap` Formula `d055c43`.
   이 Mac 의 `brew upgrade`·`brew test` 통과. 플러그인은 plug-hole 이 기본 브랜치를 따라가므로 머지로 배포됐다.
 - 실측(2026-11-20, 이 Mac): `docs/testing/live-evidence.md` 의 같은 날짜 항목. Mail 커서 28페이지 27,964건
@@ -32,7 +34,7 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 
 - kakaocli 상류 이슈 등록(외부 게시)은 소유자 확인이 필요하다.
 - 실기 소유자 조작: Mail 한 통 실제 보내기와 Automation 권한 프롬프트 확인(iMessage 보내기는 2026-11-20 확인),
-  brew 로 올린 0.8.1 헬퍼에 Calendar·Reminders 권한 다시 주기와 읽기 확인, KakaoTalk 로컬 체크포인트 커밋,
+  KakaoTalk 로컬 체크포인트 커밋,
   로그인된 Claude Code·Codex 세션에서 스킬 호출,
   `SR-CX-013` 재검증, Discord 이모지·스티커 명령. 관측하면 `live-evidence.md` 에 날짜로 적고 여기서 지운다.
 
@@ -41,14 +43,18 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 1. `*.authorization.request` 가 권한이 그대로 `not_determined` 여도 `succeeded`·증거 `matched` 로 답한다
    (`EventKitWorker.swift` 의 두 authorization request 분기, 2026-11-20 재현). 상태가 바뀌지 않았으면 이름 있는
    실패로 답하게 하고 결정적 시험을 세운다. 미수정.
-2. 헬퍼의 8 MiB 응답 문제: `apple/eventkit-service/Sources/SherpaNative/main.swift` 의 `plannerRequest` 가
+2. 업그레이드마다 Calendar·Reminders 권한을 다시 묻는다. ad-hoc 서명이라 권한이 코드 해시에 묶이기 때문이다.
+   소유자 키체인의 자체 서명 인증서로 헬퍼를 서명하면 권한 요건이 인증서 기준이 되어 판이 바뀌어도 이어질
+   것으로 본다(추론, 미검증). ADR-0005 가 막는 것은 Developer ID·유료 멤버십이지 자체 서명이 아니다.
+   착수 전 소유자 결정이 필요하다.
+3. 헬퍼의 8 MiB 응답 문제: `apple/eventkit-service/Sources/SherpaNative/main.swift` 의 `plannerRequest` 가
    변경을 기록한 뒤 `encoded(maximumBytes: 8 MiB)` 로 인코딩해, 넘으면 `failed` 로 보고된다(코드로 확인,
    재현 안 함). 초과 응답 시험을 먼저 세운다.
-3. plist 파서 중복 정리: `core/src/imessage/bplist.ts` 와 `core/src/kakaotalk/plist.ts`.
-4. 문서 부채: `docs/testing/verification-matrix.md` 를 Bun 코어 기준으로 재검토. `docs/` 21개 문서의 옛
+4. plist 파서 중복 정리: `core/src/imessage/bplist.ts` 와 `core/src/kakaotalk/plist.ts`.
+5. 문서 부채: `docs/testing/verification-matrix.md` 를 Bun 코어 기준으로 재검토. `docs/` 21개 문서의 옛
    front matter 키(`id`·`title`·`status`·`owner`). `docs/contracts/worker-protocol.md:85` 가
    가리키는 없는 `protocols/worker-v2.schema.json`.
-5. 웹 수집 소스(patchright 등)는 코어의 새 어댑터로 붙인다(소유자 방향, ADR-0008). 착수 전 대상 소스를 정한다.
+6. 웹 수집 소스(patchright 등)는 코어의 새 어댑터로 붙인다(소유자 방향, ADR-0008). 착수 전 대상 소스를 정한다.
 
 ## 저장소·세션 상태 (브랜치, 미커밋, 미푸시, pane)
 
