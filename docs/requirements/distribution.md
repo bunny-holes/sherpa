@@ -19,7 +19,8 @@ Sherpa operation after the CLI is installed.
 ## Functional requirements
 
 - `FR-DP-001`: `brew install xiyo/tap/sherpa` is the canonical product install.
-  The Formula declares no runtime dependency and installs no toolchain. The tap
+  The Formula declares one runtime dependency, `sqlcipher`, whose library the
+  core loads to read the KakaoTalk database, and installs no toolchain. The tap
   is the public `XIYO/homebrew-tap` repository, and the Formula's
   checksum-pinned URL names the release asset of the public `XIYO/sherpa`
   repository for that version. For development on one machine, the same
@@ -31,14 +32,13 @@ Sherpa operation after the CLI is installed.
   runtime. Every executable and installer
   resource resolves relative to the installed runtime and never depends on a
   source checkout or developer-machine path.
-- `FR-DP-003`: The Formula installs the executable directly and needs no
-  `post_install` step,
-  after Homebrew has relocated the archive's native files. Runtime packages
-  are installed offline from release-contained wheels selected by a
-  hash-bearing export of `uv.lock`; a copied virtual environment is never a
-  distribution artifact.
-- `FR-DP-004`: The archive carries exactly one file, the executable, and the
-  packager refuses to build one that carries anything else. The generated
+- `FR-DP-003`: The Formula installs the executables directly and needs no
+  `post_install` step. The core finds the helper at `../libexec/sherpa-apple`
+  relative to its own resolved path, so Homebrew's `bin` symlink works.
+- `FR-DP-004`: The archive carries exactly two files, the compiled Bun core
+  `bin/sherpa` and the Swift Apple helper `libexec/sherpa-apple`, both with a
+  valid ad-hoc signature, and the packager refuses to build one that carries
+  anything else or whose helper reports another version. The generated
   Formula pins the archive SHA-256, and the version in the archive name it
   references — the one Homebrew scans, since the Formula carries no `version`
   line — is read back from the built binary rather than written by hand.
@@ -83,9 +83,9 @@ Sherpa operation after the CLI is installed.
 
 ## Acceptance
 
-The deterministic gate must build one release archive, validate its manifest,
-render and audit a Formula, perform a clean-prefix offline runtime install, and
-exercise the packaged CLI and worker capability paths. The archive must contain
+The deterministic gate must build one release archive, validate its contents,
+render and audit a Formula, install it into a fresh tap, and exercise the
+installed core and its helper (`brew test`). The archive must contain
 no agent marketplace; the skill side is gated separately by the plugin check.
 
 ## Related

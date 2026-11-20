@@ -164,7 +164,8 @@ public final class EventKitWorker {
             }
             if request.capability == PlannerCapability.reminderList.rawValue {
                 let command = try request.payload.decode(as: ReminderListRequest.self,
-                    allowedKeys: ["schema", "collection_native_locator", "limit", "completed"])
+                    allowedKeys: ["schema", "collection_native_locator", "limit", "completed"],
+                    requiredKeys: ["schema"])
                 try ReminderCommandValidator().validate(command)
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .reminder))
                 return try typedResponse(request, result: await reminders.list(command))

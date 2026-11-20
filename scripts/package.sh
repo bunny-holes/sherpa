@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # 릴리스 아카이브와 Homebrew Formula 를 만든다.
 #
-# Rust 를 걷어내면서 `cargo xtask package` 가 사라졌고, 이 스크립트가 그 자리를 대신한다.
-# 아카이브에는 CLI 하나만 담는다 — 에이전트 스킬은 plugin marketplace 로 따로 나간다.
+# 아카이브에는 실행 파일 둘만 담는다: Bun 으로 컴파일한 코어 bin/sherpa 와 Swift Apple
+# 헬퍼 libexec/sherpa-apple(ADR-0008). 에이전트 스킬은 plugin marketplace 로 따로 나간다.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly REPO_ROOT
-readonly PACKAGE_PATH="$REPO_ROOT/apple/eventkit-service"
+readonly CORE_PATH="$REPO_ROOT/core"
+readonly HELPER_PACKAGE="$REPO_ROOT/apple/eventkit-service"
 # 기본은 릴리스 산출물 자리. 검사용 실행은 SHERPA_DIST 로 임시 위치를 준다 —
-# Swift 빌드가 비결정적이라 여기서 아카이브를 다시 만들면 해시가 달라지고, tap 의
+# 빌드가 비결정적이라 여기서 아카이브를 다시 만들면 해시가 달라지고, tap 의
 # Formula 가 가리키던 해시와 어긋나 재설치가 깨진다.
 readonly DIST="${SHERPA_DIST:-$REPO_ROOT/target/dist}"
 readonly STAGING="$DIST/pkg"
@@ -19,26 +20,42 @@ readonly LOG_SCOPE="release:package"
 log() { printf '%s [%s:%s] %s\n' "$1" "$LOG_SCOPE" "$2" "$3" >&2; }
 fail() { log error "$1" "$2"; exit 1; }
 
-log info start "building the release binary"
-swift build --package-path "$PACKAGE_PATH" -c release --product sherpa
+log info start "building the core and the Apple helper"
+(cd "$CORE_PATH" && bun install --frozen-lockfile >/dev/null && bun run build >/dev/null) \
+  || fail failure "reason=core_build_failed"
+swift build --package-path "$HELPER_PACKAGE" -c release --product sherpa-apple >/dev/null \
+  || fail failure "reason=helper_build_failed"
 
-readonly BINARY="$PACKAGE_PATH/.build/release/sherpa"
+readonly BINARY="$CORE_PATH/dist/sherpa"
+readonly HELPER="$HELPER_PACKAGE/.build/release/sherpa-apple"
 [ -x "$BINARY" ] || fail failure "reason=binary_missing path=${BINARY#"$REPO_ROOT/"}"
+[ -x "$HELPER" ] || fail failure "reason=helper_missing path=${HELPER#"$REPO_ROOT/"}"
 
-# 버전의 단일 진실 원천은 빌드된 바이너리다. 가드(require-cli.sh)와 Formula 가 같은
-# 문자열에 기대므로 형식부터 검증한다.
+# 버전의 단일 진실 원천은 빌드된 코어다. 가드(require-cli.sh)와 Formula 가 같은
+# 문자열에 기대므로 형식부터 검증하고, 헬퍼가 같은 판인지 대조한다.
 raw_version="$("$BINARY" --version)"
 version="$(printf '%s' "$raw_version" | sed -n 's/^sherpa \([0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}\)$/\1/p')"
 [ -n "$version" ] || fail failure "reason=version_format_unexpected output=$raw_version"
+helper_version="$("$HELPER" --version)"
+[ "$helper_version" = "sherpa-apple $version" ] \
+  || fail failure "reason=helper_version_mismatch core=$version helper=$helper_version"
 log info version "version=$version"
 
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
 
-install -m 0755 "$BINARY" "$STAGING/sherpa"
+install -d "$STAGING/bin" "$STAGING/libexec"
+install -m 0755 "$BINARY" "$STAGING/bin/sherpa"
+install -m 0755 "$HELPER" "$STAGING/libexec/sherpa-apple"
 
 staged="$(cd "$STAGING" && find . -type f | sort | tr '\n' ' ')"
-[ "$staged" = "./sherpa " ] || fail failure "reason=unexpected_archive_contents staged=$staged"
+[ "$staged" = "./bin/sherpa ./libexec/sherpa-apple " ] \
+  || fail failure "reason=unexpected_archive_contents staged=$staged"
+# Apple silicon 은 서명 없는 실행 파일을 죽인다. 둘 다 ad-hoc 서명이 유효해야 한다.
+for executable in "$STAGING/bin/sherpa" "$STAGING/libexec/sherpa-apple"; do
+  codesign --verify "$executable" 2>/dev/null \
+    || fail failure "reason=signature_invalid file=${executable#"$STAGING/"}"
+done
 
 readonly ARCHIVE="$DIST/sherpa-$version-$TARGET_TRIPLE.tar.gz"
 rm -f "$ARCHIVE"
@@ -91,15 +108,19 @@ class Sherpa < Formula
 
   depends_on arch: :arm64
   depends_on macos: :sonoma
+  depends_on "sqlcipher"
 
   def install
-    bin.install "sherpa"
+    bin.install "bin/sherpa"
+    libexec.install "libexec/sherpa-apple"
   end
 
   def caveats
     <<~EOS
       Sherpa is installed without Developer ID or notarization.
       macOS may ask for Calendar, Reminders, or automation permission when used.
+      Mail, iMessage, and KakaoTalk reads need Full Disk Access for the app that
+      runs sherpa. Run "sherpa kakaotalk setup" once before reading KakaoTalk.
 
       Agent skills are not bundled with this CLI. Install them separately:
       Your GitHub account needs access to the private XIYO/plug-hole repository.
@@ -112,6 +133,9 @@ class Sherpa < Formula
     # 스킬의 버전 가드가 이 출력 형식에 기댄다. version 은 Homebrew 가 url 에서 읽은 값이다.
     assert_equal "sherpa #{version}", shell_output("#{bin}/sherpa --version").strip
     assert_match "sherpa kakaotalk archive", shell_output("#{bin}/sherpa --help")
+    assert_equal "sherpa-apple #{version}", shell_output("#{libexec}/sherpa-apple --version").strip
+    # 코어가 설치 위치의 헬퍼를 찾아 이름 있는 오류로 끝나는지 본다.
+    assert_match "protocol.invalid_envelope", pipe_output("#{bin}/sherpa planner request", "{}", 1)
   end
 end
 FORMULA

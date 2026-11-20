@@ -25,7 +25,7 @@ mutation.
   outbound capabilities are separate writes with separate health and policy.
   Agent Messenger remains the fresh KakaoTalk source. An explicitly requested
   historical text lookup may use the Mac's locally synchronized database only
-  through Sherpa's bounded, identifier-redacting `kakaocli` adapter; it is an
+  through Sherpa's bounded, identifier-redacting local-database adapter; it is an
   incomplete search surface, not a collection checkpoint source.
 - `FR-CX-002`: Require a source, inclusive start, exclusive end, chat limit,
   per-chat message limit, and total message limit for every collection. A

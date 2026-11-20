@@ -37,16 +37,19 @@ manner: "규칙만 적고 근거는 ADR·live-evidence·스크립트 주석으�
   transcript, or a code comment, and do not duplicate stale current truth in
   the chronological log.
 - The CLI and the plugin carry independent versions. The CLI version lives in
-  `main.swift` (`--version` and the help banner) and both `Info.plist` files;
+  `core/src/version.ts` (`--version` and the help banner), `core/package.json`,
+  the helper's `main.swift` (`sherpa-apple --version` and its help) and both
+  `Info.plist` files;
   its tag is `v<version>`, which `scripts/package.sh --publish` requires. The
   plugin version lives in both plugin manifests and `plugins/sherpa/CHANGELOG.md`
   and gets no tag. Bump it whenever `plugins/sherpa/` changes, because Claude
   Code compares only that version. `minimumVersion` in `cli-contract.json`
   follows the rule in its own `note`.
 - CI runs only the Windows hook check (`plugins/sherpa/scripts/check-windows.ps1`
-  on a GitHub-hosted `windows-latest` runner). The macOS gate — the three Swift packages'
-  build and tests, the manifest, contract, and document checks, and the release
-  smoke install — does not run in CI. Before merging any pull request, run
+  on a GitHub-hosted `windows-latest` runner). The macOS gate — the core's
+  `vp check`, tests and build, the three Swift packages' build and tests, the
+  manifest, contract, and document checks, and the release smoke install —
+  does not run in CI. Before merging any pull request, run
   `bash scripts/check-all.sh` on macOS after the last change, confirm the whole
   run exits 0, and write that result in the pull request body. Merge by hand
   only after the Windows job has actually passed; never use

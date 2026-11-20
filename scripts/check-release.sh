@@ -53,6 +53,11 @@ log info start "packaging and smoke-installing the release"
 SMOKE_DIST="$(mktemp -d "${TMPDIR:-/tmp}/sherpa-smoke-dist.XXXXXX")"
 readonly SMOKE_DIST
 trap cleanup EXIT
+# Homebrew 7 은 신뢰하지 않은 tap 의 Formula 를 읽지 않는다(2026-11-20, Homebrew 7.0.15 실측:
+# "Refusing to load formula … from untrusted tap"). 신뢰 목록은 $XDG_CONFIG_HOME/homebrew/trust.json 에
+# 있으므로 스모크 동안만 임시 위치를 써서 소유자의 신뢰 목록을 건드리지 않는다.
+export XDG_CONFIG_HOME="$SMOKE_DIST/config"
+mkdir -p "$XDG_CONFIG_HOME"
 SHERPA_DIST="$SMOKE_DIST" bash "$REPO_ROOT/scripts/package.sh" >/dev/null \
   || fail failure "reason=packaging_failed"
 
@@ -81,6 +86,7 @@ expected_version="$(sed -n 's#^  url ".*/sherpa-\([0-9][0-9]*\.[0-9][0-9]*\.[0-9
 brew tap-new --no-git "$SMOKE_TAP" >/dev/null 2>&1 \
   || fail failure "reason=smoke_tap_not_created"
 SMOKE_TAP_CREATED=1
+brew trust --tap "$SMOKE_TAP" >/dev/null 2>&1 || fail failure "reason=smoke_tap_not_trusted"
 smoke_root="$(brew --repository "$SMOKE_TAP")"
 mkdir -p "$smoke_root/Formula"
 sed "s/^class Sherpa < Formula$/class SherpaSmoke$$ < Formula/" "$rendered" \
@@ -104,7 +110,12 @@ installed_version="$("$prefix/bin/sherpa" --version | awk '{print $2}')"
 [ "$installed_version" = "$expected_version" ] \
   || fail failure "reason=version_mismatch installed=$installed_version formula=$expected_version"
 
-stray="$(find "$prefix" -type f -not -name sherpa -not -path '*/.brew/*' | head -3 | tr '\n' ' ')"
+helper_version="$("$prefix/libexec/sherpa-apple" --version | awk '{print $2}')"
+[ "$helper_version" = "$expected_version" ] \
+  || fail failure "reason=helper_version_mismatch installed=$helper_version formula=$expected_version"
+
+stray="$(find "$prefix" -type f -not -path "$prefix/bin/sherpa" -not -path "$prefix/libexec/sherpa-apple" \
+  -not -path '*/.brew/*' -not -name INSTALL_RECEIPT.json | head -3 | tr '\n' ' ')"
 [ -z "$stray" ] || fail failure "reason=unexpected_files_installed files=$stray"
 
 log info verified "version=$installed_version tap=$SMOKE_TAP"

@@ -11,154 +11,60 @@ manner: "One level per bullet; live evidence and the verification matrix stay in
 
 ## Levels
 
-- Domain invariants use deterministic unit tests.
-- Application use cases use fake capability ports and cover denial, ambiguity,
-  partial mutation, approval mismatch, and failed read-back.
-- Public-verification integration tests exercise wrong confirmations and
-  malformed destinations with zero writes, exact destination binding, Event
-  future-series update/delete, Reminder complete/reopen, schedule clearing,
-  partial-create reference recovery, cleanup failure, recurrence residue, and
-  false native delete success. Separate source-mode tests create, use, re-list,
-  and remove a disposable Calendar and Reminder list while journaling only safe
-  references.
-- EventKit gateway contract tests decode the exact Swift `reminders` and
-  `reminder` response envelopes for list, get, and verified mutations, and
-  reject the obsolete wrapper names.
-- SQLite storage tests open the same fresh canonical path from twelve
-  barrier-synchronized threads. Schema-version discovery and migration share
-  one immediate transaction, and only bounded `BUSY`/`LOCKED` WAL-transition
-  failures are retried.
-- Worker clients use fixture executables for crash, timeout, cooperative
-  cancellation, malformed output, oversized output, protocol mismatch, and
-  nonzero exit behavior. A real CLI black-box test sends SIGINT while a worker
-  and descendant are active, then requires exit code 130 and zero surviving
-  process-group members.
-- Cross-language JSON contracts are compiled against the Draft 2020-12
-  meta-schema. Tests then validate the actual serialized Worker envelope,
-  Context analysis request and suggestion DTO contracts.
-- Mapping logic uses synthetic fixtures without live accounts.
-- Release artifact checks prove the EventKit, private Reminder, and Mail usage
-  descriptions remain embedded, native executables have valid ad-hoc linker
-  signatures, and no Developer ID team identity is required by the core gate.
-- The built private Reminder helper receives one valid synthetic request for
-  each of tags, flags, URL attachments, sections, subtasks, and image
-  attachments while writes are forced off. Every route must reject at the
-  write gate, and credential-bearing URLs must fail payload validation before
-  that gate; this exercises the real helper without reading or mutating data.
-- Renderer contracts use golden fixtures with Korean text, multiline values,
-  absent fields, unsupported capabilities, and escaping edge cases.
-- CLI behavior uses black-box tests with fake worker registries.
-- Privacy tests run the real Planner CLI and isolated Context worker at debug
-  verbosity with unique sentinel content and native identifiers. They prove
-  the sensitive values traverse the data result while stderr contains only
-  safe boundary metadata; Planner public output must replace native IDs with
-  Sherpa references. Context covers iMessage, KakaoTalk, and the nested
-  Context-to-Mail worker boundary, including deliberately noisy reader stderr.
-- Planner process-isolation tests corrupt each worker protocol in turn through
-  the real `sherpa capabilities` command. The failed provider must be reported
-  as unavailable while the other provider remains supported. A missing
-  EventKit executable is tested separately so gateway construction cannot
-  abort capability diagnosis before the healthy private provider is probed.
-  A real Reminder-list path also proves corrupt private enrichment retains the
-  EventKit item and marks only advanced fields unavailable.
-- Planner doctor v2 keeps authorization observation independent per worker.
-  Missing or malformed workers produce a stable error code in the affected
-  authorization rows while healthy provider diagnostics are still rendered.
-  The simpler public `status` command reads only EventKit Calendar and
-  Reminders state; optional-helper state belongs to `doctor`.
-  Doctor also renders the current private write policy independently from
-  stored OS-scoped compatibility evidence; evidence never enables the gate.
-- The application registry reconstructs the exact expected capability set.
-  Missing and duplicate worker rows become explicit unavailable states, and
-  unregistered rows cannot enter the public registry. Provider failures retain
-  stable reasons such as `worker.unavailable` and `worker.protocol_failure`;
-  failed environment discovery stops the provider before a second probe.
-- Capability evidence record input has no caller-owned timestamp. The canonical
-  store assigns `verified_at_epoch`, and only retrieved verification results
-  expose that persisted observation time.
-- Private evidence environment keys combine macOS and the helper's declared
-  implementation revision. A stale or mismatched helper cannot inherit proof
-  produced by another adapter build. The lint gate synchronizes the contract
-  revision across its source file, Objective-C helper, and
-  release-process assertion.
-- Context contract tests use fixture `imsg` and Kakao rows, traverse the real
-  worker process, and verify half-open time and three-dimensional collection
-  bounds without reading a user's archive.
-- Context outbound tests separate three proofs. Application/orchestration tests
-  prove wrong confirmations dispatch zero times and exact confirmations dispatch
-  once. Real Context worker process tests cross the native Messages, KakaoTalk,
-  and nested Mail sender boundaries with fixture executables. A CLI black-box
-  test syncs a synthetic
-  safe thread, persists a draft, rejects a wrong code, dispatches exactly once,
-  and rejects confirmation reuse without sending any real communication.
-- Mail release-process tests compile the embedded AppleScript, require the
-  verified-write policy for `mail.message.send`, reject malformed send payloads
-  before authorization or native invocation, and enforce the 2 MiB envelope
-  needed for a bounded 1 MiB body.
-- Foundation Models tests compile the real `@Generable` schema and exercise
-  payload and mapping logic with synthetic values. Default gates call only the
-  non-inference `capabilities` path; live model generation requires explicit
-  Context analysis confirmation.
-- Context storage tests bind presentation and analysis to exact immutable
-  revisions, prove unchanged input leaves `pending`, and prove a newer
-  concurrent revision re-enters `pending` instead of being closed accidentally.
-- Distribution checks package the release archive and verify it holds the CLI
-  and nothing else — no agent marketplace, no worker runtime. `scripts/package.sh`
-  refuses to package a binary whose `--version` does not match `sherpa X.Y.Z`,
-  because the plugin's version guard parses exactly that shape. Packaging also
-  renders two Formulas from one template: `Formula/sherpa.rb`, whose URL names
-  the public release asset and which is copied as a whole into
-  `XIYO/homebrew-tap`, and `local-tap/Formula/sherpa.rb`, which points at the
-  `file://` archive for development installs. The release smoke installs the
-  local one and fails unless the two differ only in that URL line; Homebrew
-  performs the actual install or upgrade. The [Homebrew release
-  runbook](local-homebrew-release.md) defines the owner-operated sequence and
-  post-upgrade checks.
-- Agent integration tests use fake `codex` and `claude` executables. They pin
-  fixed argv, status parsing, post-install verification, partial host
-  availability, and restoration after a failed marketplace replacement; the
-  deterministic gate never changes a real host configuration.
-- The lint gate checks the exact dependency graph for every Swift target
-  and fails if private ReminderKit framework loading appears outside the
-  crash-isolated helper. This turns the inward dependency rule into an
-  executable architecture contract.
-- The traceability gate extracts every Planner and Context requirement
-  identifier and requires exactly one matching verification-matrix row. A new,
-  removed, or duplicated requirement therefore fails the gate until its
-  evidence and status are reviewed explicitly.
+These are the deterministic proofs that exist and run in `bash scripts/check-all.sh`.
+Anything not listed here is not proven by the gate.
+
+- **Core unit tests** (`core/tests`, vitest on the Bun runtime with
+  `bun --bun vitest run`). They use synthetic fixtures only:
+  - `mail.test.ts` builds a fixture envelope index and proves the keyset cursor
+    returns every message exactly once across pages, keeps messages that share
+    one received second, reports no further page on an exact final page,
+    rejects a cursor issued for another range, rejects invalid ranges before
+    opening the store, names the Full Disk Access remedy, bounds `mail read`,
+    and rejects header injection and invalid recipients in `mail send`.
+  - `journal.test.ts` proves the journal states of a send: completed, failed
+    before dispatch, uncertain after dispatch, one terminal transition only,
+    an accepted send whose journal finish fails stays `completed` with
+    `journal.finish_failed` and a `started` row, and nothing is attempted when
+    the journal cannot start.
+  - `runner.test.ts` proves the command runner bounds output, reports an
+    overflowing mutation as `uncertain`, times out a process group, fails on a
+    non-zero exit, and reports a missing executable as unavailable.
+  - `imessage*.test.ts` and `kakaotalk*.test.ts` read synthetic Messages and
+    KakaoTalk fixture databases, prove the output keys and bounds, the absence
+    of native identifiers in KakaoTalk output, the local checkpoint semantics,
+    and KakaoTalk key derivation against kakaocli's published test vectors.
+    Sends run against a fake `osascript`; no test sends a real message.
+- **Core static checks**: `vp check` (format, lint with type-aware rules, type
+  check) over `core/`.
+- **Swift helper tests** (`swift test` for `worker-protocol`,
+  `foundation-models-service`, `eventkit-service`): Worker Protocol V2 envelope
+  and payload validation, EventKit request decoding including
+  `reminder.list` with omitted optional keys, recurrence and occurrence logic,
+  the journal store's single terminal transition, and the in-process Mail and
+  ReminderKit shims answering `capabilities` without a worker.
+- **CLI contract probes** in `scripts/check-all.sh`: the `--version` shape the
+  plugin guard parses, and that an invalid planner request ends in the named
+  error `protocol.invalid_envelope` through the core and the helper.
+- **Plugin checks** (`plugins/sherpa/scripts/check.sh`): manifests, guard,
+  skill set, that every `sherpa …` command a skill names exists in
+  `sherpa --help`, script references, descriptions, and the SessionStart hook.
+- **Document checks**: structure and relative links
+  (`scripts/checks/verify_docs.py`), and that every `sherpa …` command in the
+  READMEs and `docs/testing/` exists in `sherpa --help`
+  (`scripts/checks/verify_doc_commands.py`). That check exists because
+  `live-validation.md` still named the Rust-era context sync command in 0.7.1.
+- **Release smoke** (`scripts/check-release.sh`): packages the archive with
+  exactly `bin/sherpa` and `libexec/sherpa-apple`, renders both Formulas,
+  installs the local one with Homebrew and runs the installed CLI.
 
 ## Live tests
 
-Live Apple or provider tests are opt-in and operate only on an explicitly
-selected disposable list/calendar/account. A mutation test follows create,
-native read-back, and cleanup. Partial create errors retain only the safe Sherpa
-reference needed for recovery; recurring Calendar cleanup uses the future-series
-span and checks every synthetic occurrence window. A cleanup failure is
-reported and never hidden.
-Private Reminder tests remain disabled until their capability probe passes.
-The exact owner-operated sequence is documented separately; it is a runbook,
-not a default test dependency.
-
-Every approved Planner and Context requirement is mapped to its
-implementation, deterministic evidence, and remaining owner-operated evidence
-in the [verification matrix](verification-matrix.md).
-
-## Gates
-
-Every change runs format, lint, unit, contract, golden, black-box, privacy, and
-architecture checks. Live checks are a separate local/release gate and never a
-default CI dependency.
-
-Worker Protocol V2 contract tests share the fixtures under
-`protocols/fixtures/worker-v2`. They cover strict required and unknown fields,
-V1 rejection, application-contract and correlation echoes, policy/evidence
-compatibility, and every succeeded/failed/partial/uncertain outcome. Supervisor
-tests distinguish failure before stdin dispatch from timeout, cancellation,
-crash, malformed output, and oversized output after dispatch. Effectful
-post-dispatch boundary loss must retain `may_have_applied` and retry `never`.
-Planner adapter tests additionally pin DST, exclusive all-day ends, UTC/GMT
-aliases, alarms, recurrence, clear patches, native mismatch, duplicate native
-locators, and zero native calls after invalid preflight.
+Live Apple, Mail, Messages, and KakaoTalk checks are owner-operated and opt-in;
+the [live validation runbook](live-validation.md) lists them. Record each
+observation with its date in [live evidence](live-evidence.md). The
+[verification matrix](verification-matrix.md) predates the Bun core and has not
+been re-reviewed against it.
 
 ## Related
 

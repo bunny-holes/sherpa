@@ -47,8 +47,8 @@ Homebrew로 따로 설치합니다.
 
 - macOS 14 이상, Apple silicon
 - Calendar와 Reminders 권한 — 처음 읽을 때 요청합니다
-- Mail과 iMessage를 위한 호스트 애플리케이션의 전체 디스크 접근 권한
-- 로컬 KakaoTalk 읽기를 위한 공식 `kakaocli` 실행 파일
+- Mail, iMessage, 로컬 KakaoTalk 읽기를 위한 호스트 애플리케이션의 전체 디스크 접근 권한
+- 로컬 KakaoTalk 읽기 전에 한 번 실행한 `sherpa kakaotalk setup`
 
 ## 첫 사용
 

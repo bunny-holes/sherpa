@@ -9,18 +9,37 @@ manner: "Commands first, then the contract each one keeps; long evidence stays i
 
 # Sherpa
 
-Sherpa is a native macOS CLI written in Swift. It talks directly to EventKit,
-Mail.app, iMessage, KakaoTalk, and the optional private ReminderKit adapter.
-There is no Rust runtime, Cargo workspace, or Rust worker boundary.
+Sherpa is a macOS CLI. Its core is written in Bun + TypeScript (`core/`) and
+compiles to one executable. It reads Mail.app's envelope index, the Messages
+database, and the KakaoTalk database directly and journals every send. A small
+Swift helper, `sherpa-apple` (`apple/eventkit-service`), handles what needs
+Apple frameworks: EventKit Calendar and Reminders, the optional private
+ReminderKit adapter, and the Mail shim. The core starts it; nobody else does.
+No external messaging CLI (`imsg`, `kakaocli`) is used. See
+[ADR-0008](docs/adr/0008-bun-typescript-core.md).
 
 ## Build and test
 
-One gate covers everything — all three Swift packages, the `--version` format
-the plugin's guard parses, and the agent plugin:
+One gate covers everything — the core's format, lint, type check and tests,
+all three Swift packages, the `--version` format the plugin's guard parses, the
+agent plugin, the documents, and the Homebrew release smoke:
 
 ```bash
 bash scripts/check-all.sh
 ```
+
+The core uses the Vite+ toolchain with Bun as its package manager and runtime:
+
+```bash
+cd core
+bun install
+vp check          # format, lint, type check
+bun run test      # vitest on the Bun runtime (bun --bun vitest run)
+bun run build     # dist/sherpa
+```
+
+Tests run on the Bun runtime because the core uses `bun:sqlite`; plain
+`vp test` runs on Node and cannot load it.
 
 The gate requires a macOS 26 or newer host. `apple/foundation-models-service`
 declares `platforms: [.macOS(.v26)]` and imports `FoundationModels`; the other
@@ -39,40 +58,23 @@ git config core.hooksPath .githooks
 The hook runs the full gate, including the release smoke, against each pushed commit
 in a clean worktree under `.claude/worktrees/`.
 
-To build the release binary alone:
-
-```bash
-swift build --package-path apple/eventkit-service -c release --product sherpa
-```
-
-`bash scripts/package.sh` produces the release archive and renders the Homebrew
-Formula from the version the built binary reports. Users install the released
-CLI with `brew install xiyo/tap/sherpa`; the [release
+`bash scripts/package.sh` builds both executables, produces the release archive
+(`bin/sherpa`, `libexec/sherpa-apple`) and renders the Homebrew Formula from the
+version the built core reports. Users install the released CLI with
+`brew install xiyo/tap/sherpa`, which also installs `sqlcipher`; the [release
 runbook](docs/testing/local-homebrew-release.md) publishes a version there and
 installs a development build locally.
 
-Search the Mac's locally synchronized KakaoTalk text through Sherpa's bounded,
-read-only projection. The query is read from standard input so it does not
-become a Sherpa command argument:
+## Commands
 
-```bash
-printf '%s' '배송' | sherpa kakaotalk search --limit 20
-```
-
-This requires the official `kakaocli` binary and Full Disk Access for the host
-application. Results always report partial coverage and omit KakaoTalk-native
-identifiers.
-
-The release executable is:
-
-```text
-apple/eventkit-service/.build/release/sherpa
-```
-
-## Native commands
+`sherpa --help` lists every command. Mail, iMessage, and KakaoTalk reads need
+Full Disk Access for the application that runs `sherpa` (the terminal or the
+agent host). A failure prints one JSON line with a named `error` code and exits
+1; when the fix is a step the user can take — a permission, an install, a
+setup command — the line also carries a `remedy`.
 
 Planner and native framework requests use bounded Worker Protocol V2 JSON on
-standard input:
+standard input and go to the Swift helper unchanged:
 
 ```bash
 sherpa planner request
@@ -80,49 +82,62 @@ sherpa mail request
 sherpa reminder-kit request
 ```
 
-iMessage reads call its installed native CLI. Sends read the message body from
-standard input and require an exact destination confirmation:
+iMessage reads the local Messages database. Sends read the message body from
+standard input, require an exact destination confirmation, and go to
+Messages.app:
 
 ```bash
 sherpa imessage chats --limit 20
-sherpa imessage history --chat-id 42 --start 2026-08-01 --end 2026-08-07 --limit 200
+sherpa imessage history --chat-id 42 --start 2026-08-01T00:00:00+09:00 --end 2026-08-07T00:00:00+09:00 --limit 200
 printf '%s' 'message' | sherpa imessage send --chat-id 42 --confirm 42
 ```
 
-KakaoTalk reads can use Agent Messenger or the Mac's synchronized local database.
-The local adapter supports keyword search, one exact room's fixed seven-day
-window, and an explicit all-room date range. A complete local archive returns a
-pending local-text checkpoint; commit it only after analysis. It remains
-separate from Agent Messenger and does not include attachment contents.
+KakaoTalk reads the Mac's locally synchronized database directly and never
+opens or controls the KakaoTalk app. Run setup once per Mac and account: it
+recovers the account number from KakaoTalk's preferences (or reads it from
+standard input with `--user-id-stdin`), verifies that the derived key opens
+the database, and keeps the number in the login keychain. `status` reports
+what is ready with booleans only.
 
 ```bash
+sherpa kakaotalk setup
+sherpa kakaotalk status
+printf '%s' '배송' | sherpa kakaotalk search --limit 20
 printf '%s' 'exact room display name' | sherpa kakaotalk history --limit 1000
 sherpa kakaotalk archive --since 2026-07-01 --time-zone Asia/Seoul --limit 50000
 printf '%s' '<checkpoint token>' | sherpa kakaotalk checkpoint --confirm COMMIT_LOCAL_CHECKPOINT
 ```
 
-Mail can use the strict JSON worker request or the small direct command. The
-direct command reads a validated `MailMessage` JSON value from standard input:
+The local adapter supports keyword search, one exact room's fixed seven-day
+window, and an explicit all-room date range. Results always report partial
+coverage and omit KakaoTalk-native identifiers. A complete local archive returns
+a pending local-text checkpoint; commit it only after analysis. It remains
+separate from Agent Messenger and does not include attachment contents.
+
+Mail reads Mail.app's envelope index, newest first. When a page is full,
+`limit_reached` is true and `next_cursor` continues the same range:
 
 ```bash
 sherpa mail authorization-status
 sherpa mail list \
   --from 2026-08-01T00:00:00+09:00 \
   --to 2026-08-02T00:00:00+09:00 \
-  --limit 100 --max-body-bytes 16384
+  --limit 1000 --max-body-bytes 16384
+sherpa mail list --from … --to … --limit 1000 --max-body-bytes 16384 --cursor '<next_cursor>'
 sherpa mail read \
   --message-id '<source_message_id>' --max-body-bytes 1048576
 printf '%s' '{"sender":"me@example.com","to":["you@example.com"],"cc":[],"bcc":[],"subject":"subject","body":"body"}' \
   | sherpa mail send --confirm SEND_MAIL
 ```
 
-`mail list` reads the Mail.app inbox in the half-open interval `from <= received
-< to`. It returns bounded message bodies, recipients, and attachment metadata;
-it never downloads or returns attachment contents. `mail read` resolves exactly
-one identifier returned by `mail list` and does not perform fuzzy matching.
+`mail list` covers every account in the half-open interval `from <= received
+< to`. Each item carries Mail's stored summary as `body`; `mail read` returns
+the full body of exactly one identifier from `mail list`. A cursor is valid only
+with the `--from` and `--to` it was issued for.
 
-Mutation outcomes are recorded in the Swift-owned SQLite journal without
-message bodies or native locators:
+Mutation outcomes are recorded in one SQLite journal without message bodies or
+native locators. The core journals `imessage send` and `mail send`; the helper
+journals `planner request` mutations:
 
 ```bash
 sherpa operations list --limit 100
@@ -130,13 +145,12 @@ sherpa operations list --limit 100
 
 A send is journaled `failed` only when it never reached the sender. Once the
 sender has been handed the message, any failure is `uncertain`: check the
-conversation before sending again. Every failure prints one JSON line with a
-named `error` code and exits 1; a journaled send also carries its
+conversation before sending again. A journaled send that fails carries its
 `operation_id`. A send that completed but could not be journaled exits 0 with
 `"status":"completed"` and `"journal_error":"journal.finish_failed"`, and its
 journal row stays `started`. A `planner request` whose journal write fails
-still prints its response and logs `[cli:sherpa:journal-failure]` on standard
-error.
+still prints its response and logs `[apple:sherpa-apple:journal-failure]` on
+standard error.
 
 ## Agent skills
 

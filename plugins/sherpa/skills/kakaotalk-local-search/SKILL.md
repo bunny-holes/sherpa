@@ -5,10 +5,11 @@ description: Read bounded KakaoTalk text from the Mac's local database through S
 
 # KakaoTalk Local Search
 
-Use Sherpa's native read-only adapter. It invokes the official `kakaocli`,
-removes provider-native identifiers, and marks coverage partial. Keep local
-text checkpoints separate from Agent Messenger checkpoints. Do not invoke
-`kakaocli` directly, copy the database, or retain raw results.
+Use Sherpa's native read-only adapter. It reads the Mac's KakaoTalk database
+directly, never opens or controls the KakaoTalk app, removes provider-native
+identifiers, and marks coverage partial. Keep local text checkpoints separate
+from Agent Messenger checkpoints. Do not invoke `kakaocli`, open the database
+with other tools, copy it, or retain raw results.
 
 ## CLI contract
 
@@ -19,6 +20,8 @@ Before the first Sherpa command in a session, run `bash "${CLAUDE_PLUGIN_ROOT}/s
 The executable commands allowed in this workflow are:
 
 ```sh
+sherpa kakaotalk status
+sherpa kakaotalk setup
 printf '%s' 'exact keyword' | sherpa kakaotalk search --limit 20
 printf '%s' 'exact room display name' | sherpa kakaotalk history --limit 1000
 sherpa kakaotalk archive --since 2026-07-01 --time-zone Asia/Seoul --limit 50000
@@ -29,14 +32,17 @@ printf '%s' '<checkpoint token>' | sherpa kakaotalk checkpoint --confirm COMMIT_
 Pass exact keywords, room names, and checkpoint tokens on standard input.
 Search accepts 1 through 100 results. History accepts 1 through 1000 and uses
 the prior seven days. Archive accepts an exact local date or `checkpoint`, an
-IANA time zone, and 1 through 50000 results. The adapter resolves `kakaocli`
-from `KAKAOCLI_BIN` or `PATH`; missing Full Disk Access or an unavailable
-binary is a failed read, not evidence that no message exists.
+IANA time zone, and 1 through 50000 results. Missing Full Disk Access, a
+missing `sqlcipher` library, or `kakaotalk.setup_required` is a failed read,
+not evidence that no message exists; report the returned `remedy`.
 
-Never invoke `kakaocli` commands directly from this workflow. In particular,
-never use `query`, `send`, `sync`, `harvest`, `inspect`, `login`, credential
-storage, or Accessibility automation. Never expose the UUID, Kakao user ID,
-database name, database path, account hash, room ID, sender ID, or raw JSON.
+`status` reports readiness with booleans only and reads nothing from the
+conversation tables. When a read returns `kakaotalk.setup_required`, ask the
+user before running `setup` once: it may search for the account number for
+several minutes, then stores it in the login keychain and never prints it.
+Never run `kakaocli`, its `status`, or any Accessibility automation from this
+workflow. Never expose the UUID, Kakao user ID, database key, database name,
+database path, account hash, room ID, sender ID, or raw JSON.
 
 ## Missing-checkpoint baseline
 
