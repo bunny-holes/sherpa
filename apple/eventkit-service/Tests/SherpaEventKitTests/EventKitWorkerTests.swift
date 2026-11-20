@@ -95,3 +95,23 @@ import Testing
     #expect(response.status == .failed)
     #expect(response.stableErrorCode == "protocol.unsupported_capability")
 }
+
+private func reminderListRequest(_ payload: String) throws -> WorkerRequest {
+    try WorkerRequest(data: Data(
+        #"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"req-reminder-list","operation_id":"op-reminder-list","capability":"reminder.list","payload":\#(payload),"deadline_ms":1000,"idempotency_key":"idem-reminder-list","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}"#.utf8
+    ))
+}
+
+/// 0.7.1 required every reminder.list key, so `{"schema":…,"limit":…}` failed as
+/// `protocol.invalid_payload` while event.list accepted its optional keys omitted.
+@Test func reminderListAcceptsOmittedOptionalKeysAndStillRejectsUnknownOnes() async throws {
+    let minimal = await EventKitWorker().handle(try reminderListRequest(
+        #"{"schema":"sherpa.planner.reminder-list.request.v2","limit":5}"#
+    ))
+    #expect(minimal.stableErrorCode != WorkerProtocolError.invalidPayload.stableCode)
+
+    let unknown = await EventKitWorker().handle(try reminderListRequest(
+        #"{"schema":"sherpa.planner.reminder-list.request.v2","title":"x"}"#
+    ))
+    #expect(unknown.stableErrorCode == WorkerProtocolError.invalidPayload.stableCode)
+}
