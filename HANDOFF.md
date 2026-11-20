@@ -42,19 +42,16 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 
 ## 다음 행동
 
-1. `*.authorization.request` 가 권한이 그대로 `not_determined` 여도 `succeeded`·증거 `matched` 로 답한다
-   (`EventKitWorker.swift` 의 두 authorization request 분기, 2026-11-20 재현). 상태가 바뀌지 않았으면 이름 있는
-   실패로 답하게 하고 결정적 시험을 세운다. 미수정.
-2. 다음 판(0.8.3 이상)으로 `brew upgrade` 한 뒤 Calendar·Reminders 가 권한 창 없이 `full_access` 인지
+1. 다음 판(0.8.3 이상)으로 `brew upgrade` 한 뒤 Calendar·Reminders 가 권한 창 없이 `full_access` 인지
    확인한다. 0.8.2 설치본은 두 권한 모두 받았다. 판을 넘는 실측은 아직 없다(ADR-0009).
-3. 헬퍼의 8 MiB 응답 문제: `apple/eventkit-service/Sources/SherpaNative/main.swift` 의 `plannerRequest` 가
+2. 헬퍼의 8 MiB 응답 문제: `apple/eventkit-service/Sources/SherpaNative/main.swift` 의 `plannerRequest` 가
    변경을 기록한 뒤 `encoded(maximumBytes: 8 MiB)` 로 인코딩해, 넘으면 `failed` 로 보고된다(코드로 확인,
    재현 안 함). 초과 응답 시험을 먼저 세운다.
-4. plist 파서 중복 정리: `core/src/imessage/bplist.ts` 와 `core/src/kakaotalk/plist.ts`.
-5. 문서 부채: `docs/testing/verification-matrix.md` 를 Bun 코어 기준으로 재검토. `docs/` 21개 문서의 옛
+3. plist 파서 중복 정리: `core/src/imessage/bplist.ts` 와 `core/src/kakaotalk/plist.ts`.
+4. 문서 부채: `docs/testing/verification-matrix.md` 를 Bun 코어 기준으로 재검토. `docs/` 21개 문서의 옛
    front matter 키(`id`·`title`·`status`·`owner`). `docs/contracts/worker-protocol.md:85` 가
    가리키는 없는 `protocols/worker-v2.schema.json`.
-6. 웹 수집 소스(patchright 등)는 코어의 새 어댑터로 붙인다(소유자 방향, ADR-0008). 착수 전 대상 소스를 정한다.
+5. 웹 수집 소스(patchright 등)는 코어의 새 어댑터로 붙인다(소유자 방향, ADR-0008). 착수 전 대상 소스를 정한다.
 
 ## 저장소·세션 상태 (브랜치, 미커밋, 미푸시, pane)
 

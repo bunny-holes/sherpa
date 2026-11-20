@@ -1,6 +1,6 @@
 {
   "name": "sherpa",
-  "version": "0.8.2+codex.20261120064506",
+  "version": "0.8.3+codex.20261120134807",
   "description": "Agent workflows for the deterministic Sherpa macOS orchestration CLI.",
   "author": {
     "name": "XIYO",
