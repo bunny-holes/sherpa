@@ -59,6 +59,19 @@ if probe="$(printf '{}' | "$binary" planner request 2>/dev/null)"; then
 fi
 python3 -c 'import json, sys; assert json.loads(sys.argv[1]) == {"status": "failed", "error": "protocol.invalid_envelope"}' "$probe" \
   || fail "reason=failure_unnamed output=$probe"
+
+# 헬퍼는 권한 책임을 놓고(disclaim) 자신을 한 번 다시 띄워 macOS 권한의 주체가 된다. 그래야
+# Calendar 사용 설명이 없는 호스트(Claude 데스크톱)에서도 권한 창이 뜬다(2026-11-20 실측). 다시
+# 띄운 자식의 출력과 종료 코드가 그대로 돌아오는지, 실제로 다시 띄웠는지를 본다.
+relaunch_log="$(mktemp)"
+if relaunch="$(printf '{}' | LOG_LEVEL=debug "$SHERPA_APPLE_BIN" planner request 2>"$relaunch_log")"; then
+  rm -f "$relaunch_log"; fail "reason=helper_relaunch_accepted_invalid_request"
+fi
+grep -q 'relaunched with responsibility disclaimed' "$relaunch_log" \
+  || { rm -f "$relaunch_log"; fail "reason=helper_not_relaunched"; }
+rm -f "$relaunch_log"
+printf '%s' "$relaunch" | grep -q '"protocol.invalid_envelope"' \
+  || fail "reason=helper_relaunch_lost_output output=$relaunch"
 log info "check:core:success" "cli_version=$cli_version"
 
 # 3. 에이전트 플러그인. 방금 빌드한 바이너리를 넘겨 스킬이 부르는 명령이 실제로

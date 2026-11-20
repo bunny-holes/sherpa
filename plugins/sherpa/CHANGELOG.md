@@ -11,6 +11,17 @@ manner: "버전별로 Added·Changed·Fixed 를 나누고 긴 실측 근거는 l
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-20
+
+CLI 0.8.1 이 필요하다(`cli-contract.json` 의 `minimumVersion`). 스킬 본문은 바뀌지 않았다.
+
+### Changed
+
+- `minimumVersion` 을 0.8.1 로 올렸다. 0.8.0 헬퍼는 셸을 띄운 앱의 이름으로 Calendar 권한을 물어서,
+  Calendar 사용 설명이 없는 Claude 데스크톱에서는 권한 창 없이 `not_determined` 로 남았다. 0.8.1 헬퍼는
+  자기 이름(`dev.xiyo.sherpa`)으로 권한을 받는다. 같은 판에서 일회용 Calendar·Reminders 검증 묶음이
+  코어를 거쳐 처음 통과했다(`live-evidence.md` 2026-11-20).
+
 ## [0.8.1] - 2026-11-20
 
 CLI 0.8.0 이 그대로 필요하다. 스킬 동작은 바뀌지 않았다.

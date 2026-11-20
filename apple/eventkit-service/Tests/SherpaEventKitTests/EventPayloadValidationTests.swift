@@ -82,3 +82,20 @@ import Testing
         collectionNativeLocator: "collection", limit: 10_000, completed: false
     ))
 }
+
+/// The adapter reads wire dates with and without fractional seconds, and the
+/// adapter's own snapshots write them with fractional seconds. The validator
+/// rejected the fractional form, so `event.create` from the live verifier (which
+/// sends what the adapter writes) failed with `protocol.invalid_payload` (2026-11-20).
+@Test func eventValidatorAcceptsFractionalSecondWireDates() throws {
+    try EventCommandValidator().validate(EventCreateRequest(
+        schema: "sherpa.planner.event-create.request.v2", title: "Fractional",
+        start: "2026-12-04T01:00:00.000Z", end: "2026-12-04T02:00:00.000Z",
+        allDay: false, collectionNativeLocator: "collection", notes: nil, location: nil,
+        url: nil, timeZone: "Asia/Seoul", alarms: nil, recurrenceRules: nil
+    ))
+    try EventCommandValidator().validate(EventListRequest(
+        schema: "sherpa.planner.event-list.request.v2", from: "2026-12-03T00:00:00.000Z",
+        to: "2026-12-05T00:00:00.000+09:00", limit: 10, collectionNativeLocator: nil
+    ))
+}

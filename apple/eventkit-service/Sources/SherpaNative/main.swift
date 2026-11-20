@@ -13,7 +13,7 @@ enum SherpaNativeMain {
         do {
             let arguments = Array(CommandLine.arguments.dropFirst())
             if arguments == ["--version"] || arguments == ["version"] {
-                FileHandle.standardOutput.write(Data("sherpa-apple 0.8.0\n".utf8))
+                FileHandle.standardOutput.write(Data("sherpa-apple 0.8.1\n".utf8))
                 return
             }
             if arguments == ["--help"] || arguments == ["help"] || arguments.isEmpty {
@@ -21,6 +21,7 @@ enum SherpaNativeMain {
                 return
             }
             guard arguments.count == 2 else { throw JournalStoreError.invalidRequest }
+            PrivacyResponsibility.ensureResponsible()
             let output: Data
             switch (arguments[0], arguments[1]) {
             case ("planner", "request"):
@@ -51,7 +52,7 @@ enum SherpaNativeMain {
 }
 
 private let nativeHelp = """
-sherpa-apple 0.8.0 — Apple framework helper of the sherpa CLI
+sherpa-apple 0.8.1 — Apple framework helper of the sherpa CLI
 
 The sherpa CLI starts this helper; run sherpa instead. It reads one strict
 Worker Protocol V2 request on standard input and writes one response:

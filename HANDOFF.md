@@ -31,14 +31,16 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 ## 막힌 것 · 오너 결정 대기
 
 - kakaocli 상류 이슈 등록(외부 게시)은 소유자 확인이 필요하다.
-- 실기 소유자 조작: 0.8.0 로 iMessage·Mail 한 통씩 실제 보내기와 Automation 권한 프롬프트 확인,
-  KakaoTalk 로컬 체크포인트 커밋, 로그인된 Claude Code·Codex 세션에서 스킬 호출,
+- 실기 소유자 조작: Mail 한 통 실제 보내기와 Automation 권한 프롬프트 확인(iMessage 보내기는 2026-11-20 확인),
+  brew 로 올린 0.8.1 헬퍼에 Calendar·Reminders 권한 다시 주기와 읽기 확인, KakaoTalk 로컬 체크포인트 커밋,
+  로그인된 Claude Code·Codex 세션에서 스킬 호출,
   `SR-CX-013` 재검증, Discord 이모지·스티커 명령. 관측하면 `live-evidence.md` 에 날짜로 적고 여기서 지운다.
 
 ## 다음 행동
 
-1. `sherpa-eventkit-live-verify` 고치기: 워커를 인자 없이 실행해 `sherpa`·`sherpa-apple` 어느 쪽과도 동작하지
-   않는다(`LiveVerifier.swift` 의 `WorkerClient`, 확인함). `planner request` 인자를 넘기게 하고 결정적 시험을 세운다.
+1. `*.authorization.request` 가 권한이 그대로 `not_determined` 여도 `succeeded`·증거 `matched` 로 답한다
+   (`EventKitWorker.swift` 의 두 authorization request 분기, 2026-11-20 재현). 상태가 바뀌지 않았으면 이름 있는
+   실패로 답하게 하고 결정적 시험을 세운다. 미수정.
 2. 헬퍼의 8 MiB 응답 문제: `apple/eventkit-service/Sources/SherpaNative/main.swift` 의 `plannerRequest` 가
    변경을 기록한 뒤 `encoded(maximumBytes: 8 MiB)` 로 인코딩해, 넘으면 `failed` 로 보고된다(코드로 확인,
    재현 안 함). 초과 응답 시험을 먼저 세운다.

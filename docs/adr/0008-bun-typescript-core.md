@@ -9,6 +9,11 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 
 # CLI 코어는 Bun + TypeScript, Swift 는 Apple 헬퍼다
 
+> **정정 (2026-11-20, CLI 0.8.1).** 헬퍼에 Info.plist 를 박는 것만으로는 권한을 받지 못했다. macOS 는
+> 셸을 띄운 앱(책임 프로세스)의 이름으로 권한을 묻기 때문에, Calendar 사용 설명이 없는 Claude 데스크톱에서
+> 부르면 권한 창 없이 `not_determined` 로 남았다. 헬퍼는 이제 책임을 놓고 자신을 한 번 다시 띄워
+> `dev.xiyo.sherpa` 로 권한을 받는다(`live-evidence.md` 같은 날짜 항목). 결정은 그대로다.
+
 ## 맥락
 
 0.7.1 의 `sherpa` 는 Swift 실행 파일 하나였다. 소유자가 2026-11-20 실제 조사(Reminders·Mail·iMessage·

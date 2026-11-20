@@ -9,6 +9,42 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-20 — Calendar authorization under an agent host; disposable EventKit suite and a real iMessage send (CLI 0.8.0 → 0.8.1)
+
+Run on this Mac from a shell started by the Claude desktop app. Only statuses,
+counts, and timings were printed.
+
+- Calendar: the installed 0.8.0 helper reported `event.authorization.status`
+  `not_determined` while Reminders was `full_access`.
+  `event.authorization.request` returned at once with no prompt, still
+  `not_determined`, yet the response said `succeeded` with evidence
+  `authorization_readback: matched`. Run from Terminal.app the same request
+  showed the prompt and became `full_access`, but the Claude-hosted call stayed
+  `not_determined`: macOS keys the grant to the responsible app, and neither the
+  Claude desktop app nor the embedded Claude Code app has a Calendar usage
+  description. CLI 0.8.1's helper relaunches itself with responsibility
+  disclaimed; the debug build then prompted from the Claude host as
+  `dev.xiyo.sherpa` and reached `full_access` for both Calendar and Reminders.
+  Rebuilding the helper reset both to `not_determined` (new code hash).
+- Two `*.authorization.request` calls sent with `deadline_ms: 600000` failed as
+  `protocol.invalid_envelope` before any prompt; the envelope allows 1–300000.
+- `sherpa-eventkit-live-verify` started its worker without arguments, so it
+  could not drive `sherpa` or `sherpa-apple`; it now runs `<worker> planner
+  request`. Through the core it then failed at `recurring_create` with
+  `protocol.invalid_payload`: `EventCommandValidator` parsed dates only without
+  fractional seconds, while the adapter writes and reads both forms and the
+  verifier sends what the adapter writes. After that fix it failed at
+  `timed_update_readback` (`alarm_count` expected 0, actual -1) because the
+  verifier expected `[]` where the adapter reports an empty collection as null.
+  With both fixed the suite returned `verified` in 6 s: 31 calls, all
+  succeeded, and the journal showed 20 `completed` Calendar and Reminder
+  mutations with no residue.
+- iMessage: installed 0.8.0 `imessage send` to the owner's own 1:1 chat
+  (owner-approved destination) returned `application_accepted` at once, the
+  journal row was `completed`, and `chat.db` showed the message from me, sent,
+  delivered, with no error and matching text. No Automation prompt appeared;
+  Messages control was already allowed for the host.
+
 ## 2026-11-20 — Windows support removed (owner decision)
 
 The owner dropped Windows. The repository's only CI job (`windows-hook`, which

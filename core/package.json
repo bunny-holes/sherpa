@@ -1,6 +1,6 @@
 {
   "name": "sherpa",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "Sherpa CLI core: local-first macOS planning and context orchestrator",
   "license": "MIT",

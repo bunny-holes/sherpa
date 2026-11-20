@@ -64,6 +64,13 @@ helper validates the Worker Protocol V2 request, journals planner mutations,
 and writes the response. Worker Protocol V2 is a contract for callers, not a
 long-lived worker process, and it has no V1 runtime fallback.
 
+Before handling a request the helper relaunches itself once with privacy
+responsibility disclaimed (`PrivacyResponsibility.swift`), so macOS asks about
+Calendar, Reminders, and Automation on behalf of the helper — bundle identifier
+`dev.xiyo.sherpa` with its embedded usage descriptions — instead of the app that
+hosts the shell. Without it a host lacking the usage description (the Claude
+desktop app has none for Calendar) gets `not_determined` and no prompt.
+
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of
 truth for Calendar and Reminders; Messages, KakaoTalk, and Mail.app remain the
 source of truth for communication content. Sherpa reads their local stores
@@ -281,8 +288,9 @@ published before `brew upgrade` can discover it.
 Developer ID, Team ID, paid Apple developer membership, hardened-runtime
 distribution, and notarization are permanently excluded. Compiler-produced
 identity-free ad-hoc signatures remain an operating-system requirement on
-Apple silicon, so privacy permissions may need owner reauthorization after a
-Homebrew upgrade.
+Apple silicon. macOS keys an ad-hoc signed helper's privacy grants to its code
+hash, so every rebuild or Homebrew upgrade asks for Calendar and Reminders
+access again (observed 2026-11-20 between two debug builds).
 
 ## Related
 
