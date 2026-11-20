@@ -45,16 +45,15 @@ manner: "규칙만 적고 근거는 ADR·live-evidence·스크립트 주석으�
   and gets no tag. Bump it whenever `plugins/sherpa/` changes, because Claude
   Code compares only that version. `minimumVersion` in `cli-contract.json`
   follows the rule in its own `note`.
-- CI runs only the Windows hook check (`plugins/sherpa/scripts/check-windows.ps1`
-  on a GitHub-hosted `windows-latest` runner). The macOS gate — the core's
-  `vp check`, tests and build, the three Swift packages' build and tests, the
-  manifest, contract, and document checks, and the release smoke install —
-  does not run in CI. Before merging any pull request, run
-  `bash scripts/check-all.sh` on macOS after the last change, confirm the whole
-  run exits 0, and write that result in the pull request body. Merge by hand
-  only after the Windows job has actually passed; never use
-  `gh pr merge --auto`, and never merge while the pull request shows no checks.
-  No ruleset requires the check, so `--auto` would merge at once.
+- Sherpa supports macOS only, and the repository has no CI (owner decision,
+  2026-11-20: Windows support and its hook job were removed). The gate is the
+  macOS run of `bash scripts/check-all.sh` — the core's `vp check`, tests and
+  build, the three Swift packages' build and tests, the plugin, manifest,
+  contract, and document checks, and the release smoke install. Before merging
+  any pull request, run it after the last change, confirm the whole run exits 0,
+  and write that result with the commit it ran on in the pull request body.
+  Merge by hand only when that commit is the pull request's head; never use
+  `gh pr merge --auto`, because no check guards the merge.
 - When pull requests are stacked, retarget the upper one's base to `main`
   before merging the lower one with `--delete-branch`. GitHub closes a pull
   request whose base branch is deleted, and a closed pull request cannot change

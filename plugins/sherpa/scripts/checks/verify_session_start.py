@@ -10,16 +10,16 @@
 
 가짜 `sherpa` 를 PATH 에 두고 네 가지 상태를 모두 태운다.
 
-CLI 는 macOS 전용이지만 훅은 `hooks.json` 에 무조건 등록되어 Windows 의 Claude Code 도
-돌린다. 그래서 이 검사는 Windows(Git Bash + python)에서도 돈다. 경로 구분자와 실행
-파일 위치를 단정하지 않고, python 도 이름이 아니라 이 검사를 돌리는 인터프리터로 고정한다.
+이 검사는 macOS 게이트에서만 돈다(Windows 지원은 2026-11-20 소유자 결정으로 걷어냈다).
+python 은 이름이 아니라 이 검사를 돌리는 인터프리터로 고정한다.
 
-훅은 Python 없이 동작해야 한다. PATH 에 Python 이 없거나, 잘못된 이름만 있거나,
-출력이 CRLF 인 Python 이 있어도 같은 상태를 내는지 확인한다.
+훅은 Python 없이 동작해야 한다. PATH 에 Python 이 없거나 잘못된 이름만 있어도 같은
+상태를 내는지 확인한다.
 
 플랫폼도 흉내 낸다. 가드는 `uname -s` 로 macOS 인지 보므로 가짜 `uname` 을 PATH 에 둔다.
-네 상태는 `Darwin` 으로 고정해 macOS 와 Windows 러너가 같은 것을 검사하게 하고, 비 macOS
-에서는 훅이 침묵하고 가드가 `unsupported` 를 답하는지를 따로 본다.
+네 상태는 `Darwin` 으로 고정하고, 다른 OS 에서는 훅이 침묵하고 가드가 `unsupported` 를
+답하는지를 따로 본다. 플러그인 마켓플레이스는 OS 를 가리지 않으므로 다른 OS 의 Claude Code
+가 훅을 돌려도 세션마다 쓸 수 없는 안내를 읽히지 않게 한다.
 """
 
 import json
@@ -61,120 +61,8 @@ if "SessionStart" not in events:
 
 
 def write_script(path: pathlib.Path, body: str) -> None:
-    # 확장자 없는 셸 스크립트다. Git Bash 는 shebang 이 있으면 실행 파일로 본다.
     path.write_bytes(body.encode("utf-8"))
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
-
-
-# Windows 에서 훅을 돌리는 것은 Git Bash 다. 그 bash 는 OSTYPE 이 msys(또는 cygwin)다.
-WINDOWS_BASH_OSTYPES = ("msys", "cygwin")
-PROBE_TIMEOUT = 10.0
-
-
-def bash_candidates() -> list[str]:
-    """bash 일 수 있는 파일을 순서대로 모은다 — PATH 가 먼저, 그다음 git 기준 경로.
-
-    Git for Windows 는 PATH 에 cmd 디렉터리만 올리기도 한다. bash 는 그 옆 bin 에 있다
-    (`<git>/../bin`, git 이 mingw64/bin 에 있으면 `<git>/../../bin`). 여기서는 거르지 않는다 —
-    어느 것이 쓸 수 있는 bash 인지는 `select_bash` 가 돌려 보고 정한다.
-    """
-    found: list[str] = []
-    for entry in os.environ.get("PATH", "").split(os.pathsep):
-        if not entry:
-            continue
-        for name in ("bash", "bash.exe"):
-            found.append(str(pathlib.Path(entry) / name))
-    git = shutil.which("git")
-    if git:
-        git_dir = pathlib.Path(git).resolve().parent
-        for base in (git_dir.parent, git_dir.parent.parent):
-            found.append(str(base / "bin" / "bash.exe"))
-    return [candidate for candidate in dict.fromkeys(found) if pathlib.Path(candidate).is_file()]
-
-
-def probe_ostype(candidate: str, timeout: float) -> tuple[str | None, str]:
-    """후보를 실제로 돌려 OSTYPE 을 읽는다. 읽지 못하면 (None, 이유)다."""
-    try:
-        result = subprocess.run(
-            [candidate, "-c", "echo $OSTYPE"], capture_output=True, timeout=timeout, check=False
-        )
-    except subprocess.TimeoutExpired:
-        return None, f"did not answer within {timeout:g}s"
-    except OSError as error:
-        return None, f"could not be executed ({error})"
-    if result.returncode != 0:
-        return None, f"exited {result.returncode}: {result.stderr[:200]!r}"
-    return result.stdout.decode("utf-8", "replace").strip(), ""
-
-
-def select_bash(
-    candidates: list[str], accepted: tuple[str, ...] | None, timeout: float = PROBE_TIMEOUT
-) -> tuple[str | None, list[str]]:
-    """후보 가운데 쓸 수 있는 첫 bash 와, 그 앞에서 탈락한 후보의 이유를 돌려준다.
-
-    accepted 가 None 이면(macOS·Linux) 첫 후보를 그대로 쓴다.
-    """
-    rejected: list[str] = []
-    for candidate in candidates:
-        if accepted is None:
-            return candidate, rejected
-        ostype, reason = probe_ostype(candidate, timeout)
-        if ostype in accepted:
-            return candidate, rejected
-        rejected.append(f"{candidate}: {reason or f'OSTYPE is {ostype!r}, not one of {accepted}'}")
-    return None, rejected
-
-
-def find_bash() -> str:
-    accepted = WINDOWS_BASH_OSTYPES if os.name == "nt" else None
-    chosen, rejected = select_bash(bash_candidates(), accepted)
-    if chosen is None:
-        tried = "\n".join(f"  {line}" for line in rejected) or "  (no bash or bash.exe on PATH or next to git)"
-        raise SystemExit(f"no usable bash; the hook cannot be exercised. tried:\n{tried}")
-    if os.name == "nt":
-        print(f"[check:sherpa:bash] chosen={chosen} rejected={len(rejected)}", file=sys.stderr)
-        for line in rejected:
-            print(f"[check:sherpa:bash] rejected {line}", file=sys.stderr)
-    return chosen
-
-
-def check_bash_selection() -> None:
-    """`select_bash` 를 가짜 후보로 검사한다 — Windows 분기를 macOS 게이트에서도 태운다.
-
-    실제 Windows 11 기기에서 PATH 의 첫 bash.exe 는 `…\\Microsoft\\WindowsApps\\bash.exe`, 곧 WSL 을
-    여는 Store alias 였고 훅을 물리면 모든 케이스가 exit 126 이었다. 나쁜 디렉터리를 빼는 목록은
-    새 디렉터리에 뚫린다 — 그래서 후보를 돌려 보고 Git Bash 인 것만 채택한다.
-    """
-    windows = os.name == "nt"
-    fakes = {
-        "exits-126": "@exit 126\r\n" if windows else "#!/bin/sh\nexit 126\n",
-        "wsl": "@echo linux-gnu\r\n" if windows else "#!/bin/sh\necho linux-gnu\n",
-        "hangs": "@ping -n 8 127.0.0.1 >nul\r\n" if windows else "#!/bin/sh\nexec sleep 30\n",
-        "git-bash": "@echo msys\r\n" if windows else "#!/bin/sh\necho msys\n",
-    }
-    with tempfile.TemporaryDirectory() as tmp:
-        paths = {}
-        for name, body in fakes.items():
-            paths[name] = pathlib.Path(tmp) / (f"{name}.cmd" if windows else name)
-            write_script(paths[name], body)
-        absent = str(pathlib.Path(tmp) / "absent")
-        order = [absent, *(str(paths[name]) for name in fakes)]
-
-        # 새로 쓴 실행 파일의 첫 실행은 macOS 에서 1초를 넘기기도 한다. 그래서 5초를 준다.
-        chosen, rejected = select_bash(order, WINDOWS_BASH_OSTYPES, timeout=5.0)
-        if chosen != str(paths["git-bash"]):
-            raise SystemExit(f"bash selection: picked {chosen!r}, expected the one whose OSTYPE is msys")
-        reasons = ("could not be executed", "exited 126", "linux-gnu", "did not answer")
-        if len(rejected) != len(reasons) or any(reason not in line for reason, line in zip(reasons, rejected)):
-            raise SystemExit(f"bash selection: expected the rejections {reasons}, got {rejected!r}")
-
-        chosen, rejected = select_bash(order[:3], WINDOWS_BASH_OSTYPES, timeout=5.0)
-        if chosen is not None:
-            raise SystemExit(f"bash selection: picked {chosen!r} although no candidate is a usable bash")
-
-        chosen, rejected = select_bash(order[1:], None)
-        if chosen != order[1] or rejected:
-            raise SystemExit(f"bash selection: macOS/Linux must take the first candidate, got {chosen!r}")
 
 
 def path_without_cli() -> list[str]:
@@ -190,40 +78,20 @@ def path_without_cli() -> list[str]:
     return kept
 
 
-check_bash_selection()
-BASH = find_bash()
+BASH = shutil.which("bash") or "/bin/bash"
 BASE_PATH = path_without_cli()
 PYTHON = pathlib.Path(sys.executable).as_posix()
-
-
-# 가짜 디렉터리를 bash 안에서 한 번 더 PATH 맨 앞에 둔다. Git for Windows 의 bin/bash.exe 는
-# 자기 usr/bin 을 PATH 앞에 붙이는 래퍼로 알려져 있고, 거기에는 진짜 uname 이 있다 — 환경 변수로
-# 준 순서만 믿으면 Windows 에서 가짜 uname 이 가려질 수 있다. sherpa 와 python3 은 그 디렉터리에
-# 없어서 이 문제가 드러나지 않았다. cygpath 가 없는 곳(macOS)에서는 경로를 그대로 쓴다.
-ENTER = (
-    'PATH="$(cygpath -u "$SHERPA_CHECK_BIN" 2>/dev/null || printf %s "$SHERPA_CHECK_BIN"):$PATH"; '
-    'export PATH; exec "$BASH" "$0"'
-)
 
 
 def install_python(bin_dir: pathlib.Path, python: str) -> None:
     """훅이 부를 python 을 bin_dir 에 둔다.
 
     plain    python3 이 이 검사를 돌리는 인터프리터다.
-    crlf     같은 인터프리터인데 stdout 의 줄 끝이 `\\r\\n` 이다(Windows text mode).
     renamed  python3 은 이름만 있고 실행되지 않으며 python 만 동작한다.
     absent   python3 도 python 도 실행되지 않는다.
     """
     broken = '#!/bin/sh\necho "Python was not found" >&2\nexit 49\n'
-    if python == "crlf":
-        site_dir = bin_dir / "site"
-        site_dir.mkdir()
-        (site_dir / "sitecustomize.py").write_text(
-            'import sys\nsys.stdout.reconfigure(newline="\\r\\n")\n', encoding="utf-8"
-        )
-        working = f'#!/bin/sh\nPYTHONPATH="{site_dir.as_posix()}" exec "{PYTHON}" "$@"\n'
-    else:
-        working = f'#!/bin/sh\nexec "{PYTHON}" "$@"\n'
+    working = f'#!/bin/sh\nexec "{PYTHON}" "$@"\n'
     write_script(bin_dir / "python3", broken if python in ("renamed", "absent") else working)
     if python in ("renamed", "absent"):
         write_script(bin_dir / "python", broken if python == "absent" else working)
@@ -246,12 +114,8 @@ def run(
             write_script(bin_dir / command, f'#!/bin/sh\necho "{command} {fake_version}"\n')
         write_script(bin_dir / "uname", f'#!/bin/sh\necho "{platform}"\n' if platform else "#!/bin/sh\nexit 1\n")
         install_python(bin_dir, python)
-        env = {
-            **os.environ,
-            "PATH": os.pathsep.join([str(bin_dir), *BASE_PATH]),
-            "SHERPA_CHECK_BIN": str(bin_dir),
-        }
-        return subprocess.run([BASH, "-c", ENTER, str(script)], capture_output=True, env=env, check=False)
+        env = {**os.environ, "PATH": os.pathsep.join([str(bin_dir), *BASE_PATH])}
+        return subprocess.run([BASH, str(script)], capture_output=True, env=env, check=False)
 
 
 def context_of(result: subprocess.CompletedProcess[bytes]) -> str:
@@ -323,16 +187,13 @@ def exercise(python: str) -> None:
 
 exercise("plain")
 
-# 6. 줄 끝을 `\r\n` 으로 쓰는 Python 이 있어도 같은 분기를 탄다.
-exercise("crlf")
-
-# 7. python3 이라는 이름이 실행되지 않고 python 만 있어도 같다.
+# 6. python3 이라는 이름이 실행되지 않고 python 만 있어도 같다.
 exercise("renamed")
 
-# 8. Python 이 아예 없어도 네 상태를 모두 판정한다.
+# 7. Python 이 아예 없어도 네 상태를 모두 판정한다.
 exercise("absent")
 
-# 9. 비 macOS 에서는 CLI 가 있을 수 없다. 훅은 침묵하고 — 실행할 수 없는 brew 명령을 매 세션
+# 8. 비 macOS 에서는 CLI 가 있을 수 없다. 훅은 침묵하고 — 실행할 수 없는 brew 명령을 매 세션
 #    읽히지 않는다 — 가드는 스킬을 부를 때 "macOS 전용"이라고 답한다. 가짜 sherpa 가 있든 없든 같다.
 for platform in ("MINGW64_NT-10.0-26200", "Linux"):
     for fake_version in (None, minimum):
@@ -365,7 +226,7 @@ for platform in ("MINGW64_NT-10.0-26200", "Linux"):
         if b"brew" in refused.stdout.lower():
             failures.append(f"{label}: guard suggested brew where it cannot run: {refused.stdout!r}")
 
-# 10. 플랫폼을 읽지 못하면 침묵하지 않는다. 조용한 실패가 0.7.2 에서 고친 결함이었다.
+# 9. 플랫폼을 읽지 못하면 침묵하지 않는다. 조용한 실패가 0.7.2 에서 고친 결함이었다.
 unknown = run(None, platform=None)
 expect_sentence("no-uname/missing", unknown, SENTENCE_FALLBACK)
 if unknown.returncode != 0:
