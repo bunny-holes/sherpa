@@ -45,6 +45,15 @@ counts, and timings were printed.
   delivered, with no error and matching text. No Automation prompt appeared;
   Messages control was already allowed for the host.
 
+Released the same day as CLI 0.8.1 (tag `v0.8.1`, archive sha256
+`375b9e35…454aa9`, tap `e9a968c`). After `brew upgrade` the installed helper was
+a new identity again; from the Claude host it prompted for Calendar and
+Reminders and reached `full_access` for both. The disposable suite against
+`/opt/homebrew/bin/sherpa` returned `verified` in 4 s, and a one-month
+`event.list` returned 15 events in 0.09 s. Over the day the owner answered
+prompts for four identities (Terminal.app, two debug builds, the Homebrew
+build); each later upgrade asks once more for Calendar and for Reminders.
+
 ## 2026-11-20 — Windows support removed (owner decision)
 
 The owner dropped Windows. The repository's only CI job (`windows-hook`, which
