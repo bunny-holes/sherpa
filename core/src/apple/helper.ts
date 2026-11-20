@@ -6,13 +6,25 @@ import { log } from "../log.ts";
 const REINSTALL = "brew reinstall xiyo/tap/sherpa";
 
 /**
- * Locates the Swift Apple helper. It owns what needs Apple frameworks and an
- * embedded Info.plist: EventKit Calendar/Reminders, private ReminderKit and the
- * Mail shim. Order: `SHERPA_APPLE_BIN`, the installed `libexec/` next to this
- * executable, then a sibling file for development builds.
+ * Where the installed helper lives, relative to `bin/sherpa`. It is an app bundle
+ * signed with Developer ID: macOS keys privacy grants for a bundle to its bundle
+ * identifier and signing team, so Calendar and Reminders access survives a
+ * Homebrew upgrade even though every version installs under a new Cellar path.
+ * A bare executable is keyed to its path instead and asks again after each upgrade.
  */
-export function resolveAppleHelper(): string {
-  const configured = process.env.SHERPA_APPLE_BIN;
+export const HELPER_IN_BUNDLE = "../libexec/SherpaHelper.app/Contents/MacOS/sherpa-apple";
+
+/**
+ * Locates the Swift Apple helper. It owns what needs Apple frameworks and an
+ * Info.plist: EventKit Calendar/Reminders, private ReminderKit and the Mail shim.
+ * Order: `SHERPA_APPLE_BIN`, the installed bundle next to this executable, then a
+ * sibling file for development builds.
+ */
+export function resolveAppleHelper(
+  execPath: string = process.execPath,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const configured = env.SHERPA_APPLE_BIN;
   if (configured) {
     if (!existsSync(configured)) {
       throw new SherpaError("executableUnavailable", {
@@ -21,9 +33,9 @@ export function resolveAppleHelper(): string {
     }
     return configured;
   }
-  const self = realpathSync(process.execPath);
+  const self = realpathSync(execPath);
   for (const candidate of [
-    join(dirname(self), "../libexec/sherpa-apple"),
+    join(dirname(self), HELPER_IN_BUNDLE),
     join(dirname(self), "sherpa-apple"),
   ]) {
     if (existsSync(candidate)) return candidate;
