@@ -13,7 +13,7 @@ enum SherpaNativeMain {
         do {
             let arguments = Array(CommandLine.arguments.dropFirst())
             if arguments == ["--version"] || arguments == ["version"] {
-                FileHandle.standardOutput.write(Data("sherpa-apple 0.8.3\n".utf8))
+                FileHandle.standardOutput.write(Data("sherpa-apple 0.8.4\n".utf8))
                 return
             }
             if arguments == ["--help"] || arguments == ["help"] || arguments.isEmpty {
@@ -52,7 +52,7 @@ enum SherpaNativeMain {
 }
 
 private let nativeHelp = """
-sherpa-apple 0.8.3 — Apple framework helper of the sherpa CLI
+sherpa-apple 0.8.4 — Apple framework helper of the sherpa CLI
 
 The sherpa CLI starts this helper; run sherpa instead. It reads one strict
 Worker Protocol V2 request on standard input and writes one response:
@@ -66,24 +66,26 @@ private func plannerRequest() async throws -> Data {
     let input = try readWorkerRequest(maximumBytes: 64 * 1_024)
     let request = try WorkerRequest(data: input)
     guard request.policy.effect == .mutation else {
-        return try await EventKitWorker().handle(request).encoded(maximumBytes: 8 * 1_024 * 1_024)
+        return try await EventKitWorker().handle(request).fitted(maximumBytes: plannerResponseLimit).data
     }
     // The response states what happened to the effect, so it is returned even when
-    // the journal could not record it; `journaled` logs that failure.
+    // the journal could not record it; `journaled` logs that failure. It is fitted
+    // inside the attempt, so an oversized result after an applied change is journaled
+    // and reported as the same `partial` outcome instead of a `failed` command.
     let result = try await journaled(request.capability, operationID: request.operationID) {
-        let response = await EventKitWorker().handle(request)
+        let (response, data) = try await EventKitWorker().handle(request).fitted(maximumBytes: plannerResponseLimit)
         let status: NativeMutationStatus = switch response.status {
         case .succeeded: .completed
         case .failed: .failed
         case .partial: .partial
         case .uncertain: .uncertain
         }
-        return MutationAttempt(
-            output: response, status: status, stableErrorCode: response.stableErrorCode
-        )
+        return MutationAttempt(output: data, status: status, stableErrorCode: response.stableErrorCode)
     }
-    return try result.attempt.output.encoded(maximumBytes: 8 * 1_024 * 1_024)
+    return result.attempt.output
 }
+
+private let plannerResponseLimit = 8 * 1_024 * 1_024
 
 /// What stdout carries when a command does not end with its normal output. Every
 /// field is a Sherpa-owned code, status, or operation ID; provider text and error

@@ -16,7 +16,7 @@ Translate planning intent into the installed Sherpa CLI contract, then reason ov
 5. For language-derived actions, use the proposal and candidate flow. Present the preview and confirmation boundary to the user, then run approval only after explicit confirmation.
 6. For direct user instructions, send the matching typed Event or Reminder capability to `sherpa planner request` and verify its native readback.
 7. Before every Event create, title or notes update, or communication-derived planning candidate, read `references/korean-event-writing.md` completely and apply it. Pass the draft title and notes as JSON on standard input to `scripts/lint_korean_event_text.py`; rewrite every error and review every warning before mutation. Do not bypass a warning merely because the Event date is in the past.
-8. Run `sherpa operations list --limit 100` when a mutation is partial or its final state is unclear.
+8. Run `sherpa operations list --limit 100` when a mutation is partial or its final state is unclear. A `partial` or `uncertain` mutation with `protocol.result_too_large` changed (or may have changed) the native state but its result was too large to return: read the state back instead of repeating the mutation.
 
 ## Request shape
 

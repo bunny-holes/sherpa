@@ -2,6 +2,7 @@
 #import <CoreServices/CoreServices.h>
 #import <Foundation/Foundation.h>
 #import "SherpaMailShim.h"
+#import "SherpaShimResponse.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -799,15 +800,7 @@ NSData *SherpaMailHandleRequest(NSData *input) {
         NSDictionary *errorResult = [response[@"error"] isKindOfClass:[NSDictionary class]] ? response[@"error"] : nil;
         NSString *code = [errorResult[@"code"] isKindOfClass:[NSString class]] ? errorResult[@"code"] : nil;
         if (code) LogFailure(code);
-        NSError *encodeError = nil;
-        NSData *output = [NSJSONSerialization dataWithJSONObject:response options:NSJSONWritingSortedKeys
-                                                           error:&encodeError];
-        if (!output || output.length > MaxResponseBytes) {
-            NSDictionary *bounded = Failure(response[@"request_id"], @"context.result_too_large",
-                                             @"never", @"degraded");
-            output = [NSJSONSerialization dataWithJSONObject:bounded options:NSJSONWritingSortedKeys
-                                                        error:nil];
-        }
+        NSData *output = SherpaFittedResponseData(response, MaxResponseBytes);
         return output ?: [NSData data];
     }
 }
