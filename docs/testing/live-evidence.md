@@ -9,6 +9,21 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-20 — Grants carried across a Homebrew upgrade (CLI 0.8.2 → 0.8.3)
+
+Before the upgrade the installed 0.8.2 bundle read Calendar and Reminders
+`full_access`. `brew upgrade xiyo/tap/sherpa` installed 0.8.3 under
+`Cellar/sherpa/0.8.3` (tag `v0.8.3`, tap `e2aba79`); the installed bundle's
+Developer ID signature verified, and without any authorization request both
+statuses read `full_access` and no prompt appeared. The disposable suite
+against `/opt/homebrew/bin/sherpa` returned `verified` in 4 s. This is the
+first observed upgrade across which ADR-0009's grants held.
+
+0.8.3 also stops `*.authorization.request` from answering `succeeded` when the
+status stays `not_determined`; it now fails with
+`eventkit.authorization_prompt_unavailable` (deterministic test only; the
+no-prompt condition was not reproduced live on 0.8.3).
+
 ## 2026-11-20 — Privacy grants that survive a rebuild: Developer ID and an app bundle (CLI 0.8.2)
 
 After 0.8.1 the owner still answered a new Calendar and Reminders prompt for
