@@ -11,6 +11,22 @@ manner: "버전별로 Added·Changed·Fixed 를 나누고 긴 실측 근거는 l
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-20
+
+CLI 0.8.3 이 필요하다(`cli-contract.json` 의 `minimumVersion`).
+
+### Added
+
+- `planner` 스킬에 Authorization 절. `eventkit.access_unavailable` 이면 소유자에게 묻고
+  `*.authorization.request` 를 보내 "Sherpa" 권한 창을 허용하게 한다. 권한은 Sherpa 에 붙어 업그레이드를
+  넘는다(CLI 0.8.2, ADR-0009). 2026-11-20 실측에서 에이전트가 요청 모양과 `deadline_ms` 상한을 몰라
+  `protocol.invalid_envelope` 로 끝난 호출이 있었다.
+
+### Changed
+
+- `minimumVersion` 을 0.8.3 으로 올렸다. CLI 0.8.3 은 권한 창이 뜨지 않아 상태가 `not_determined` 로
+  남으면 `succeeded` 대신 `eventkit.authorization_prompt_unavailable` 로 답한다.
+
 ## [0.8.2] - 2026-11-20
 
 CLI 0.8.1 이 필요하다(`cli-contract.json` 의 `minimumVersion`). 스킬 본문은 바뀌지 않았다.

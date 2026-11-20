@@ -37,6 +37,19 @@ AppleScript or their SQLite stores: those paths are slow, unverified, and
 bypass the opaque references later mutations need. A payload key the schema
 does not list is `protocol.invalid_payload`.
 
+## Authorization
+
+A read or mutation that fails with `eventkit.access_unavailable` needs the
+owner's grant. Ask first, then send the matching `event.authorization.request`
+or `reminder.authorization.request` (payload schema
+`sherpa.planner.event-authorization-request.request.v2` or
+`sherpa.planner.reminder-authorization-request.request.v2`, policy effect
+`authorization_prompt`, evidence `authorization_readback`, `deadline_ms` at
+most 300000) and tell the owner to allow the "Sherpa" prompt. The grant belongs
+to Sherpa, not to the terminal or agent app, and survives upgrades. If the
+request fails with `eventkit.authorization_prompt_unavailable`, macOS showed no
+prompt; report it instead of retrying. `denied` is the owner's answer: stop.
+
 ## Korean writing gate
 
 Treat the Calendar date as the time expression and the title as the name of what
