@@ -115,3 +115,22 @@ private func reminderListRequest(_ payload: String) throws -> WorkerRequest {
     ))
     #expect(unknown.stableErrorCode == WorkerProtocolError.invalidPayload.stableCode)
 }
+
+/// `*.authorization.request` answered `succeeded` with evidence `matched` while the
+/// status read back was still `not_determined`: macOS had shown no prompt because the
+/// responsible host app had no usage description (2026-11-20). A request that leaves
+/// the status undetermined must fail by name; an answer the owner gave, including
+/// `denied`, is a real result.
+@Test func authorizationRequestFailsWhenTheStatusStaysUndetermined() throws {
+    let request = try WorkerRequest(data: Data(#"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"req-auth","operation_id":"op-auth","capability":"event.authorization.request","payload":{"schema":"sherpa.planner.event-authorization-request.request.v2"},"deadline_ms":1000,"idempotency_key":"idem-auth","policy":{"effect":"authorization_prompt","required_evidence":"authorization_readback","artifact_directory":null}}"#.utf8))
+
+    let unanswered = try authorizationRequestResponse(request, domain: "event", status: .notDetermined)
+    #expect(unanswered.status == .failed)
+    #expect(unanswered.stableErrorCode == "eventkit.authorization_prompt_unavailable")
+    #expect(unanswered.error?.retry == .afterUserAction)
+
+    for status in [EKAuthorizationStatus.fullAccess, .denied, .writeOnly] {
+        let answered = try authorizationRequestResponse(request, domain: "event", status: status)
+        #expect(answered.status == .succeeded)
+    }
+}

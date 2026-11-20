@@ -33,13 +33,8 @@ public final class EventKitWorker {
             if request.capability == PlannerCapability.eventAuthorizationRequest.rawValue {
                 _ = try request.payload.decode(as: EmptyPlannerRequest.self, allowedKeys: ["schema"])
                 _ = try await store.requestFullAccessToEvents()
-                return .success(
-                    request: request,
-                    result: try encodeJSONObject(AuthorizationResult(
-                        domain: "event", authorization: authorizationName(EKEventStore.authorizationStatus(for: .event))
-                    )),
-                    effect: .init(kind: .authorizationPrompt, state: .applied),
-                    evidence: .init(kind: .authorizationReadback, state: .matched)
+                return try authorizationRequestResponse(
+                    request, domain: "event", status: EKEventStore.authorizationStatus(for: .event)
                 )
             }
             if request.capability == PlannerCapability.eventSourceList.rawValue {
@@ -134,10 +129,9 @@ public final class EventKitWorker {
             if request.capability == PlannerCapability.reminderAuthorizationRequest.rawValue {
                 _ = try request.payload.decode(as: EmptyPlannerRequest.self, allowedKeys: ["schema"])
                 _ = try await store.requestFullAccessToReminders()
-                return .success(request: request, result: try encodeJSONObject(AuthorizationResult(
-                    domain: "reminder", authorization: authorizationName(EKEventStore.authorizationStatus(for: .reminder))
-                )), effect: .init(kind: .authorizationPrompt, state: .applied),
-                    evidence: .init(kind: .authorizationReadback, state: .matched))
+                return try authorizationRequestResponse(
+                    request, domain: "reminder", status: EKEventStore.authorizationStatus(for: .reminder)
+                )
             }
             if request.capability == PlannerCapability.reminderSourceList.rawValue {
                 _ = try request.payload.decode(as: EmptyPlannerRequest.self, allowedKeys: ["schema"])
@@ -300,6 +294,24 @@ func entityRequiringFullAccess(for capability: String) -> EKEntityType? {
     default:
         nil
     }
+}
+
+/// The answer to `*.authorization.request` from the status read back afterwards. A
+/// status that is still undetermined means macOS showed no prompt — for example when
+/// the responsible app has no usage description — so it is a named failure, not a
+/// matched read-back.
+func authorizationRequestResponse(
+    _ request: WorkerRequest, domain: String, status: EKAuthorizationStatus
+) throws -> WorkerResponse {
+    guard status != .notDetermined else {
+        return .failure(request: request, code: "eventkit.authorization_prompt_unavailable", retry: .afterUserAction)
+    }
+    return .success(
+        request: request,
+        result: try encodeJSONObject(AuthorizationResult(domain: domain, authorization: authorizationName(status))),
+        effect: .init(kind: .authorizationPrompt, state: .applied),
+        evidence: .init(kind: .authorizationReadback, state: .matched)
+    )
 }
 
 func requireFullAccess(_ status: EKAuthorizationStatus) throws {
