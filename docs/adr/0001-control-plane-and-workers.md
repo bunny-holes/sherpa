@@ -7,6 +7,11 @@ owner: maintainer
 
 # ADR-0001: Rust Control Plane with Language-Native Workers
 
+> **정정 (2026-11-20).** Developer ID·Team ID·유료 멤버십을 영구 제외한 부분은
+> [ADR-0009](0009-developer-id-signed-helper-bundle.md)가 대체한다. 헬퍼는 Developer ID 로 서명한 앱
+> 번들로 나가 업그레이드 뒤에도 macOS 권한이 이어진다. Homebrew 배포, 공증·App Store 를 하지 않는다는
+> 결정은 그대로다.
+
 > **Superseded (2026-08-27).** Rust 제어 평면은 Swift 로 대체되었고, 언어별 워커 경계도
 > 함께 사라졌다. 남은 것은 EventKit·Mail·iMessage·KakaoTalk 를 직접 다루는 단일 네이티브
 > 실행 파일이다. 이 문서는 그 결정을 왜 내렸는지에 대한 기록으로만 남는다.

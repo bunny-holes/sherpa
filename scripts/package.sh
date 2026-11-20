@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # 릴리스 아카이브와 Homebrew Formula 를 만든다.
 #
-# 아카이브에는 실행 파일 둘만 담는다: Bun 으로 컴파일한 코어 bin/sherpa 와 Swift Apple
-# 헬퍼 libexec/sherpa-apple(ADR-0008). 에이전트 스킬은 plugin marketplace 로 따로 나간다.
+# 아카이브에는 Bun 으로 컴파일한 코어 bin/sherpa 와, Developer ID 로 서명한 앱 번들 안의
+# Swift Apple 헬퍼 libexec/SherpaHelper.app 만 담는다(ADR-0008, ADR-0009). 에이전트 스킬은
+# plugin marketplace 로 따로 나간다.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -19,6 +20,10 @@ readonly LOG_SCOPE="release:package"
 
 log() { printf '%s [%s:%s] %s\n' "$1" "$LOG_SCOPE" "$2" "$3" >&2; }
 fail() { log error "$1" "$2"; exit 1; }
+
+PUBLISH=0
+[ "${1:-}" = "--publish" ] && PUBLISH=1
+readonly PUBLISH
 
 log info start "building the core and the Apple helper"
 (cd "$CORE_PATH" && bun install --frozen-lockfile >/dev/null && bun run build >/dev/null) \
@@ -44,18 +49,44 @@ log info version "version=$version"
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
 
-install -d "$STAGING/bin" "$STAGING/libexec"
+# 헬퍼는 앱 번들로 담고 Developer ID 로 서명한다. macOS 는 번들이 아닌 실행 파일의 권한을 경로에
+# 묶어서, Cellar/<version>/ 아래로 설치되는 헬퍼가 업그레이드마다 Calendar·Reminders 를 다시 물었다.
+# 번들은 번들 식별자와 서명 팀으로 묶여 경로와 바이너리가 바뀌어도 권한이 이어진다(2026-11-20 실측).
+readonly BUNDLE="$STAGING/libexec/SherpaHelper.app"
+install -d "$STAGING/bin" "$BUNDLE/Contents/MacOS"
 install -m 0755 "$BINARY" "$STAGING/bin/sherpa"
-install -m 0755 "$HELPER" "$STAGING/libexec/sherpa-apple"
+install -m 0755 "$HELPER" "$BUNDLE/Contents/MacOS/sherpa-apple"
+# 번들 Info.plist 는 헬퍼에 박는 Info.plist 에서 만든다. 판 번호를 둘 곳을 늘리지 않는다.
+cp "$HELPER_PACKAGE/Resources/Info.plist" "$BUNDLE/Contents/Info.plist"
+plutil -insert CFBundleExecutable -string sherpa-apple "$BUNDLE/Contents/Info.plist"
+plutil -insert CFBundlePackageType -string APPL "$BUNDLE/Contents/Info.plist"
+plutil -insert LSUIElement -bool true "$BUNDLE/Contents/Info.plist"
+
+# 서명 인증서는 SHERPA_SIGNING_IDENTITY(SHA-1 또는 이름), 없으면 키체인의 첫 Developer ID
+# Application 이다. 배포(--publish)는 그것 없이는 멈춘다. 검사용 실행은 ad-hoc 으로 떨어지되 남긴다.
+identity="${SHERPA_SIGNING_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
+  | awk -F'"' '/"Developer ID Application: /{split($1, f, " "); print f[2]; exit}')}"
+if [ -n "$identity" ]; then
+  timestamp="--timestamp=none"
+  [ "$PUBLISH" = 1 ] && timestamp="--timestamp"
+  codesign --force --sign "$identity" "$timestamp" "$BUNDLE" >/dev/null 2>&1 \
+    || fail failure "reason=helper_signing_failed"
+  codesign -d -r- "$BUNDLE" 2>&1 | grep -q 'identifier "dev.xiyo.sherpa" and anchor apple generic' \
+    || fail failure "reason=helper_requirement_not_developer_id"
+  log info sign "helper bundle signed with Developer ID"
+elif [ "$PUBLISH" = 1 ]; then
+  fail failure "reason=developer_id_identity_missing — a release must be signed with Developer ID"
+else
+  codesign --force --sign - "$BUNDLE" >/dev/null 2>&1 || fail failure "reason=helper_signing_failed"
+  log warn sign "no Developer ID identity; helper bundle is ad-hoc signed and privacy grants will not survive upgrades"
+fi
 
 staged="$(cd "$STAGING" && find . -type f | sort | tr '\n' ' ')"
-[ "$staged" = "./bin/sherpa ./libexec/sherpa-apple " ] \
-  || fail failure "reason=unexpected_archive_contents staged=$staged"
-# Apple silicon 은 서명 없는 실행 파일을 죽인다. 둘 다 ad-hoc 서명이 유효해야 한다.
-for executable in "$STAGING/bin/sherpa" "$STAGING/libexec/sherpa-apple"; do
-  codesign --verify "$executable" 2>/dev/null \
-    || fail failure "reason=signature_invalid file=${executable#"$STAGING/"}"
-done
+expected="./bin/sherpa ./libexec/SherpaHelper.app/Contents/Info.plist ./libexec/SherpaHelper.app/Contents/MacOS/sherpa-apple ./libexec/SherpaHelper.app/Contents/_CodeSignature/CodeResources "
+[ "$staged" = "$expected" ] || fail failure "reason=unexpected_archive_contents staged=$staged"
+# Apple silicon 은 서명 없는 실행 파일을 죽인다. 코어는 ad-hoc, 헬퍼 번들은 위의 서명이 유효해야 한다.
+codesign --verify "$STAGING/bin/sherpa" 2>/dev/null || fail failure "reason=signature_invalid file=bin/sherpa"
+codesign --verify --strict "$BUNDLE" 2>/dev/null || fail failure "reason=signature_invalid file=libexec/SherpaHelper.app"
 
 readonly ARCHIVE="$DIST/sherpa-$version-$TARGET_TRIPLE.tar.gz"
 rm -f "$ARCHIVE"
@@ -75,7 +106,7 @@ readonly ARCHIVE_NAME="${ARCHIVE##*/}"
 readonly TAG="v$version"
 readonly RELEASE_URL="https://github.com/$RELEASE_REPOSITORY/releases/download/$TAG/$ARCHIVE_NAME"
 
-if [ "${1:-}" = "--publish" ]; then
+if [ "$PUBLISH" = 1 ]; then
   command -v gh >/dev/null 2>&1 || fail failure "reason=gh_missing"
   gh release view "$TAG" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1 \
     || fail failure "reason=release_tag_missing tag=$TAG"
@@ -112,13 +143,14 @@ class Sherpa < Formula
 
   def install
     bin.install "bin/sherpa"
-    libexec.install "libexec/sherpa-apple"
+    libexec.install "libexec/SherpaHelper.app"
   end
 
   def caveats
     <<~EOS
-      Sherpa is installed without Developer ID or notarization.
-      macOS may ask for Calendar, Reminders, or automation permission when used.
+      The Apple helper is signed with Developer ID and is not notarized.
+      macOS asks once for Calendar, Reminders, or automation permission for
+      "Sherpa"; the grant carries over to later upgrades.
       Mail, iMessage, and KakaoTalk reads need Full Disk Access for the app that
       runs sherpa. Run "sherpa kakaotalk setup" once before reading KakaoTalk.
 
@@ -133,7 +165,8 @@ class Sherpa < Formula
     # 스킬의 버전 가드가 이 출력 형식에 기댄다. version 은 Homebrew 가 url 에서 읽은 값이다.
     assert_equal "sherpa #{version}", shell_output("#{bin}/sherpa --version").strip
     assert_match "sherpa kakaotalk archive", shell_output("#{bin}/sherpa --help")
-    assert_equal "sherpa-apple #{version}", shell_output("#{libexec}/sherpa-apple --version").strip
+    helper = libexec/"SherpaHelper.app/Contents/MacOS/sherpa-apple"
+    assert_equal "sherpa-apple #{version}", shell_output("#{helper} --version").strip
     # 코어가 설치 위치의 헬퍼를 찾아 이름 있는 오류로 끝나는지 본다.
     assert_match "protocol.invalid_envelope", pipe_output("#{bin}/sherpa planner request", "{}", 1)
   end

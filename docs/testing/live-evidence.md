@@ -9,6 +9,31 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-20 — Privacy grants that survive a rebuild: Developer ID and an app bundle (CLI 0.8.2)
+
+After 0.8.1 the owner still answered a new Calendar and Reminders prompt for
+every helper build. Measured on this Mac from the Claude host, statuses only:
+
+- Ad-hoc helper rebuilt at the same path: both grants back to `not_determined`.
+- Signed with the owner's Developer ID Application certificate (designated
+  requirement `identifier "dev.xiyo.sherpa" and anchor apple generic … subject.OU`,
+  no code hash), granted once, then replaced at the same path by a different
+  binary (release instead of debug, different size and code hash): both
+  `full_access`, no prompt.
+- The same signed binary at a different path: `not_determined`. A symlink to the
+  granted path followed the target's grant, so a stable symlink cannot pin the
+  path. Homebrew installs each version under `Cellar/sherpa/<version>/`.
+- Wrapped as `Sherpa Helper.app` and signed, granted Calendar once, then copied to
+  another directory with a different binary inside: `full_access`, no prompt.
+  The bundle that `scripts/package.sh` then produced (a new build at a third path)
+  also read Calendar `full_access` without a prompt; Reminders, not yet granted
+  to the bundle identity, read `not_determined`.
+
+CLI 0.8.2 ships the helper as the Developer ID signed `libexec/SherpaHelper.app`
+(ADR-0009); the owner said they hold an Apple developer membership. Earlier in
+the day a zsh loop sent malformed envelopes (`protocol.invalid_envelope`, no
+prompt); that was the operator's script, not Sherpa.
+
 ## 2026-11-20 — Calendar authorization under an agent host; disposable EventKit suite and a real iMessage send (CLI 0.8.0 → 0.8.1)
 
 Run on this Mac from a shell started by the Claude desktop app. Only statuses,

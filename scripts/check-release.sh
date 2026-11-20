@@ -110,11 +110,14 @@ installed_version="$("$prefix/bin/sherpa" --version | awk '{print $2}')"
 [ "$installed_version" = "$expected_version" ] \
   || fail failure "reason=version_mismatch installed=$installed_version formula=$expected_version"
 
-helper_version="$("$prefix/libexec/sherpa-apple" --version | awk '{print $2}')"
+bundle="$prefix/libexec/SherpaHelper.app"
+helper_version="$("$bundle/Contents/MacOS/sherpa-apple" --version | awk '{print $2}')"
 [ "$helper_version" = "$expected_version" ] \
   || fail failure "reason=helper_version_mismatch installed=$helper_version formula=$expected_version"
+# Homebrew 가 설치하면서 번들을 고치면 서명이 깨지고, 권한이 업그레이드를 넘지 못한다.
+codesign --verify --strict "$bundle" 2>/dev/null || fail failure "reason=installed_helper_signature_invalid"
 
-stray="$(find "$prefix" -type f -not -path "$prefix/bin/sherpa" -not -path "$prefix/libexec/sherpa-apple" \
+stray="$(find "$prefix" -type f -not -path "$prefix/bin/sherpa" -not -path "$bundle/Contents/*" \
   -not -path '*/.brew/*' -not -name INSTALL_RECEIPT.json | head -3 | tr '\n' ' ')"
 [ -z "$stray" ] || fail failure "reason=unexpected_files_installed files=$stray"
 

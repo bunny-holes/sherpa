@@ -16,9 +16,9 @@ Each phase has two independent gates:
 2. **Owner-operated live validation** — the owner explicitly grants access and
    selects disposable or bounded real data. It is never run by the default gate.
 
-Homebrew packaging is an active deterministic gate. Developer ID signing,
-notarization, paid Apple developer membership, and App Store distribution are
-permanently outside the product plan.
+Homebrew packaging is an active deterministic gate. The Apple helper ships as a
+Developer ID signed bundle (ADR-0009); notarization and App Store distribution
+are outside the product plan.
 
 The active core goal spans Phase 1 and Phase 2: first obtain deterministic
 Calendar/Reminders authority, then close the loop from personal communication
@@ -39,7 +39,8 @@ Owner-operated gate: authorize Calendar and Reminders, run disposable
 schedule-aware CRUD
 round trips, run the disposable synthetic tag verifier, then separately preview
 and confirm each remaining private capability on a user-selected disposable
-Reminder. Rebuilding an unsigned executable may require authorization again.
+Reminder. A development build that is not signed with the release certificate
+asks for authorization again after each rebuild.
 
 Calendar collaboration is a planned extension, not part of the current CRUD
 claim. Organizer and attendee values are read-only observations today. A future
@@ -111,7 +112,7 @@ Build a relocatable, precompiled release archive or bottle and install it with
 a checksum-pinned Homebrew Formula. The Formula declares no runtime dependency
 and installs one executable.
 The packaged CLI then offers a separate explicit agent-host installation
-command. No distribution step may require Developer ID, notarization, or a
+command. No distribution step may require notarization, or an Apple identity or
 toolchain on the user's machine. A missing compatible prebuilt artifact fails
 as an unsupported platform instead of falling back to a local source build.
 

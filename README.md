@@ -59,7 +59,7 @@ The hook runs the full gate, including the release smoke, against each pushed co
 in a clean worktree under `.claude/worktrees/`.
 
 `bash scripts/package.sh` builds both executables, produces the release archive
-(`bin/sherpa`, `libexec/sherpa-apple`) and renders the Homebrew Formula from the
+(`bin/sherpa`, the Developer ID signed `libexec/SherpaHelper.app`) and renders the Homebrew Formula from the
 version the built core reports. Users install the released CLI with
 `brew install xiyo/tap/sherpa`, which also installs `sqlcipher`; the [release
 runbook](docs/testing/local-homebrew-release.md) publishes a version there and

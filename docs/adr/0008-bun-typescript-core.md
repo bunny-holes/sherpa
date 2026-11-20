@@ -13,6 +13,9 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > 셸을 띄운 앱(책임 프로세스)의 이름으로 권한을 묻기 때문에, Calendar 사용 설명이 없는 Claude 데스크톱에서
 > 부르면 권한 창 없이 `not_determined` 로 남았다. 헬퍼는 이제 책임을 놓고 자신을 한 번 다시 띄워
 > `dev.xiyo.sherpa` 로 권한을 받는다(`live-evidence.md` 같은 날짜 항목). 결정은 그대로다.
+>
+> **정정 (2026-11-20, CLI 0.8.2).** 헬퍼는 `libexec/sherpa-apple` 이 아니라 Developer ID 로 서명한
+> `libexec/SherpaHelper.app` 번들이고, 코어는 그 안의 `Contents/MacOS/sherpa-apple` 을 찾는다(ADR-0009).
 
 ## 맥락
 

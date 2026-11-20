@@ -43,10 +43,8 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 1. `*.authorization.request` 가 권한이 그대로 `not_determined` 여도 `succeeded`·증거 `matched` 로 답한다
    (`EventKitWorker.swift` 의 두 authorization request 분기, 2026-11-20 재현). 상태가 바뀌지 않았으면 이름 있는
    실패로 답하게 하고 결정적 시험을 세운다. 미수정.
-2. 업그레이드마다 Calendar·Reminders 권한을 다시 묻는다. ad-hoc 서명이라 권한이 코드 해시에 묶이기 때문이다.
-   소유자 키체인의 자체 서명 인증서로 헬퍼를 서명하면 권한 요건이 인증서 기준이 되어 판이 바뀌어도 이어질
-   것으로 본다(추론, 미검증). ADR-0005 가 막는 것은 Developer ID·유료 멤버십이지 자체 서명이 아니다.
-   착수 전 소유자 결정이 필요하다.
+2. 0.8.2 를 brew 로 올린 뒤 Reminders 권한을 번들 식별자에 한 번 주고, 다음 판(0.8.3 이상)으로 올렸을 때
+   두 권한이 권한 창 없이 이어지는지 확인한다(ADR-0009 의 결과, 판을 넘는 실측은 아직 없음).
 3. 헬퍼의 8 MiB 응답 문제: `apple/eventkit-service/Sources/SherpaNative/main.swift` 의 `plannerRequest` 가
    변경을 기록한 뒤 `encoded(maximumBytes: 8 MiB)` 로 인코딩해, 넘으면 `failed` 로 보고된다(코드로 확인,
    재현 안 함). 초과 응답 시험을 먼저 세운다.
