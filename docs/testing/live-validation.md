@@ -65,7 +65,9 @@ environment with only `TZ` for some calls, so a development core that needs
 Grants belong to the helper (`dev.xiyo.sherpa`), not to the terminal or agent
 app, and an unsigned rebuild or upgrade asks again. Run the
 `*.authorization.request` calls with `deadline_ms` at most 300000; a larger
-value is `protocol.invalid_envelope` before any prompt.
+value is `protocol.invalid_envelope` before any prompt. A request after which
+the status is still `not_determined` fails with
+`eventkit.authorization_prompt_unavailable`: macOS showed no prompt.
 
 ## 2. Private Reminder capability
 
