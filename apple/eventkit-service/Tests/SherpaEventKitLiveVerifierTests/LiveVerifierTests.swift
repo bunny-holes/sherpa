@@ -140,3 +140,25 @@ private func eventOccurrence(_ nativeLocator: String, at occurrenceDate: String,
         availability: "not_supported", alarms: SnapshotField([]), recurrenceRules: SnapshotField([])
     )
 }
+
+@Test func liveVerifierStartsTheWorkerWithThePlannerRequestSubcommand() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("sherpa-live-verifier-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let recorded = directory.appendingPathComponent("arguments")
+    let worker = directory.appendingPathComponent("worker")
+    try "#!/bin/sh\nprintf '%s ' \"$@\" > '\(recorded.path)'\ncat >/dev/null\nprintf '{}'\n"
+        .write(to: worker, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: worker.path)
+    let configuration = try LiveVerifierConfiguration.parse(
+        arguments: ["--worker", worker.path, "--expect-authorization-unavailable", "calendar"],
+        environment: [
+            "SHERPA_EVENTKIT_LIVE": "1",
+            "SHERPA_EVENTKIT_LIVE_CONFIRM": LiveVerifierConfiguration.authorizationUnavailableConfirmation,
+        ]
+    )
+    #expect(throws: (any Error).self) { try EventKitLiveVerifier(configuration: configuration).run() }
+    let arguments = try String(contentsOf: recorded, encoding: .utf8)
+    #expect(arguments == "planner request ")
+}

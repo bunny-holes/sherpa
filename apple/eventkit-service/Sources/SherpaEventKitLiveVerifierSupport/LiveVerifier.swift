@@ -133,6 +133,9 @@ public struct LiveVerifierConfiguration: Equatable {
         "VERIFY_EVENTKIT_AUTHORIZATION_UNAVAILABLE_ON_THIS_MAC"
     public static let readOnlyConfirmation = "VERIFY_EVENTKIT_READ_ONLY_CALENDAR_ON_THIS_MAC"
 
+    /// The worker is `sherpa` or `sherpa-apple`; both take planner envelopes only under this subcommand.
+    public static let workerArguments = ["planner", "request"]
+
     public let workerPath: String
     public let mode: LiveVerifierMode
 
@@ -341,10 +344,11 @@ public struct EventKitLiveVerifier {
         try at(.timedUpdateReadback) {
             try expect(updated.event.eventCollection.nativeLocator == destination, .collectionNativeLocator,
                        destination, updated.event.eventCollection.nativeLocator)
-            try expect(updated.event.alarms.value?.isEmpty == true, .alarmCount, "0",
-                       String(updated.event.alarms.value?.count ?? -1))
-            try expect(updated.event.recurrenceRules.value?.isEmpty == true, .recurrenceRuleCount,
-                       "0", String(updated.event.recurrenceRules.value?.count ?? -1))
+            // The adapter reports an empty collection as null (`collectionField`), never as [].
+            let alarms = updated.event.alarms.value?.count ?? 0
+            let rules = updated.event.recurrenceRules.value?.count ?? 0
+            try expect(alarms == 0, .alarmCount, "0", String(alarms))
+            try expect(rules == 0, .recurrenceRuleCount, "0", String(rules))
         }
         try at(.calendarReads) {
             let listed: EventListResult = try client.call(
@@ -653,6 +657,7 @@ private struct WorkerClient {
         catch { throw LiveVerifierError.invalidResponse }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: workerPath)
+        process.arguments = LiveVerifierConfiguration.workerArguments
         if let processTimeZone { process.environment = ["TZ": processTimeZone] }
         let input = Pipe(); let output = Pipe()
         process.standardInput = input; process.standardOutput = output; process.standardError = Pipe()
