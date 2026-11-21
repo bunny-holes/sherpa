@@ -9,6 +9,63 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — Codex 0.171.0 reaches the exported app on MCP 2026-07-28 only with its feature and env (bunny-holes/sherpa#51)
+
+This Mac, run by the main session. The exported `Sherpa.app` 0.8.5 was
+running; its core still had the SDK default `legacy: 'serve'`. Codex 0.171.0 ran `codex app-server` with `-c` overrides,
+so no configuration file changed. A `tee` in front of the bundled
+`sherpa-relay` recorded the messages on the wire.
+
+- With the feature `mcp_2026_07_28` on and `CODEX_MCP_PROTOCOL_VERSION=2026-07-28`
+  in the server entry's env:
+  - The first request was `server/discover`. Its `_meta` carried
+    `io.modelcontextprotocol/protocolVersion` `2026-07-28`, `clientInfo` and
+    `clientCapabilities`. `tools/list` and `tools/call` carried the same
+    envelope.
+  - The server answered `supportedVersions: ["2026-07-28"]` with
+    `io.modelcontextprotocol/serverInfo` in the result's `_meta`.
+    `tools/list` listed 35 tools and `reminder_authorization_status` succeeded.
+  - The relay Codex started reached the app on the default socket.
+- With either of them missing, Codex opened with `initialize` (protocol
+  `2025-06-18`), then `notifications/initialized`, `tools/list` and
+  `tools/call`. That core still served the 2025 era, so the calls succeeded.
+- Claude Code 2.1.326 negotiated `2026-07-28` with a test server through
+  `sherpa-relay` (client log `negotiatedProtocolVersion`). The exported app's
+  path with Claude Code was not measured.
+- Corrected path: **"Claude Code and Codex negotiated 2025-11-25" was the server
+  answering a hand-sent `initialize`.** The 2026-11-21 spike entry, ADR-0010
+  and app-connection-v1 §10.1 recorded that protocol for both agents. Neither
+  agent's negotiation was read then. The relay checks below that print
+  `initialize` answering `2025-11-25` sent that request by hand too.
+- The owner then decided that the core accepts 2026-07-28 only (ADR-0011). The
+  core now runs `serveStdio` with `legacy: "reject"`. Its unit and stdio tests
+  show the refusals:
+  - an `initialize` for `2025-11-25` or `2025-06-18` gets `-32022` with
+    `data: {"supported":["2026-07-28"],"requested":"<version>"}`;
+  - an envelope-less request gets `-32022` without `requested`;
+  - the same channel then opens with `server/discover`.
+  Codex in its default configuration has not been run against such a core
+  yet.
+
+## 2026-11-21 — Delete confirmation through the exported app's relay (bunny-holes/sherpa#29)
+
+This Mac, run by the main session. The exported `Sherpa.app` 0.8.5 built from
+`main` `d2f9ad9` ran from `open`. `reminder_delete` was called through the
+bundled `sherpa-relay` on a disposable reminder.
+
+- The confirmation window came up within 0.29 s of the call, in front, with
+  the right contents. Its buttons accepted a press after about 1 s
+  (`armingDelay` in `apple/sherpa-app/App/ConfirmationWindows.swift`).
+- Decline gave `confirmation.declined` with effect `not_started`.
+- Allow gave a succeeded outcome with evidence `native_absence_readback`
+  `matched`.
+- Pressing nothing gave `confirmation.timed_out` after 30.01 s.
+- The status window listed every permission as Allowed. Its "Agent
+  configuration" cut the relay path with "…", so the path could not be read in
+  full. That defect is bunny-holes/sherpa#52.
+- Not measured: whether the menu bar icon shows, the menu's Quit, a call by
+  Claude Code through the exported app, and memory over a long run.
+
 ## 2026-11-21 — Sherpa.app built by an Xcode project (bunny-holes/sherpa#49)
 
 This Mac (macOS 27.3, Xcode 27.2 27B52), branch `build/xcode-app`.
@@ -409,7 +466,9 @@ owner's Developer ID; nothing shipped. Results that ADR-0010 rests on:
   running TS SDK v2 `serveStdio` with a custom transport. A direct unsigned
   connection and an ad-hoc signed relay were refused; a relay facing a fake
   server exited 77; with no app it exited 69. Claude Code 2.1.326 and Codex
-  0.170.0 both called tools through the relay (protocol 2025-11-25).
+  0.170.0 both called tools through the relay. (The protocol 2025-11-25 first
+  written here was the answer to a hand-sent `initialize`, not either agent's
+  negotiation; see 2026-11-22.)
 - Memory (physical footprint): MCP probe idle 20.5 MB in Bun, 2.6 MB in Rust
   rmcp 3.11.0; the multiplexed Bun server stayed at 13.6 MB and the Swift host
   at 5.2 MB over 8 minutes, 941 calls and 48 sessions. A first 20-minute run
