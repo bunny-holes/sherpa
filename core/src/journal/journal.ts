@@ -120,11 +120,13 @@ export async function journaled<T>(
   journal: MutationJournal,
   capability: string,
   attempt: () => Promise<T>,
+  /** An id the caller already showed (the MCP confirmation); a fresh one otherwise. */
+  requestedOperationID?: string,
 ): Promise<JournaledResult<T>> {
   log.info(`[cli:sherpa:mutation-start] capability=${capability}`);
   let operationID: string;
   try {
-    operationID = journal.start(capability);
+    operationID = journal.start(capability, requestedOperationID);
   } catch {
     throw new JournaledMutationError(
       null,

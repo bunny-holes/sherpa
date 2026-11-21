@@ -20,6 +20,14 @@ export interface IMessageEnvironment {
 const MAX_TEXT_BYTES = 64 * 1024;
 const INT64_MAX = 9_223_372_036_854_775_807n;
 
+/** The message body `send` accepts: 1 byte to 64 KiB of strict UTF-8 without NUL. */
+export function messageBody(text: Uint8Array): string {
+  if (text.byteLength === 0 || text.byteLength > MAX_TEXT_BYTES) throw invalidRequest();
+  const body = utf8(text);
+  if (body.includes("\0")) throw invalidRequest();
+  return body;
+}
+
 function withStore<T>(environment: IMessageEnvironment, body: (store: MessageStore) => T): T {
   const store = MessageStore.open(environment.databasePath);
   try {
@@ -89,9 +97,7 @@ export function imessageCommands(environment: IMessageEnvironment) {
     },
 
     async send(chatID: bigint, text: Uint8Array): Promise<Uint8Array> {
-      if (text.byteLength === 0 || text.byteLength > MAX_TEXT_BYTES) throw invalidRequest();
-      const body = utf8(text);
-      if (body.includes("\0")) throw invalidRequest();
+      const body = messageBody(text);
       const guids =
         chatID > INT64_MAX ? [] : withStore(environment, (store) => store.chatGUIDs(chatID));
       const guid = guids.length === 1 ? guids[0]! : "";
