@@ -70,7 +70,11 @@ final class AppModel {
         }
         DispatchQueue.global().async {
             server.shutdown()
-            DispatchQueue.main.async { MainActor.assumeIsolated { done() } }
+            // Not DispatchQueue.main: applicationShouldTerminate answers .terminateLater, and
+            // AppKit then waits in a nested run loop. Started from a main-queue block (the
+            // SIGTERM source), that loop cannot drain the main queue, so the app waited forever
+            // (2026-11-21). A run loop block runs inside the nested loop too.
+            RunLoop.main.perform(inModes: [.common]) { MainActor.assumeIsolated { done() } }
         }
     }
 

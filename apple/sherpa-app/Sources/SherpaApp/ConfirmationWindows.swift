@@ -4,8 +4,9 @@ import SherpaAppServer
 import SwiftUI
 
 /// Shows each delete or send request in a front-most window with the time left, one at a
-/// time; the others wait their turn while their own 30 seconds run (contract §9). The
-/// window's content is user data and is never logged.
+/// time; the others wait their turn while their own time runs. That time is the request's
+/// `timeout_ms`, what is left of the core's 30 seconds after its preview read (contract §9).
+/// The window's content is user data and is never logged.
 @MainActor
 final class ConfirmationWindows {
     private struct Pending {

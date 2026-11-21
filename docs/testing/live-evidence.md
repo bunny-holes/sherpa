@@ -9,11 +9,13 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
-## 2026-11-21 — Sherpa.app socket server and relay (bunny-holes/sherpa#28, before the menu app ran)
+## 2026-11-21 — Sherpa.app socket server and relay (bunny-holes/sherpa#28, Developer ID dev bundle)
 
 Builds of the `apple/sherpa-app` package on this Mac. Most checks ran the server
 inside the DEBUG test host, which is the same server library without the menu.
-The coordinator also launched the menu app itself, as the Developer ID dev bundle.
+The menu app itself ran as the Developer ID dev bundle from
+`apple/sherpa-app/scripts/build-app.sh`: `dev.xiyo.sherpa`, team `FN2KZ2J47B`,
+hardened runtime, listening on the default socket.
 
 - Signed with the owner's Developer ID and hardened runtime, three programs passed
   the production requirements (`anchor apple generic`, leaf OU `FN2KZ2J47B`,
@@ -27,37 +29,65 @@ The coordinator also launched the menu app itself, as the Developer ID dev bundl
 - The static check of the Developer ID signed 89 MB core (`core/dist/sherpa`,
   hardened runtime) took 290–550 ms over repeated runs. It used
   `kSecCSCheckAllArchitectures | kSecCSStrictValidate`.
-- The dev bundle ran as `dev.xiyo.sherpa`, team `FN2KZ2J47B`, with hardened runtime,
-  and listened on the default socket. Its own `sherpa-relay` passed both signature
-  checks, got the preface `unavailable` / `core_failed` because main's core
-  cannot serve yet, and exited 75. A linker-signed release relay accepted the app
-  and was refused with `peer_signature`, exit 77.
-- The core on main has no `app serve` yet. Started by the host, it wrote a line
-  that is not a frame, and the host logged `mux.frame_invalid`. The core exited
-  1, and the host restarted it after 0 s and 1 s.
+- With the core of main after bunny-holes/sherpa#44, the menu app started
+  `sherpa-core app serve` as its child. Through the bundle's own relay, MCP
+  `initialize` answered protocol `2025-11-25` and server `sherpa` 0.8.5.
+  `tools/list` listed 35 tools, the planner tools included, and the relay exited
+  0 at the end of its input.
+- SIGTERM to the menu app ended it in 0.12 s. The core exited, the socket file
+  was removed, and `app.lock` stayed.
+- A linker-signed release relay accepted the menu app and was refused with
+  `peer_signature`, exit 77. That is the gate's release relay check whenever the
+  app runs; with no app it exits 69.
+- The first-run status window, launched by `open` from a shell, was on the
+  current Space (`kCGWindowIsOnscreen` true).
 - The core's environment held HOME, LOG_LEVEL, PATH and TMPDIR, plus
   `__CF_USER_TEXT_ENCODING`. That last variable appears even under `env -i`: the
   child's own CoreFoundation sets it.
-- `apple/sherpa-app/scripts/build-app.sh` signed the dev bundle with the
-  Developer ID without a keychain prompt. `spctl` assessed it as
-  `Unnotarized Developer ID`; notarization is bunny-holes/sherpa#31.
-- Corrected on the way: posix_spawn reset only SIGPIPE in the core, so the core
-  inherited the SIGTERM that the app ignores for its own signal source. After a
-  frame violation the core ignored SIGTERM, and SIGKILL ended it 5 s later. The
-  host now resets every signal. The fake core records which signals it inherited
-  as ignored, and the process tests require none and a SIGTERM end. Status changes
-  also reached the observer from concurrent queues, so a stale `ready` could follow
-  `stopped`. They now pass through one serial queue.
-- The pre-push hook's first run of commit `c3610f0` failed in the sherpa-app tests.
-  The gate then discarded test output, so the failing test is unknown. The next
-  hook run passed, and so did 12 later runs, three of them with every core busy.
-  The gate now prints failing tests. Two races in the test helpers were fixed:
-  a child's exit could be seen before its last stderr line, and
-  `Process.waitUntilExit` on a Swift concurrency thread waited forever for a child
-  that had already ended.
-- Not observed yet: the menu bar icon, the first-run status window, the Calendar, Reminders and Automation prompts,
-  the Full Disk Access pane, and the front-most confirmation panel. A signed run
-  with the real core waits for `app serve` (bunny-holes/sherpa#27).
+- `spctl` assessed the dev bundle as `Unnotarized Developer ID`; notarization is
+  bunny-holes/sherpa#31. Signing needed no keychain prompt.
+- Corrected on the way:
+  - **Core ignored SIGTERM.** posix_spawn reset only SIGPIPE in the core, so the
+    core inherited the SIGTERM that the app ignores for its own signal source.
+    After a frame violation the core ignored SIGTERM, and SIGKILL ended it 5 s
+    later. The host now resets every signal. The fake core records which signals
+    it inherited as ignored, and the process tests require none and a SIGTERM end.
+  - **Stale status.** Status changes reached the observer from concurrent queues,
+    so a stale `ready` could follow `stopped`. They now pass through one serial
+    queue.
+  - **Core on main could not serve.** Before bunny-holes/sherpa#44 the core had no
+    `app serve`. Started by the host, it wrote a line that is not a frame. The
+    host logged `mux.frame_invalid` and restarted it after 0 s and 1 s. The menu
+    app showed `core_failed`, and its relay got that preface and exited 75.
+  - **Menu app never quit on SIGTERM.** The first menu app build never ended after
+    SIGTERM. It sat in `-[NSApplication _shouldTerminate]` after the server had
+    already removed the socket. The SIGTERM source runs on the main queue, so the
+    `.terminateLater` wait loop could not run the completion that
+    `DispatchQueue.main` held. The completion is now a run loop block. No
+    deterministic test covers this AppKit path; the 0.12 s run above is its check.
+  - **Window on another Space.** When the coordinator launched the first build,
+    its first-run window was on another Space (offscreen). The window now moves to
+    the active Space and may join a full-screen Space.
+  - **Flaky first hook run.** The pre-push hook's first run of commit `c3610f0`
+    failed in the sherpa-app tests. The gate then discarded test output, so the
+    failing test is unknown. The next hook run passed, and so did 12 later runs,
+    three of them with every core busy. The gate now prints failing tests. Two
+    races in the test helpers were fixed. A child's exit could be seen before its
+    last stderr line. `Process.waitUntilExit` on a Swift concurrency thread waited
+    forever for a child that had already ended.
+- Measured for the Messages request: `AEDeterminePermissionToAutomateTarget` asked
+  without a prompt returned `errAEEventWouldRequireUserConsent` for a running
+  Messages and Mail. AppleEvents.h says a target that is not running gives
+  `procNotFound` and no prompt, so the request now starts the target without
+  activating it, then asks.
+- Not observed yet:
+  - the menu bar icon;
+  - a Calendar, Reminders or Automation prompt, since all but Messages were
+    already allowed for this identifier;
+  - the Messages request path;
+  - the Full Disk Access pane;
+  - the front-most confirmation panel with the real core;
+  - quitting from the menu.
 
 ## 2026-11-21 — Confirmation under a reused request id, a cut connection and the 30 s budget (core 0.8.5 branch build)
 

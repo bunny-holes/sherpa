@@ -25,6 +25,9 @@ final class StatusWindowController {
         )
         window.title = "Sherpa"
         window.isReleasedWhenClosed = false
+        // Shown on the Space the person is on, over a full-screen app too. Without this the
+        // first-run window opened on another Space (offscreen, 2026-11-21).
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.contentView = NSHostingView(rootView: StatusView(model: AppModel.shared))
         return window
     }

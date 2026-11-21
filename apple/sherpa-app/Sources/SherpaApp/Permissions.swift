@@ -118,12 +118,40 @@ final class PermissionCenter {
             }
         case .mailAutomation, .messagesAutomation:
             guard let target = kind.automationTarget else { return }
-            Task.detached {
-                let state = Self.automationState(target: target, ask: true)
-                await MainActor.run { self.states[kind] = state }
+            Task {
+                // macOS answers only for a running target; for one that is not running
+                // AEDeterminePermissionToAutomateTarget returns procNotFound and shows no
+                // prompt (AppleEvents.h). So the request starts it first, without activating it.
+                if NSRunningApplication.runningApplications(withBundleIdentifier: target).isEmpty {
+                    await Self.launchInBackground(target)
+                }
+                let state = await Task.detached { Self.automationState(target: target, ask: true) }.value
+                states[kind] = state
+                AppBootstrap.logger.info("app:permission:request", "kind=\(kind.rawValue) state=\(state)")
             }
         case .fullDiskAccess:
             break
+        }
+    }
+
+    /// Starts an app in the background and waits up to 10 s for it to finish launching.
+    private static func launchInBackground(_ bundleIdentifier: String) async {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+            AppBootstrap.logger.warn("app:permission:launch", "target=\(bundleIdentifier) status=not_installed")
+            return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        AppBootstrap.logger.info("app:permission:launch", "target=\(bundleIdentifier) status=start")
+        do {
+            let app = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+            let deadline = Date(timeIntervalSinceNow: 10)
+            while !app.isFinishedLaunching, Date() < deadline {
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            AppBootstrap.logger.info("app:permission:launch", "target=\(bundleIdentifier) status=launched finished=\(app.isFinishedLaunching)")
+        } catch {
+            AppBootstrap.logger.warn("app:permission:launch", "target=\(bundleIdentifier) status=failed")
         }
     }
 
