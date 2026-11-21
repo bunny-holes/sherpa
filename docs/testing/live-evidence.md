@@ -43,6 +43,13 @@ the same server library without the menu.
   as ignored, and the process tests require none and a SIGTERM end. Status changes
   also reached the observer from concurrent queues, so a stale `ready` could follow
   `stopped`. They now pass through one serial queue.
+- The pre-push hook's first run of commit `c3610f0` failed in the sherpa-app tests.
+  The gate then discarded test output, so the failing test is unknown. The next
+  hook run passed, and so did 12 later runs, three of them with every core busy.
+  The gate now prints failing tests. Two races in the test helpers were fixed:
+  a child's exit could be seen before its last stderr line, and
+  `Process.waitUntilExit` on a Swift concurrency thread waited forever for a child
+  that had already ended.
 - Not observed: the menu app launched under the Developer ID, its menu bar icon,
   the first-run status window, the Calendar, Reminders and Automation prompts,
   the Full Disk Access pane, and the front-most confirmation panel. A signed run

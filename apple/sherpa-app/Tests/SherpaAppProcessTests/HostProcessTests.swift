@@ -158,11 +158,12 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
     @Test func stopsRestartingAfterFiveExitsInTheWindow() async throws {
         let rig = try Rig(core: #"{"version":"0.9.0","mode":"exit-at-start","code":3}"#)
         defer { rig.tearDown() }
-        // Delays and window scaled by 0.01: 0, 10, 20, 40 ms in a 1.2 s window.
-        let host = try await rig.startHost(["--restart-scale", "0.01"])
+        // Delays and window scaled by 0.05: 0, 50, 100, 200 ms in a 6 s window, wide enough
+        // for five spawns on a loaded machine.
+        let host = try await rig.startHost(["--restart-scale", "0.05"])
         #expect(await host.waitForError("[app:core:restart] status=stopped reason=core_failed exits_in_window=5"))
         let delays = host.errorLines(containing: "[app:core:restart] status=scheduled").compactMap { field("delay_ms", in: $0) }
-        #expect(delays == ["0", "10", "20", "40"])
+        #expect(delays == ["0", "50", "100", "200"])
         #expect(rig.coreSpawns == 5)
 
         let relay = try rig.startRelay()

@@ -27,8 +27,15 @@ for package in $SWIFT_PACKAGES; do
   log info "check:swift:start" "package=$package"
   swift build --package-path "$REPO_ROOT/apple/$package" >/dev/null \
     || fail "reason=swift_build_failed package=$package"
-  swift test --package-path "$REPO_ROOT/apple/$package" >/dev/null \
-    || fail "reason=swift_test_failed package=$package"
+  # 실패하면 어느 시험이 왜 실패했는지 남긴다. 한 번 실패하고 다시 돌리면 통과하는 시험은 출력이 없으면
+  # 찾을 수 없다.
+  test_log="$(mktemp)"
+  if ! swift test --package-path "$REPO_ROOT/apple/$package" >"$test_log" 2>&1; then
+    grep -E '✘|error:|Expectation failed' "$test_log" | tail -40 >&2
+    rm -f "$test_log"
+    fail "reason=swift_test_failed package=$package"
+  fi
+  rm -f "$test_log"
 done
 
 log info "check:swift:success" "packages=4"

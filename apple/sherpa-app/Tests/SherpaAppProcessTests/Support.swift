@@ -80,20 +80,24 @@ enum SignedPrograms {
     }()
 }
 
+/// Runs a tool to its end with its output discarded. posix_spawn and waitpid, because
+/// Process.waitUntilExit spins the calling thread's run loop, and on a Swift concurrency
+/// thread it was seen to wait forever for a child that had already ended.
 @discardableResult
 func runTool(_ path: String, _ arguments: [String]) -> Int32 {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: path)
-    process.arguments = arguments
-    process.standardOutput = FileHandle.nullDevice
-    process.standardError = FileHandle.nullDevice
-    do {
-        try process.run()
-    } catch {
-        return -1
-    }
-    process.waitUntilExit()
-    return process.terminationStatus
+    let argv = ([path] + arguments).map { strdup($0) } + [nil]
+    defer { argv.forEach { free($0) } }
+    var actions: posix_spawn_file_actions_t?
+    posix_spawn_file_actions_init(&actions)
+    defer { posix_spawn_file_actions_destroy(&actions) }
+    posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0)
+    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0)
+    var pid: pid_t = 0
+    guard posix_spawn(&pid, path, &actions, nil, argv, environ) == 0 else { return -1 }
+    var status: Int32 = 0
+    while waitpid(pid, &status, 0) == -1, errno == EINTR {}
+    let signal = status & 0x7f
+    return signal == 0 ? (status >> 8) & 0xff : 128 + signal
 }
 
 /// A folder under the user's temporary directory, short enough for a socket path.
@@ -136,6 +140,9 @@ final class Child: @unchecked Sendable {
     private let lock = NSLock()
     private var outputData = Data()
     private var errorData = Data()
+    private var readingOutput = false
+    private var outputEnded = false
+    private var errorEnded = false
 
     init(_ path: String, arguments: [String], environment: [String: String], output mode: Output) throws {
         process.executableURL = URL(fileURLWithPath: path)
@@ -148,6 +155,7 @@ final class Child: @unchecked Sendable {
             let data = handle.availableData
             guard !data.isEmpty else {
                 handle.readabilityHandler = nil
+                self?.lock.withLock { self?.errorEnded = true }
                 return
             }
             self?.lock.withLock { self?.errorData.append(data) }
@@ -163,10 +171,12 @@ final class Child: @unchecked Sendable {
     var pid: pid_t { process.processIdentifier }
 
     func readOutput() {
+        lock.withLock { readingOutput = true }
         output.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty else {
                 handle.readabilityHandler = nil
+                self?.lock.withLock { self?.outputEnded = true }
                 return
             }
             self?.lock.withLock { self?.outputData.append(data) }
@@ -208,10 +218,13 @@ final class Child: @unchecked Sendable {
         await poll(timeout) { errorText.contains(text) ? true : nil } ?? false
     }
 
-    /// The exit status, 128 + the signal for a signal, or nil while it still runs.
+    /// The exit status, 128 + the signal for a signal, or nil while it still runs. It waits
+    /// for the end of the pipes being read too: the exit and the last output line reach this
+    /// process through different sources, in either order.
     func exitStatus(within timeout: Duration = .seconds(10)) async -> Int32? {
         await poll(timeout) { () -> Int32? in
             guard !process.isRunning else { return nil }
+            guard lock.withLock({ errorEnded && (!readingOutput || outputEnded) }) else { return nil }
             return process.terminationReason == .exit ? process.terminationStatus : 128 + process.terminationStatus
         }
     }
@@ -220,10 +233,16 @@ final class Child: @unchecked Sendable {
         kill(process.processIdentifier, number)
     }
 
+    /// Kills the child and waits up to 5 s for its end. Not Process.waitUntilExit: it spins
+    /// the calling thread's run loop, and from a test's thread it was seen to wait forever for
+    /// a child that SIGKILL had already ended.
     func stop() {
         guard process.isRunning else { return }
         kill(process.processIdentifier, SIGKILL)
-        process.waitUntilExit()
+        let deadline = Date(timeIntervalSinceNow: 5)
+        while process.isRunning, Date() < deadline {
+            usleep(10_000)
+        }
     }
 }
 
