@@ -9,6 +9,43 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — The exported app with the 2026-07-28-only core serves both agents' 2026-07-28 opening and refuses Codex's default `initialize` (bunny-holes/sherpa#51)
+
+This Mac, run by the main session. Branch `feat/mcp-2026-07-28` at `233ee48`
+was archived and exported with the contract §2 bundle build commands:
+`Sherpa.app` 0.8.5, Developer ID, `codesign --verify --deep --strict`
+passed, not notarized. It ran in place of the `main` build. A `tee` in front
+of the bundled `sherpa-relay` recorded the wire; only methods, versions and
+errors were kept.
+
+- Codex 0.171.0 `codex app-server`, with `-c` overrides only:
+  - Feature `mcp_2026_07_28` on and `CODEX_MCP_PROTOCOL_VERSION=2026-07-28` in
+    the server entry's env: `server/discover`, `tools/list` and `tools/call`
+    all carried the 2026-07-28 envelope with `clientInfo.name`
+    `codex-mcp-client`. The answers gave `supportedVersions: ["2026-07-28"]`
+    and 35 tools. `mcpServer/tool/call` of `reminder_authorization_status`
+    returned status `succeeded`.
+  - Default configuration (feature off): the only request on the wire was
+    `initialize` with `protocolVersion` `2025-06-18`. The core answered
+    `-32022` `Unsupported protocol version: 2025-06-18` with
+    `data: {"supported":["2026-07-28"],"requested":"2025-06-18"}`. Codex did
+    not ask again with a newer revision. It left the server at
+    `runtimeStatus` `failed` with `toolsError` `MCP startup failed:
+    handshaking with MCP server failed: JSON-RPC error: -32022: Unsupported
+    protocol version: 2025-06-18(...)`, and a tool call returned `-32603`
+    `failed to get client: MCP startup failed: ...`.
+- Claude Code 2.1.326, interactive, started in a pty with
+  `--strict-mcp-config --mcp-config`. No prompt was sent, so no model was
+  called.
+  - The first request was `server/discover` (id `server-discover-probe-1`)
+    with the 2026-07-28 envelope and `clientInfo.name` `claude-code`. The
+    answer gave `supportedVersions: ["2026-07-28"]`. `tools/list` followed
+    with the 2026-07-28 envelope.
+  - Claude Code's MCP log: `Successfully connected (transport: stdio) in
+    49ms`, server `sherpa` 0.8.5, `hasTools` true.
+- Not measured: a tool call from Claude Code, which needs a model call, and
+  the `clientCapabilities` either agent declared (not recorded).
+
 ## 2026-11-22 — Codex 0.171.0 reaches the exported app on MCP 2026-07-28 only with its feature and env (bunny-holes/sherpa#51)
 
 This Mac, run by the main session. The exported `Sherpa.app` 0.8.5 was
@@ -31,7 +68,7 @@ so no configuration file changed. A `tee` in front of the bundled
   `tools/call`. That core still served the 2025 era, so the calls succeeded.
 - Claude Code 2.1.326 negotiated `2026-07-28` with a test server through
   `sherpa-relay` (client log `negotiatedProtocolVersion`). The exported app's
-  path with Claude Code was not measured.
+  path with Claude Code was measured later the same day (entry above).
 - Corrected path: **"Claude Code and Codex negotiated 2025-11-25" was the server
   answering a hand-sent `initialize`.** The 2026-11-21 spike entry, ADR-0010
   and app-connection-v1 §10.1 recorded that protocol for both agents. Neither
@@ -44,8 +81,8 @@ so no configuration file changed. A `tee` in front of the bundled
     `data: {"supported":["2026-07-28"],"requested":"<version>"}`;
   - an envelope-less request gets `-32022` without `requested`;
   - the same channel then opens with `server/discover`.
-  Codex in its default configuration has not been run against such a core
-  yet.
+  Codex in its default configuration was run against such a core later the
+  same day (entry above).
 
 ## 2026-11-21 — Delete confirmation through the exported app's relay (bunny-holes/sherpa#29)
 

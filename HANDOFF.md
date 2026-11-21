@@ -1,4 +1,4 @@
-# sherpa HANDOFF — 2026-11-22 03:50 KST
+# sherpa HANDOFF — 2026-11-22 04:03 KST
 
 ## 목표
 
@@ -17,15 +17,19 @@ Swift 중계로 연다(ADR-0010). MCP 는 2026-07-28 규격만 받는다(소유�
   2026-11-21 "Delete confirmation through the exported app's relay".
 - Codex 0.171.0 실측(2026-11-22): 기능 `mcp_2026_07_28` 과 서버 항목 env `CODEX_MCP_PROTOCOL_VERSION=2026-07-28` 을
   켜면 `server/discover`·봉투로 2026-07-28, 끄면 `initialize`(2025-06-18). live-evidence 2026-11-22.
-- #51 구현(브랜치 `feat/mcp-2026-07-28`, 이 파일을 담은 PR): `serveStdio` 의 `legacy: "reject"`, 확인 기록의
+- #51 실기(2026-11-22, 브랜치 `233ee48` 로 내보낸 앱, 공증 전): 기능과 env 를 켠 Codex 는 2026-07-28 로 도구 35개와
+  읽기 호출 성공. 기본 설정 Codex 는 `initialize` 하나만 보내 -32022 를 받고 다시 묻지 않으며, 서버 `failed`, 도구
+  호출 -32603. Claude Code 2.1.326 은 `server/discover`·`tools/list` 로 2026-07-28 연결(`hasTools` true).
+  live-evidence 2026-11-22 "The exported app with the 2026-07-28-only core".
+- #51 구현(브랜치 `feat/mcp-2026-07-28`, PR #53): `serveStdio` 의 `legacy: "reject"`, 확인 기록의
   `client` 를 요청 봉투 `io.modelcontextprotocol/clientInfo` 에서 읽기, -32022 응답의 warn 로그, 단위·stdio 회귀
   시험, ADR-0011, ADR-0010·계약 §1·§2·§5·§7·§9·§10·§12–§16·아키텍처·live-evidence 정정. 상태 창 경로 잘림 결함은 #52.
 
 ## 진행 중
 
-- #51 PR 병합 대기. 병합 전 게이트 결과와 커밋을 PR 본문에 적는다(AGENTS.md).
-- 남은 실기(소유자·메인 세션): 내보낸 앱 경로로 Claude Code 가 2026-07-28 로 붙어 도구를 부르는지, 이 변경 뒤의
-  코어가 기본 설정 Codex 를 -32022 로 거부할 때 Codex 가 보여 주는 것. 결과는 live-evidence, 계약 §16, ADR-0011.
+- PR #53(#51) 병합 대기. 게이트 결과와 그 커밋은 PR 본문에 있다. head 가 바뀌면 다시 돌려 고친다(AGENTS.md).
+- 남은 실기(소유자·메인 세션): 내보낸 앱 경로로 Claude Code 가 도구를 부르는지. 모델 호출이 필요해 2026-11-22 에는
+  연결과 `tools/list` 까지만 쟀다. 결과는 live-evidence, 계약 §16, ADR-0011.
 
 ## 하지 말 것 (실패한 시도, 되돌린 것)
 
@@ -65,7 +69,7 @@ Swift 중계로 연다(ADR-0010). MCP 는 2026-07-28 규격만 받는다(소유�
 
 ## 다음 행동
 
-1. #51 PR 을 게이트 결과와 함께 병합한 뒤, 내보낸 앱으로 Claude Code 호출과 기본 설정 Codex 의 거부를 잰다.
+1. PR #53 을 병합한다(head 의 게이트 결과 확인 뒤). 이어서 내보낸 앱으로 Claude Code 의 도구 호출을 잰다.
 2. 플러그인 MCP 등록(다음 PR, #31 일부): Codex 항목에 `env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }` 와 기능
    안내를 넣는다. `plugins/sherpa/` 를 바꾸면 플러그인 버전을 올린다.
 3. #52 상태 창 중계 경로 잘림을 고치고 실기로 확인한다.
@@ -76,6 +80,7 @@ Swift 중계로 연다(ADR-0010). MCP 는 2026-07-28 규격만 받는다(소유�
 ## 저장소·세션 상태 (브랜치, 미커밋, 미푸시, pane)
 
 - 원격은 `bunny-holes/sherpa`(공개), Formula 는 `XIYO/homebrew-tap`. `main` 은 `d2f9ad9`.
-- 워크트리 `.claude/worktrees/mcp-modern` 에 브랜치 `feat/mcp-2026-07-28`(#51). 병합 뒤 워크트리와 브랜치를 지운다.
+- 워크트리 `.claude/worktrees/mcp-modern` 에 브랜치 `feat/mcp-2026-07-28`(#51, PR #53). 병합 뒤 워크트리와 브랜치를
+  지운다.
 - 개발 실행: `cd core && bun run build`, `swift build --package-path apple/eventkit-service`, 앱 번들은
   `xcodebuild`(계약 §2 "번들 빌드").
