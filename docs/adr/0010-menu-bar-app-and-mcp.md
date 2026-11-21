@@ -47,15 +47,14 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 | 기존 권한 이어짐 | 다른 이름·실행 파일의 번들도 `dev.xiyo.sherpa` 면 Calendar·Reminders `full_access`, 미리알림 663건·일정 26건 읽힘. hardened runtime 에서도 같다 |
 | hardened runtime 권한 항목 | 새 식별자로 요청: Calendar 는 calendars 항목 없이 즉시 거부(tccd 가 항목 없음을 기록), 있으면 권한 창. Reminders 는 항목 없이 권한 창 |
 | Bun 과 hardened runtime | 권한 항목 없이 실행됨. JIT 를 허용하지 않아 MCP 프로브 실제 점유가 22.7 → 16.5 MB, iMessage 대화 500개 읽기 시간 같음(0.03 s) |
-| 앱이 띄운 Bun 자식의 전체 디스크 접근 | 앱에 권한이 없을 때 자식의 chat.db 읽기 거부(`imessage.store_unreadable`), 같은 명령을 셸에서 돌리면 성공. 자식은 앱의 권한으로 판정된다 |
+| 앱이 띄운 Bun 자식의 전체 디스크 접근 | 앱에 권한이 없을 때 자식의 chat.db 읽기 거부(`imessage.store_unreadable`), 같은 명령을 셸에서 돌리면 성공. 소유자가 앱에 권한을 켠 뒤 같은 자식이 읽기 성공(종료 0). 자식은 앱의 권한으로 판정된다. 권한 창은 없고, 접근을 시도한 앱이 목록에 꺼진 채 올라간다 |
+| 공증 | 앱(calendars 항목) + 권한 항목 없는 Bun 실행 파일 + 중계를 hardened runtime·타임스탬프로 서명한 번들(zip 41 MB)이 36초 만에 Accepted, 문제 0건. 스테이플 뒤 격리 속성을 붙인 사본을 Gatekeeper 가 `Notarized Developer ID` 로 통과, 공증된 중계로 MCP 호출 성공 |
 | 소켓·중계 | 서명된 중계 3개 동시 세션이 Bun 프로세스 하나에서 따로 돈다. 서명 없는 직접 연결·ad-hoc 중계는 거부, 가짜 서버는 중계가 거부(종료 77), 앱이 없으면 종료 69 |
 | 실제 에이전트 | Claude Code 2.1.326(`--mcp-config`)과 Codex 0.170.0(`mcp_servers`)이 중계를 거쳐 도구 호출 성공. 협상 규격 2025-11-25 |
 | 메모리 | MCP 서버: Bun(TS SDK) 대기 20.5 MB, Rust(rmcp) 2.6 MB. 다중화 Bun 8분 941회·세션 48개 13.6 MB 고정, Swift 호스트 5.2 MB 고정. SwiftUI 메뉴 막대 최소 앱 17 MB(모두 실제 점유) |
 
 ## 아직 확인 전
 
-- 앱에 전체 디스크 접근을 준 뒤 Bun 자식이 읽게 되는지(소유자 조작 필요).
-- 권한 항목 없는 Bun 실행 파일과 앱 번들이 공증을 통과하는지(소유자의 `notarytool` 자격 증명 필요).
 - 앱이 꺼져 있을 때 중계가 앱을 띄우는 동작, 로그인 항목(`SMAppService`).
 - Claude Code·Codex 가 2026-07-28 규격으로 붙는지(지금은 둘 다 2025-11-25).
 
@@ -78,7 +77,9 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 - 권한은 앱 하나에 모이고, 권한 공유 구멍이 닫힌다.
 - 유지할 언어는 Swift 와 Bun 둘이다.
 - 앱이 떠 있어야 MCP 가 돈다. 중계는 앱이 없으면 분명한 코드로 끝난다.
-- 공증과 cask 로 배포가 바뀌고, 릴리스는 소유자의 공증 자격 증명이 있는 Mac 에서만 낼 수 있다.
+- 공증과 cask 로 배포가 바뀌고, 릴리스는 소유자의 공증 자격 증명(키체인 프로필 `sherpa-notary`)이 있는 Mac
+  에서만 낼 수 있다. 애플이 개발자 프로그램 약관을 고치면 소유자가 다시 동의하기 전까지 공증이 HTTP 403
+  으로 막힌다.
 
 ## Related
 

@@ -30,7 +30,21 @@ owner's Developer ID; nothing shipped. Results that ADR-0010 rests on:
 - Started by the app through Launch Services, a Bun child reading `chat.db`
   failed with `imessage.store_unreadable`; the same command from the agent
   shell succeeded. The child is judged by the app's Full Disk Access, which the
-  app did not have. Granting it and seeing the child succeed is still open.
+  app did not have. macOS offers no prompt for Full Disk Access: the attempt
+  added `dev.xiyo.sherpa` to the list switched off (`auth_value` 0). After the
+  owner switched it on (`auth_value` 2), the same app-started child read one
+  chat and exited 0.
+- Notarization: the app (calendars entitlement), the Bun MCP multiplexer with
+  no entitlements and the Swift relay, each signed with hardened runtime and a
+  secure timestamp, were zipped (41 MB) and submitted with
+  `notarytool --keychain-profile sherpa-notary`. Accepted in 36 s with no
+  issues; the ticket lists all three executables. After stapling, a copy
+  carrying a quarantine attribute was assessed by `spctl` as
+  `Notarized Developer ID`, and the notarized relay completed an MCP
+  `initialize` and `tools/list` against the running spike host. Saving the
+  profile first failed with HTTP 403 ("A required agreement is missing or has
+  expired") until the owner accepted the Apple Developer Program License
+  Agreement issued 2026-10-30.
 - An app-owned Unix socket with audit-token signature checks in both
   directions multiplexed three concurrent relay sessions onto one Bun process
   running TS SDK v2 `serveStdio` with a custom transport. A direct unsigned
