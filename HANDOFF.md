@@ -1,4 +1,4 @@
-# sherpa HANDOFF — 2026-11-21 09:41 KST
+# sherpa HANDOFF — 2026-11-21 09:45 KST
 
 ## 목표
 
@@ -10,10 +10,12 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 - 0.8.0 머지(PR bunny-holes/sherpa#10, 머지 커밋 `6e1b035`): 코어(cli·journal·process·mail·imessage·
   kakaotalk·apple 프록시), Swift 를 `sherpa-apple` 로 축소, `reminder.list` 선택 키 버그 수정과 회귀 테스트,
   문서 명령 검사 `scripts/checks/verify_doc_commands.py`, 스킬·README·아키텍처·배포 스크립트, 플러그인 0.8.0.
+- 0.8.5 배포(PR bunny-holes/sherpa#21, 태그 `v0.8.5`, tap `078ef8a`): `SHERPA_APPLE_RESPONSE_LIMIT_BYTES` 로
+  초과 응답 경로를 명령으로 시험한다. 게이트는 읽기 초과, `scripts/live/oversized-response.py` 는 적용된
+  변경을 본다. 설치본 0.8.5 실기 통과, 0.8.4 → 0.8.5 업그레이드에서 권한이 이어졌다.
 - 0.8.4 배포(PR bunny-holes/sherpa#19, 태그 `v0.8.4`, tap `28f7da6`): 변경 적용 뒤 응답이 한도를 넘으면
   결과만 빼고 `partial`/`uncertain` + `protocol.result_too_large` 로 보고한다(planner·Mail·ReminderKit).
-  0.8.3 → 0.8.4 업그레이드에서 권한이 이어졌다. 2026-11-21 명령 실기(`scripts/live/oversized-response.py`)와
-  게이트의 명령 시험(읽기 초과)이 더해졌다(`SHERPA_APPLE_RESPONSE_LIMIT_BYTES`, CLI 0.8.5).
+  0.8.3 → 0.8.4 업그레이드에서 권한이 이어졌다.
 - 0.8.3 배포(PR bunny-holes/sherpa#17, 태그 `v0.8.3`, tap `e2aba79`): 권한 창이 안 뜬 권한 요청을
   `eventkit.authorization_prompt_unavailable` 로 답한다. 0.8.2 → 0.8.3 업그레이드에서 권한이 창 없이 이어졌다.
 - 0.8.2 배포(PR bunny-holes/sherpa#15, 태그 `v0.8.2`, tap `47b68ca`): 헬퍼를 Developer ID 로 서명한
@@ -59,7 +61,7 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 
 ## 저장소·세션 상태 (브랜치, 미커밋, 미푸시, pane)
 
-- `main` 은 `3ee4b7a`(0.8.4) 이후다. 원격은 `bunny-holes/sherpa`(`XIYO/sherpa` 가 같은 저장소로 리다이렉트), Formula 는
+- `main` 은 `7ac2c11`(0.8.5) 이후다. 원격은 `bunny-holes/sherpa`(`XIYO/sherpa` 가 같은 저장소로 리다이렉트), Formula 는
   `XIYO/homebrew-tap`.
 - 개발 실행: `cd core && bun run build`, `swift build --package-path apple/eventkit-service`, 그리고
   `SHERPA_APPLE_BIN=apple/eventkit-service/.build/debug/sherpa-apple core/dist/sherpa …`.

@@ -24,6 +24,11 @@ deleted. `scripts/check-all.sh` now checks the read case through the core
 command (`failed`, effect `none`/`not_applicable`, exit 0) and that an
 unacceptable override is ignored.
 
+After the release (PR bunny-holes/sherpa#21, merge `7ac2c11`, tag `v0.8.5`, tap
+`078ef8a`), `brew upgrade xiyo/tap/sherpa` installed 0.8.5, `brew test` passed,
+and the same script against `/opt/homebrew/bin/sherpa` passed with the same
+results and no permission prompt across the 0.8.4 → 0.8.5 upgrade.
+
 Observed on the way: Swift-encoded responses omit keys whose value is null
 (`result`, `error`), while the Objective-C shims write `null`. Recorded as open
 in `HANDOFF.md`.
