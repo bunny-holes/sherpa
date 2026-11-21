@@ -9,6 +9,10 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 
 # Apple 헬퍼는 Developer ID 로 서명한 앱 번들이다
 
+> **정정 (2026-11-21).** ADR-0010 이 헬퍼 번들을 `Sherpa.app` 메뉴 막대 앱으로, 책임을 놓고 다시 뜨는 방식을
+> 서명 확인 소켓으로, "공증하지 않음" 을 공증 + Homebrew cask 로 대체한다(구현 전). 번들 식별자와
+> Developer ID 서명은 그대로다.
+
 ADR-0005 와 ADR-0001 의 "Developer ID·유료 멤버십·Team ID 는 영구 제외" 를 이 결정이 대체한다.
 Homebrew 로 배포한다는 결정, 공증·App Store·Apple 검증 개발자 표시를 하지 않는다는 결정은 그대로다.
 

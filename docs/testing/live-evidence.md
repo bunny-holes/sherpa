@@ -9,6 +9,41 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-21 — Menu bar app and MCP spike (throwaway build, ADR-0010)
+
+Throwaway Swift and Bun programs in the session scratch area, signed with the
+owner's Developer ID; nothing shipped. Results that ADR-0010 rests on:
+
+- A bundle with identifier `dev.xiyo.sherpa` but a different name and
+  executable read Calendar and Reminders as `full_access` (663 Reminders, 26
+  Events in 60 days), with and without hardened runtime, with no prompt.
+- Under hardened runtime a new identifier (`dev.xiyo.sherpa.spike`) asking for
+  Calendar without `com.apple.security.personal-information.calendars` was
+  refused at once (granted false in 0.0 s; tccd logged the missing
+  entitlement); with it, tccd logged `AUTHREQ_PROMPTING` for
+  `kTCCServiceCalendar`. Reminders prompted with no entitlement at all. The
+  prompts were left unanswered.
+- The compiled Bun core and a TS MCP SDK probe ran under hardened runtime with
+  no entitlements. Without `allow-jit` the probe's footprint after 50 calls
+  was 16.5 MB instead of 22.7 MB; `imessage chats --limit 500` took 0.03 s
+  either way.
+- Started by the app through Launch Services, a Bun child reading `chat.db`
+  failed with `imessage.store_unreadable`; the same command from the agent
+  shell succeeded. The child is judged by the app's Full Disk Access, which the
+  app did not have. Granting it and seeing the child succeed is still open.
+- An app-owned Unix socket with audit-token signature checks in both
+  directions multiplexed three concurrent relay sessions onto one Bun process
+  running TS SDK v2 `serveStdio` with a custom transport. A direct unsigned
+  connection and an ad-hoc signed relay were refused; a relay facing a fake
+  server exited 77; with no app it exited 69. Claude Code 2.1.326 and Codex
+  0.170.0 both called tools through the relay (protocol 2025-11-25).
+- Memory (physical footprint): MCP probe idle 20.5 MB in Bun, 2.6 MB in Rust
+  rmcp 3.11.0; the multiplexed Bun server stayed at 13.6 MB and the Swift host
+  at 5.2 MB over 8 minutes, 941 calls and 48 sessions. A first 20-minute run
+  grew the host by about 78 MB because its reader thread had no autorelease
+  pool; the Bun process stayed at 15 MB. A minimal SwiftUI `MenuBarExtra` app
+  idles at 17 MB.
+
 ## 2026-11-21 — Oversized response after an applied change, through the command (CLI 0.8.5 build)
 
 The 0.8.4 entry below rested on deterministic tests alone. A Developer ID
