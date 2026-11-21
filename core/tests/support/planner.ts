@@ -40,6 +40,11 @@ export function plannerDescriptors(): Record<string, unknown>[] {
     "reminder.delete",
   ];
   return capabilities.map((capability) => {
+    // `WorkerCapabilityDescriptor`: names spell the capability with hyphens, and both
+    // authorization capabilities of a domain share one success schema.
+    const stem = `sherpa.planner.${capability.replaceAll(".", "-")}`;
+    const authorization = /^(event|reminder)\.authorization\./.exec(capability);
+    const success = authorization ? `sherpa.planner.${authorization[1]}-authorization` : stem;
     const prompt = capability.endsWith("authorization.request");
     const remove = capability.endsWith(".delete");
     const mutation =
@@ -49,8 +54,8 @@ export function plannerDescriptors(): Record<string, unknown>[] {
     return {
       capability,
       application_contract: "sherpa.planner.v2",
-      request_schema: `sherpa.planner.${capability}.request.v2`,
-      success_schema: `sherpa.planner.${capability}.success.v2`,
+      request_schema: `${stem}.request.v2`,
+      success_schema: `${success}.success.v2`,
       effect: prompt ? "authorization_prompt" : mutation ? "mutation" : "read",
       required_evidence: prompt
         ? "authorization_readback"
@@ -64,8 +69,8 @@ export function plannerDescriptors(): Record<string, unknown>[] {
       state: "supported",
       ...(prompt || mutation
         ? {
-            partial_schema: `sherpa.planner.${capability}.partial.v2`,
-            uncertain_schema: `sherpa.planner.${capability}.uncertain.v2`,
+            partial_schema: `${stem}.partial.v2`,
+            uncertain_schema: `${stem}.uncertain.v2`,
           }
         : {}),
     };
@@ -101,7 +106,7 @@ export function v2Response(
 /** Targets of the delete previews (§9): the reads `*.get` and `*.source.list` answer with these. */
 export const previewResults: Record<string, Record<string, unknown>> = {
   "event.get": {
-    schema: "sherpa.planner.event.get.success.v2",
+    schema: "sherpa.planner.event-get.success.v2",
     event: {
       title: "Dentist",
       event_collection: { title: "Home" },
@@ -110,15 +115,15 @@ export const previewResults: Record<string, Record<string, unknown>> = {
     },
   },
   "reminder.get": {
-    schema: "sherpa.planner.reminder.get.success.v2",
+    schema: "sherpa.planner.reminder-get.success.v2",
     reminder: { title: "Milk", reminder_collection: { title: "Groceries" } },
   },
   "event.source.list": {
-    schema: "sherpa.planner.event.source.list.success.v2",
+    schema: "sherpa.planner.event-source-list.success.v2",
     sources: [{ title: "iCloud", event_collections: [{ native_locator: "c-1", title: "Work" }] }],
   },
   "reminder.source.list": {
-    schema: "sherpa.planner.reminder.source.list.success.v2",
+    schema: "sherpa.planner.reminder-source-list.success.v2",
     sources: [
       { title: "iCloud", reminder_collections: [{ native_locator: "c-1", title: "Groceries" }] },
     ],

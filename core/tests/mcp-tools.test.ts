@@ -47,7 +47,7 @@ const targets: Answer = (request) => {
   switch (request.capability) {
     case "event.get":
       return succeeded(request, {
-        schema: "sherpa.planner.event.get.success.v2",
+        schema: "sherpa.planner.event-get.success.v2",
         event: {
           title: "Dentist",
           event_collection: { title: "Home" },
@@ -57,7 +57,7 @@ const targets: Answer = (request) => {
       });
     case "reminder.get":
       return succeeded(request, {
-        schema: "sherpa.planner.reminder.get.success.v2",
+        schema: "sherpa.planner.reminder-get.success.v2",
         reminder: {
           title: "Milk",
           reminder_collection: { title: "Groceries" },
@@ -66,7 +66,7 @@ const targets: Answer = (request) => {
       });
     case "reminder.source.list":
       return succeeded(request, {
-        schema: "sherpa.planner.reminder.source.list.success.v2",
+        schema: "sherpa.planner.reminder-source-list.success.v2",
         sources: [
           {
             title: "iCloud",
@@ -136,11 +136,11 @@ describe("planner delete tools ask the app first (§9)", () => {
     const { requests, prompts, call } = harness({ decisions: ["approved"] });
     const value = await call("event_delete", { native_locator: "event-1", span: "this" });
     expect(requests.map((request) => [request.capability, request.payload])).toEqual([
-      ["event.get", { schema: "sherpa.planner.event.get.request.v2", native_locator: "event-1" }],
+      ["event.get", { schema: "sherpa.planner.event-get.request.v2", native_locator: "event-1" }],
       [
         "event.delete",
         {
-          schema: "sherpa.planner.event.delete.request.v2",
+          schema: "sherpa.planner.event-delete.request.v2",
           native_locator: "event-1",
           span: "this",
         },
@@ -286,7 +286,7 @@ describe("planner tools without confirmation", () => {
       request_id: "op-1",
       idempotency_key: "op-1",
       deadline_ms: 20_000,
-      payload: { schema: "sherpa.planner.event.create.request.v2", title: "Lunch" },
+      payload: { schema: "sherpa.planner.event-create.request.v2", title: "Lunch" },
       policy: {
         effect: "mutation",
         required_evidence: "native_readback",

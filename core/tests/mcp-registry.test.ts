@@ -88,13 +88,13 @@ describe("reconciling with the app's descriptors (§10.2)", () => {
     );
     const remove = confirmed.find((item) => item.entry.capability === "event.delete");
     expect(remove).toMatchObject({
-      requestSchema: "sherpa.planner.event.delete.request.v2",
+      requestSchema: "sherpa.planner.event-delete.request.v2",
       policy: {
         effect: "mutation",
         required_evidence: "native_absence_readback",
         artifact_directory: null,
       },
-      preview: { capability: "event.get", requestSchema: "sherpa.planner.event.get.request.v2" },
+      preview: { capability: "event.get", requestSchema: "sherpa.planner.event-get.request.v2" },
     });
   });
 
@@ -126,12 +126,12 @@ describe("reconciling with the app's descriptors (§10.2)", () => {
   test("the request schema and policy come from the descriptor", () => {
     const renamed = descriptors.map((row) =>
       row.capability === "event.list"
-        ? { ...row, request_schema: "sherpa.planner.event.list.request.v9" }
+        ? { ...row, request_schema: "sherpa.planner.event-list.request.v9" }
         : row,
     );
     const confirmed = reconcile({ kind: "discovered", descriptors: renamed });
     expect(confirmed.find((item) => item.entry.capability === "event.list")?.requestSchema).toBe(
-      "sherpa.planner.event.list.request.v9",
+      "sherpa.planner.event-list.request.v9",
     );
   });
 

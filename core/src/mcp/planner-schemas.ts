@@ -102,7 +102,7 @@ export const eventCollectionDelete = z.strictObject({ collection_native_locator:
 const payloadSchema = z
   .string()
   .describe(
-    "the request schema of that capability, for example sherpa.planner.event.create.request.v2",
+    "the request schema of that capability, for example sherpa.planner.event-create.request.v2",
   );
 export const eventCommandValidate = z.strictObject({
   commands: z.array(

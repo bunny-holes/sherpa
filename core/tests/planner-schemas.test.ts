@@ -199,7 +199,7 @@ const examples: Record<string, Record<string, unknown>> = {
       {
         capability: "event.create",
         payload: {
-          schema: "sherpa.planner.event.create.request.v2",
+          schema: "sherpa.planner.event-create.request.v2",
           title: "Lunch",
           start: instant,
           end: later,
@@ -208,7 +208,7 @@ const examples: Record<string, Record<string, unknown>> = {
       {
         capability: "event.delete",
         payload: {
-          schema: "sherpa.planner.event.delete.request.v2",
+          schema: "sherpa.planner.event-delete.request.v2",
           native_locator: "e",
           span: "this",
         },
@@ -221,11 +221,11 @@ const examples: Record<string, Record<string, unknown>> = {
     commands: [
       {
         capability: "reminder.create",
-        payload: { schema: "sherpa.planner.reminder.create.request.v2", title: "Milk" },
+        payload: { schema: "sherpa.planner.reminder-create.request.v2", title: "Milk" },
       },
       {
         capability: "reminder.complete",
-        payload: { schema: "sherpa.planner.reminder.complete.request.v2", native_locator: "r" },
+        payload: { schema: "sherpa.planner.reminder-complete.request.v2", native_locator: "r" },
       },
     ],
   },
@@ -312,11 +312,13 @@ test("every planner tool has an example and its request has keys EventKitWorker 
 const helper = process.env.SHERPA_APPLE_BIN;
 
 describe.skipIf(!helper)("the built sherpa-apple helper (SHERPA_APPLE_BIN)", () => {
-  const planner = new HelperProcessPlanner(helper);
+  // Built here: the body is collected even when the block is skipped.
+  let planner: HelperProcessPlanner;
   const read = { effect: "read", required_evidence: "none", artifact_directory: null } as const;
   let descriptors: CapabilityDescriptor[] = [];
 
   beforeAll(async () => {
+    planner = new HelperProcessPlanner(helper);
     const reply = await planner.request(
       plannerRequest(
         "capabilities",
