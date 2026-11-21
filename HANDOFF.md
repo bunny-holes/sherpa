@@ -1,37 +1,26 @@
-# sherpa HANDOFF — 2026-11-21 09:45 KST
+# sherpa HANDOFF — 2026-11-21 14:47 KST
 
 ## 목표
 
-Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 0.8.0 은 배포됐다. 남은
-소유자 조작 실측과 결함·문서 부채를 닫는다. 근거와 결정은 `docs/adr/0008-bun-typescript-core.md`.
+Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 에이전트에는 앱 안의 TS MCP 서버를
+Swift 중계로 연다(소유자 결정 2026-11-21, `docs/adr/0010-menu-bar-app-and-mcp.md`). 지금 배포본은 CLI 0.8.5
+(Bun 코어 + `SherpaHelper.app`)다.
 
 ## 끝난 것 (커밋·태그·실측 근거)
 
-- 0.8.0 머지(PR bunny-holes/sherpa#10, 머지 커밋 `6e1b035`): 코어(cli·journal·process·mail·imessage·
-  kakaotalk·apple 프록시), Swift 를 `sherpa-apple` 로 축소, `reminder.list` 선택 키 버그 수정과 회귀 테스트,
-  문서 명령 검사 `scripts/checks/verify_doc_commands.py`, 스킬·README·아키텍처·배포 스크립트, 플러그인 0.8.0.
-- 0.8.5 배포(PR bunny-holes/sherpa#21, 태그 `v0.8.5`, tap `078ef8a`): `SHERPA_APPLE_RESPONSE_LIMIT_BYTES` 로
-  초과 응답 경로를 명령으로 시험한다. 게이트는 읽기 초과, `scripts/live/oversized-response.py` 는 적용된
-  변경을 본다. 설치본 0.8.5 실기 통과, 0.8.4 → 0.8.5 업그레이드에서 권한이 이어졌다.
-- 0.8.4 배포(PR bunny-holes/sherpa#19, 태그 `v0.8.4`, tap `28f7da6`): 변경 적용 뒤 응답이 한도를 넘으면
-  결과만 빼고 `partial`/`uncertain` + `protocol.result_too_large` 로 보고한다(planner·Mail·ReminderKit).
-  0.8.3 → 0.8.4 업그레이드에서 권한이 이어졌다.
-- 0.8.3 배포(PR bunny-holes/sherpa#17, 태그 `v0.8.3`, tap `e2aba79`): 권한 창이 안 뜬 권한 요청을
-  `eventkit.authorization_prompt_unavailable` 로 답한다. 0.8.2 → 0.8.3 업그레이드에서 권한이 창 없이 이어졌다.
-- 0.8.2 배포(PR bunny-holes/sherpa#15, 태그 `v0.8.2`, tap `47b68ca`): 헬퍼를 Developer ID 로 서명한
-  `libexec/SherpaHelper.app` 번들로 낸다(ADR-0009). 설치본 Calendar·Reminders `full_access`, 검증 묶음 `verified`.
-- 0.8.1 배포(PR bunny-holes/sherpa#13, 태그 `v0.8.1`, tap `e9a968c`): 헬퍼가 권한 책임을 놓고 다시 떠
-  `dev.xiyo.sherpa` 로 권한을 받는다. 이 Mac 의 설치본이 Calendar·Reminders `full_access`, 일회용 검증 묶음 `verified`.
-- 릴리스: 태그 `v0.8.0`, `XIYO/sherpa` 릴리스 자산 업로드·되읽기 확인, `XIYO/homebrew-tap` Formula `d055c43`.
-  이 Mac 의 `brew upgrade`·`brew test` 통과. 플러그인은 plug-hole 이 기본 브랜치를 따라가므로 머지로 배포됐다.
-- 실측(2026-11-20, 이 Mac): `docs/testing/live-evidence.md` 의 같은 날짜 항목. Mail 커서 28페이지 27,964건
-  중복 0, Reminders 663건 0.67초, KakaoTalk setup 2.7초 복구·kakaocli 와 결과 동일, iMessage 가 imsg 0.21.1 과
-  모든 필드 일치.
-- kakaocli 자동 탐지 결함 보고서: 세션 공유 노트 폴더의 `kakaocli-user-id-detection-defect.md`(저장소 밖).
+- 1단계 시험 빌드(2026-11-21, 버리는 코드): 기존 권한 이어짐, Calendar 는 calendars 권한 항목 필요·Reminders 는
+  불필요, Bun 은 hardened runtime 에 권한 항목 없이 실행, 앱이 띄운 Bun 자식은 앱의 전체 디스크 접근으로 판정,
+  서명 확인 소켓 + 다중화 Bun 이 Claude Code·Codex 와 동작, 장시간 메모리 고정. 근거는 `live-evidence.md` 의
+  "Menu bar app and MCP spike" 와 ADR-0010 의 실측 표.
+- 0.8.5(태그 `v0.8.5`): 초과 응답 경로의 명령 시험(`SHERPA_APPLE_RESPONSE_LIMIT_BYTES`, `scripts/live/oversized-response.py`).
+- 0.8.4(태그 `v0.8.4`): 변경 적용 뒤 초과 응답을 `partial`/`uncertain` + `protocol.result_too_large` 로 보고.
+- 0.8.0~0.8.3: Bun 코어, Developer ID 헬퍼 번들(ADR-0009), 권한 프롬프트 미표시 보고. 판별 근거는 각 태그와
+  `live-evidence.md` 2026-11-20 항목.
 
 ## 진행 중
 
-- 없음. 커밋·PR·릴리스 상태는 아래 "저장소·세션 상태" 를 Git 으로 다시 확인한다.
+- 1단계 시험 빌드의 파일은 세션 임시 폴더(`…/scratchpad/spike`, `…/scratchpad/mcp-mem`)에만 있고 저장소에는 없다.
+  임시 폴더는 지워질 수 있으니, 2단계는 ADR-0010 과 이 파일을 기준으로 다시 만든다.
 
 ## 하지 말 것 (실패한 시도, 되돌린 것)
 
@@ -42,6 +31,10 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 
 ## 막힌 것 · 오너 결정 대기
 
+- 소유자 조작(ADR-0010 확인 전 항목): `SherpaSpike.app` 또는 이후 `Sherpa.app` 에 전체 디스크 접근을 주고
+  Bun 자식 읽기가 성공하는지 확인. 공증용 `xcrun notarytool store-credentials` 프로필 등록(지금 키체인에 없음).
+- 지금 배포본의 헬퍼는 권한 책임을 놓고 다시 떠서 같은 사용자의 다른 프로세스가 `dev.xiyo.sherpa` 권한을
+  쓸 수 있다(추론, 재현 안 함). ADR-0010 구현이 이 경로를 없앤다.
 - kakaocli 상류 이슈 등록(외부 게시)은 소유자 확인이 필요하다.
 - 실기 소유자 조작: Mail 한 통 실제 보내기와 Automation 권한 프롬프트 확인(iMessage 보내기는 2026-11-20 확인),
   KakaoTalk 로컬 체크포인트 커밋,
@@ -53,11 +46,15 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
 
 ## 다음 행동
 
-1. plist 파서 중복 정리: `core/src/imessage/bplist.ts` 와 `core/src/kakaotalk/plist.ts`.
-2. 문서 부채: `docs/testing/verification-matrix.md` 를 Bun 코어 기준으로 재검토. `docs/` 21개 문서의 옛
-   front matter 키(`id`·`title`·`status`·`owner`). `docs/contracts/worker-protocol.md:98` 가
-   가리키는 없는 `protocols/worker-v2.schema.json`.
-3. 웹 수집 소스(patchright 등)는 코어의 새 어댑터로 붙인다(소유자 방향, ADR-0008). 착수 전 대상 소스를 정한다.
+1. ADR-0010 2단계 구현: `apple/` 에 SwiftUI 앱 타깃(권한 상태·요청, 소켓 서버, 감사 토큰 서명 확인, Bun 다중화),
+   Swift 중계 타깃, `core/` 에 MCP 서버(TS SDK v2, 도구는 capabilities 에서 만들고 읽기·쓰기 annotation,
+   삭제·보내기는 매 호출 확인). 층별 시험(단위 → MCP stdio 명령 → 앱·소켓 → 실기)과 게이트 추가.
+2. 3단계: 공증 + Homebrew cask(`binary` 로 `sherpa` 링크), formula 이전, 플러그인에 MCP 등록과 스킬 축소,
+   설치본 실기 검증.
+3. plist 파서 중복 정리: `core/src/imessage/bplist.ts` 와 `core/src/kakaotalk/plist.ts`.
+4. 문서 부채: `docs/testing/verification-matrix.md` 재검토, 21개 문서의 옛 front matter 키,
+   `docs/contracts/worker-protocol.md:98` 가 가리키는 없는 `protocols/worker-v2.schema.json`.
+5. 웹 수집 소스(patchright 등)는 코어의 새 어댑터로 붙인다(ADR-0008). 착수 전 대상 소스를 정한다.
 
 ## 저장소·세션 상태 (브랜치, 미커밋, 미푸시, pane)
 
