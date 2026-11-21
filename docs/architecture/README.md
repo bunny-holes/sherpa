@@ -82,9 +82,10 @@ ADR-0010 (adopted 2026-11-21) replaces this shape: `Sherpa.app` becomes the
 permission subject and runs the core as one MCP server that agents reach
 through `sherpa-relay`. The
 [app connection contract](../contracts/app-connection-v1.md) fixes the
-boundaries between the relay, the app and the core. The core side,
-`sherpa app serve` (`core/src/app/`, `core/src/mcp/`), is built; the app and
-the relay are not yet, so the CLI keeps the helper path above.
+boundaries between the relay, the app and the core. Both sides are
+built: the core's `sherpa app serve` (`core/src/app/`, `core/src/mcp/`) and the
+app and relay in `apple/sherpa-app`. They are not released yet (notarized cask,
+bunny-holes/sherpa#31), and the CLI keeps the helper path above until then.
 
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of
 truth for Calendar and Reminders; Messages, KakaoTalk, and Mail.app remain the
