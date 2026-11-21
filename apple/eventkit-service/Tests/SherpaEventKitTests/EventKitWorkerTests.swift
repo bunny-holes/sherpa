@@ -1,5 +1,6 @@
 import EventKit
 import Foundation
+import SherpaPlannerContract
 import SherpaWorkerProtocol
 import Testing
 @testable import SherpaEventKitAdapter
@@ -132,5 +133,55 @@ private func reminderListRequest(_ payload: String) throws -> WorkerRequest {
     for status in [EKAuthorizationStatus.fullAccess, .denied, .writeOnly] {
         let answered = try authorizationRequestResponse(request, domain: "event", status: status)
         #expect(answered.status == .succeeded)
+    }
+}
+
+private func advertisedDescriptors() async throws -> [[String: JSONValue]] {
+    let request = try WorkerRequest(data: Data(
+        #"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"req-capabilities","operation_id":"op-capabilities","capability":"capabilities","payload":{},"deadline_ms":1000,"idempotency_key":"idem-capabilities","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}"#.utf8
+    ))
+    let response = await EventKitWorker().handle(request)
+    guard case let .object(result)? = response.result, case let .array(values)? = result["capabilities"] else { return [] }
+    return values.compactMap { value in
+        guard case let .object(descriptor) = value else { return nil }
+        return descriptor
+    }
+}
+
+// 2026-11-21: descriptors advertised sherpa.planner.event.command.validate.request.v2 while the
+// validator accepts only the hyphenated name, so a request built from discovery always failed.
+@Test func advertisedSchemasUseTheNamesTheWorkerSpeaks() async throws {
+    let descriptors = try await advertisedDescriptors()
+    #expect(descriptors.count > 20)
+    for descriptor in descriptors {
+        guard case let .string(capability)? = descriptor["capability"] else { Issue.record("descriptor without capability"); continue }
+        let hyphenated = capability.replacingOccurrences(of: ".", with: "-")
+        #expect(descriptor["request_schema"] == .string("sherpa.planner.\(hyphenated).request.v2"))
+        if capability.contains(".authorization.") {
+            let domain = String(capability.prefix { $0 != "." })
+            let actual = AuthorizationResult(domain: domain, authorization: "denied").schema
+            #expect(descriptor["success_schema"] == .string(actual))
+        } else {
+            #expect(descriptor["success_schema"] == .string("sherpa.planner.\(hyphenated).success.v2"))
+        }
+    }
+}
+
+@Test func commandValidationAcceptsTheAdvertisedRequestSchema() async throws {
+    let descriptors = try await advertisedDescriptors()
+    let commands = [
+        "event.command.validate": #"[{"capability":"event.create","payload":{"schema":"sherpa.planner.event-create.request.v2","title":"Synthetic","start":"2026-08-10T00:00:00Z","end":"2026-08-10T01:00:00Z"}}]"#,
+        "reminder.command.validate": #"[{"capability":"reminder.create","payload":{"schema":"sherpa.planner.reminder-create.request.v2","title":"Synthetic","due":{"year":2026,"month":8,"day":10}}}]"#,
+    ]
+    for (capability, list) in commands {
+        let descriptor = descriptors.first { $0["capability"] == .string(capability) }
+        guard case let .string(requestSchema)? = descriptor?["request_schema"],
+              case let .string(successSchema)? = descriptor?["success_schema"]
+        else { Issue.record("\(capability) is not advertised"); continue }
+        let body = #"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"req-v","operation_id":"op-v","capability":""# + capability + #"","payload":{"schema":""# + requestSchema + #"","commands":"# + list + #"},"deadline_ms":1000,"idempotency_key":"idem-v","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}"#
+        let response = await EventKitWorker().handle(try WorkerRequest(data: Data(body.utf8)))
+        #expect(response.status == .succeeded, "\(capability) rejected \(requestSchema)")
+        guard case let .object(result)? = response.result else { Issue.record("\(capability) has no result"); continue }
+        #expect(result["schema"] == .string(successSchema))
     }
 }

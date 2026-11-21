@@ -31,11 +31,11 @@ public struct WorkerCapabilityDescriptor: Codable, Sendable, Equatable {
         destination: String,
         supportsIncompleteOutcomes: Bool
     ) {
-        let stem = "sherpa.planner.\(capability)"
+        let stem = Self.schemaStem(for: capability)
         self.capability = capability
         applicationContract = "sherpa.planner.v2"
         requestSchema = "\(stem).request.v2"
-        successSchema = "\(stem).success.v2"
+        successSchema = "\(Self.successStem(for: capability)).success.v2"
         partialSchema = supportsIncompleteOutcomes ? "\(stem).partial.v2" : nil
         uncertainSchema = supportsIncompleteOutcomes ? "\(stem).uncertain.v2" : nil
         self.effect = effect
@@ -44,6 +44,21 @@ public struct WorkerCapabilityDescriptor: Codable, Sendable, Equatable {
         self.destination = destination
         state = "supported"
         stableReasonCode = nil
+    }
+
+    /// Planner schema names spell the capability with hyphens
+    /// (`event.command.validate` → `sherpa.planner.event-command-validate`).
+    public static func schemaStem(for capability: String) -> String {
+        "sherpa.planner.\(capability.replacingOccurrences(of: ".", with: "-"))"
+    }
+
+    /// Both authorization capabilities of a domain answer with one
+    /// `AuthorizationResult`, whose schema names the domain only.
+    static func successStem(for capability: String) -> String {
+        for domain in ["event", "reminder"] where capability.hasPrefix("\(domain).authorization.") {
+            return "sherpa.planner.\(domain)-authorization"
+        }
+        return schemaStem(for: capability)
     }
 
     enum CodingKeys: String, CodingKey {
