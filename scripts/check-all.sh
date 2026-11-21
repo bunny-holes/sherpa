@@ -153,6 +153,24 @@ raw="$("$binary" --version)"
 printf '%s' "$raw" | grep -Eq '^sherpa [0-9]+\.[0-9]+\.[0-9]+$' \
   || fail "reason=version_format_broken output=$raw"
 cli_version="$(printf '%s' "$raw" | awk '{print $2}')"
+
+# 앱 번들 스크립트는 Mux 1 인사를 하지 않는 코어를 넣지 않는다. #44 전의 낡은 core/dist/sherpa 가
+# 번들에 들어가 앱이 코어를 다섯 번 띄우다 멈춘 것을 2026-11-21 에 재현했다. 그 코어처럼
+# `app serve` 를 모르는 가짜 코어를 넘기면 Swift 빌드 전에 core_not_mux 로 끝나야 한다.
+stale_probe="$(mktemp -d)"
+cat > "$stale_probe/core" <<'SH'
+#!/bin/sh
+echo '{"ok":false,"error":{"code":"invalidRequest"}}'
+exit 64
+SH
+chmod +x "$stale_probe/core"
+if bash "$REPO_ROOT/apple/sherpa-app/scripts/build-app.sh" --core "$stale_probe/core" --identity - \
+  --output "$stale_probe/out" 2>"$stale_probe/log"; then
+  rm -rf "$stale_probe"; fail "reason=app_bundle_accepted_stale_core"
+fi
+grep -q 'reason=core_not_mux' "$stale_probe/log" \
+  || { cat "$stale_probe/log" >&2; rm -rf "$stale_probe"; fail "reason=app_bundle_stale_core_unnamed"; }
+rm -rf "$stale_probe"
 [ "$("$SHERPA_APPLE_BIN" --version)" = "sherpa-apple $cli_version" ] \
   || fail "reason=helper_version_mismatch cli=$cli_version"
 

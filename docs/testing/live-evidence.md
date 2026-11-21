@@ -9,6 +9,24 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-21 — The app bundle carried a core from before the MCP server (bunny-holes/sherpa#28)
+
+This Mac. The Developer ID dev bundle was built on `main` after bunny-holes/sherpa#44
+and bunny-holes/sherpa#45 with `apple/sherpa-app/scripts/build-app.sh`.
+
+- Corrected path: **the script copied whatever `core/dist/sherpa` held.** That file
+  was a build from before bunny-holes/sherpa#44, with no `app serve` subcommand.
+  The menu app started it, each start ended in `invalidRequest` and then
+  `mux.frame_invalid`, and the app stopped after five exits. Rebuilding the core
+  (`bun run build` in `core/`) and the bundle fixed it. Through the bundle's
+  relay, `initialize` then answered `2025-11-25`, `tools/list` listed 35 tools,
+  and the relay exited 0.
+- The script now builds the core from the checkout unless `--core` is given.
+  Before any Swift build it also requires the core's first line under
+  `app serve` to be the Mux 1 hello with the helper `Info.plist` version. A
+  stand-in core that prints an error envelope fails with `reason=core_not_mux`
+  in about 0.4 s. `scripts/check-all.sh` runs that stand-in as a regression.
+
 ## 2026-11-21 — PR #45 review fixes: the core runs only after its running code passes, closed sessions keep nothing (bunny-holes/sherpa#28)
 
 This Mac (Mac16,8, Apple M4 Pro, macOS 27.3 26C5035r). The fixes for the review of
