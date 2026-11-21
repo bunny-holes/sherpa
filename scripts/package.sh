@@ -81,7 +81,9 @@ else
   log warn sign "no Developer ID identity; helper bundle is ad-hoc signed and privacy grants will not survive upgrades"
 fi
 
-staged="$(cd "$STAGING" && find . -type f | sort | tr '\n' ' ')"
+# 비교 목록은 C 정렬 순서로 적었다. 로캘 정렬은 `_CodeSignature` 를 앞에 두므로(en_US.UTF-8, 2026-11-21 재현)
+# 정렬 순서를 셸 로캘에 맡기지 않는다.
+staged="$(cd "$STAGING" && find . -type f | LC_ALL=C sort | tr '\n' ' ')"
 expected="./bin/sherpa ./libexec/SherpaHelper.app/Contents/Info.plist ./libexec/SherpaHelper.app/Contents/MacOS/sherpa-apple ./libexec/SherpaHelper.app/Contents/_CodeSignature/CodeResources "
 [ "$staged" = "$expected" ] || fail failure "reason=unexpected_archive_contents staged=$staged"
 # Apple silicon 은 서명 없는 실행 파일을 죽인다. 코어는 ad-hoc, 헬퍼 번들은 위의 서명이 유효해야 한다.
