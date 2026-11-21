@@ -284,6 +284,10 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 - 표에 없는 조합(채널 0 의 `data`, MCP 채널의 `hello` 등), 문법 위반, 인사 전의 다른 프레임, 살아 있는 채널의
   두 번째 `open` 은 프로토콜 위반이다. 코어는 `fatal` 을 쓰고 65 로 끝난다. 앱은 코어 출력에서 위반을 보면
   코어를 끝낸다(§7.8 의 재시작 규칙을 따른다). [계약]
+- `fatal` 의 코드: 문법이나 본문 모양 오류, 그리고 V2 모양이나 상관 값이 맞지 않는 `response` 본문은
+  `mux.frame_invalid`, 한도 초과는 `mux.frame_too_large`, 표나 순서 위반(채널·방향에 없는 형식, 인사 전 프레임,
+  두 번째 `open`·`hello`, 닫힌 번호의 `open`)은 `mux.unexpected_frame`, 앱 `hello` 의 `mux` 가 1 이 아니면
+  `mux.version_unsupported` 다. 앱은 코드와 상관없이 같은 규칙으로 코어를 다룬다. [계약]
 - 닫힌 채널이나 모르는 채널의 `data`·`close` 는 닫기와 엇갈린 것이므로 위반이 아니다. debug 로그만 남기고
   버린다. [계약]
 - `data` 본문이 JSON 이 아니면 프레임 위반이 아니라 그 연결의 MCP 오류다. 코어는 그 채널에
@@ -470,7 +474,9 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   [typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk)] 이 계약이 보증하는 것은 2025-11-25
   다. SDK 기본값은 그대로 두지만, 2026-07-28 로 붙는 에이전트는 재지 않았다. [미확인, ADR-0010 과 같다]
 - SDK 의 공장 함수는 비동기일 수 있다. [문서: SDK `McpServerFactory`] 코어는 세션을 만들 때 시작 때 얻은 도구
-  목록의 근거(§10.2)를 5초까지 기다린다. [계약]
+  목록의 근거(§10.2)를 5초까지 기다린다. 그 안에 발견 응답이 없으면 그 순간 발견을 코어 프로세스 전체에서
+  실패로 확정한다. planner 도구를 모두 빼고 error 로그를 남기며, 늦게 온 `response` 는 버린다. 목록은 코어가
+  사는 동안 바뀌지 않는다(§10.2). [계약]
 
 ### 10.2 도구 목록
 
@@ -535,8 +541,9 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   `{"type":"object","additionalProperties":false}` 다. [계약; 빈 객체 모양은 문서: MCP 2025-11-25 Tools]
 - core 도구의 인자는 그 CLI 명령이 플래그와 표준 입력으로 받는 값과 같고, 이름은 snake_case 다. 삭제와 보내기는
   §9 의 앱 창이 확인하므로 CLI 의 `--confirm` 값은 인자가 아니다. 예외로 `kakaotalk_checkpoint` 는 앱 창 없이
-  CLI 와 같은 확인 값을 `confirm` 인자(상수 `"COMMIT_LOCAL_CHECKPOINT"`)로 받고, 없거나 다르면 CLI 와 같은 코드로
-  거부한다. [소유자 결정 2026-11-21] [계약; 명령과 입력은 실측: `core/src/cli/help.ts`]
+  CLI 와 같은 확인 값을 `confirm` 인자(상수 `"COMMIT_LOCAL_CHECKPOINT"`)로 받는다. [소유자 결정 2026-11-21]
+  스키마에서 `confirm` 은 필수 string 이다. 값이 다르면 CLI 와 같은 코드로 거부하고, 없으면 SDK 입력 검증
+  오류다. [계약] [계약; 명령과 입력은 실측: `core/src/cli/help.ts`]
 
 | 도구 | 인자(`?` 는 생략 가능) | CLI 에서의 출처 |
 | --- | --- | --- |
@@ -555,6 +562,10 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
 | `operations_list` | `limit` | `--limit` |
 
 - MCP 스키마는 CLI 검증보다 엄격할 수는 있어도 느슨할 수는 없다. 공용 함수의 검증이 한 번 더 돈다. [계약]
+- 나눔: zod 스키마는 정확한 키 집합(엄격 객체), 형식, 정수 여부, 필수 키까지만 싣는다. 값의 범위와 형식
+  규칙은 공용 함수(core 도구) 또는 앱의 V2 검증(planner 도구)이 맡아, CLI 와 MCP 가 같은 입력을 같은
+  코드(`invalidRequest`, `protocol.invalid_payload` 등)로 거부한다. 모르는 키, 형식, 필수 키 누락 같은 구조
+  오류는 SDK 입력 검증 오류다. [계약]
 - 입력 검증 실패는 SDK 가 `isError: true` 결과로 돌려준다. [문서: SDK 2.4.0 의 `tools/call` 처리기가 검증
   오류를 잡아 `createToolError` 로 바꾼다; MCP 2025-11-25 Tools 는 입력 검증 오류를 도구 실행 오류로 분류한다]
 
@@ -602,7 +613,9 @@ result         object | null
   `operation_id` 는 봉투의 값으로 옮긴다. 명령 보고(`report`)는 그 `status` 가 `failed` 면 `failed`, 그 밖이면
   `uncertain`·`may_have_applied` 로 보고, `error.code` 는 보고의 `error`, `retry` 는 `never`, `journal_error`
   는 보고의 값이다. [계약]
-- core 도구는 명령의 JSON 출력이 객체면 그대로, 배열이면 `{"items":[…]}` 로 `result` 에 둔다. `SherpaError` 는
+- core 도구는 명령의 JSON 출력이 객체면 그대로, 배열이면 `{"items":[…]}` 로 `result` 에 둔다. 줄마다 JSON
+  객체를 쓰는 명령(`imessage chats`, `imessage history`)은 줄 하나를 원소로 `{"items":[…]}` 에 담고, 빈 출력은
+  빈 배열이다. `SherpaError` 는
   `failed` 와 그 `code`·`remedy` 로 옮기고, `retry` 는 `remedy` 가 있으면 `after_user_action`, 없으면 `never`
   다. `mayHaveApplied` 면 `uncertain`·`may_have_applied` 다. `JournaledMutationError` 는 그 `status`(`failed`
   또는 `uncertain`), `operation_id`, `journal_error` 를 옮긴다. 보내기는 끝났는데 기록이 실패하면 `succeeded`
