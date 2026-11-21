@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { codes, invalidRequest, SherpaError } from "../cli/errors.ts";
@@ -29,6 +29,16 @@ const FULL_DISK_ACCESS =
   "grant Full Disk Access to the app that runs sherpa (System Settings > Privacy & Security > Full Disk Access)";
 
 /** The newest `~/Library/Mail/V<n>` directory. Mail moves to a new number on major upgrades. */
+const BODY_BYTES_MAX = 1024 * 1024;
+
+/** The longest prefix of `text` within `maximumBytes` of UTF-8 that ends on a whole character. */
+function utf8Prefix(text: string, maximumBytes: number): string {
+  const bytes = Buffer.from(text, "utf8");
+  if (bytes.length <= maximumBytes) return text;
+  // Streaming holds back a trailing partial sequence instead of decoding it as U+FFFD.
+  return new TextDecoder().decode(bytes.subarray(0, maximumBytes), { stream: true });
+}
+
 export function mailRoot(home = homedir()): string {
   const base = join(home, "Library/Mail");
   let entries: string[];
@@ -90,13 +100,33 @@ function instant(seconds: number): string {
  * account; the index is the data Mail itself lists from and covers every account.
  */
 export class EnvelopeIndex {
-  constructor(private readonly root = mailRoot()) {}
+  /** `root` defaults to the newest Mail store, looked up only after a request passed its checks. */
+  constructor(private readonly configuredRoot?: string) {}
 
-  list(options: { from: string; to: string; limit: number; cursor?: string }): MailListOutput {
+  private get root(): string {
+    return this.configuredRoot ?? mailRoot();
+  }
+
+  /** Messages received in [from, to), newest first, each summary cut to `maxBodyBytes` (0–1 MiB). */
+  list(options: {
+    from: string;
+    to: string;
+    limit: number;
+    maxBodyBytes: number;
+    cursor?: string;
+  }): MailListOutput {
     const start = parseInstant(options.from);
     const end = parseInstant(options.to);
-    const { limit } = options;
-    if (!(start < end) || !Number.isInteger(limit) || limit < 1 || limit > 50_000)
+    const { limit, maxBodyBytes } = options;
+    if (
+      !(start < end) ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 50_000 ||
+      !Number.isInteger(maxBodyBytes) ||
+      maxBodyBytes < 0 ||
+      maxBodyBytes > BODY_BYTES_MAX
+    )
       throw invalidRequest();
     const after = options.cursor ? decodeCursor(options.cursor, start, end) : null;
     const db = this.open();
@@ -144,7 +174,8 @@ export class EnvelopeIndex {
           sender: row.sender,
           received_at: instant(row.received),
           sent_at: row.sent ? instant(row.sent) : null,
-          body: row.summary,
+          body: utf8Prefix(row.summary, maxBodyBytes),
+          // The index holds a summary, never the whole body.
           body_truncated: true,
           mailbox: row.mailbox,
           recipients: [],
@@ -162,20 +193,23 @@ export class EnvelopeIndex {
   }
 
   /** The body of one indexed message, read from its `.emlx` file and cut to `maximumBodyBytes`. */
-  read(sourceMessageID: string, maximumBodyBytes: number): { message: MailItem | null } {
+  async read(
+    sourceMessageID: string,
+    maximumBodyBytes: number,
+  ): Promise<{ message: MailItem | null }> {
     const match = /^mail-index:(\d+)$/.exec(sourceMessageID);
     const rowid = match ? Number(match[1]) : 0;
     if (
       !rowid ||
       !Number.isInteger(maximumBodyBytes) ||
       maximumBodyBytes < 1 ||
-      maximumBodyBytes > 1024 * 1024
+      maximumBodyBytes > BODY_BYTES_MAX
     ) {
       throw invalidRequest();
     }
     const file = findEmlx(this.root, rowid);
     if (!file) return { message: null };
-    const data = readFileSync(file);
+    const data = Buffer.from(await Bun.file(file).arrayBuffer());
     const newline = data.indexOf(0x0a);
     const length =
       newline > 0 ? Number(data.subarray(0, newline).toString("utf8").trim()) : Number.NaN;
@@ -186,9 +220,7 @@ export class EnvelopeIndex {
     const separator = message.search(/\r?\n\r?\n/);
     const body = separator >= 0 ? message.slice(separator).replace(/^\r?\n\r?\n/, "") : "";
     const bytes = Buffer.from(body, "utf8");
-    const bounded = new TextDecoder()
-      .decode(bytes.subarray(0, maximumBodyBytes))
-      .replace(/\uFFFD$/, "");
+    const bounded = utf8Prefix(body, maximumBodyBytes);
     return {
       message: {
         source_message_id: sourceMessageID,

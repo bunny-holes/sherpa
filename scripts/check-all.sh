@@ -38,12 +38,17 @@ readonly CORE="$REPO_ROOT/core"
 log info "check:core:start" "root=core"
 (cd "$CORE" && bun install --frozen-lockfile >/dev/null) || fail "reason=core_install_failed"
 (cd "$CORE" && "$CORE/node_modules/.bin/vp" check >/dev/null) || fail "reason=core_check_failed"
+# 단위 시험의 planner 스키마 시험은 1 에서 빌드한 헬퍼에 권한이 필요 없는 요청만 넣어
+# protocol.invalid_payload 가 아님을 본다(app-connection-v1 §13.1).
+export SHERPA_APPLE_BIN="$REPO_ROOT/apple/eventkit-service/.build/debug/sherpa-apple"
 (cd "$CORE" && bun run test >/dev/null) || fail "reason=core_test_failed"
 (cd "$CORE" && bun run build >/dev/null) || fail "reason=core_build_failed"
+# MCP stdio 명령 시험: 빌드한 dist/sherpa app serve 를 가짜 앱이 프레임으로 몬다(§13.1).
+# 30초 확인 대기와 5초 발견 대기를 실제 시계로 돌아 40초쯤 걸린다.
+(cd "$CORE" && bun run test:stdio >/dev/null) || fail "reason=core_stdio_test_failed"
 
 # --version 출력 형식은 계약이다. 스킬의 가드와 Formula 의 test 가 이 모양을 파싱한다.
 binary="$CORE/dist/sherpa"
-export SHERPA_APPLE_BIN="$REPO_ROOT/apple/eventkit-service/.build/debug/sherpa-apple"
 raw="$("$binary" --version)"
 printf '%s' "$raw" | grep -Eq '^sherpa [0-9]+\.[0-9]+\.[0-9]+$' \
   || fail "reason=version_format_broken output=$raw"

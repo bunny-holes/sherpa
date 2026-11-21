@@ -28,15 +28,21 @@ function addressList(value: unknown): string[] {
   return value;
 }
 
-/** Validates the `mail send` payload exactly as 0.7 did. */
+/** Parses and validates the `mail send` standard input exactly as 0.7 did. */
 export function parseMailMessage(json: string): MailMessage {
-  let raw: Record<string, unknown>;
+  let raw: unknown;
   try {
-    raw = JSON.parse(json) as Record<string, unknown>;
+    raw = JSON.parse(json);
   } catch {
     throw invalidRequest();
   }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) throw invalidRequest();
+  return validateMailMessage(raw);
+}
+
+/** Validates one `mail send` payload; the CLI and the `mail_send` tool share it. */
+export function validateMailMessage(value: unknown): MailMessage {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw invalidRequest();
+  const raw = value as Record<string, unknown>;
   const to = addressList(raw.to);
   const cc = addressList(raw.cc);
   const bcc = addressList(raw.bcc);

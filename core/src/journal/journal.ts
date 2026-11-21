@@ -16,6 +16,13 @@ export interface MutationRecord {
   created_at: number;
 }
 
+/** The `limit` of `recent`: 1–1000. Callers check it before opening, which creates the journal. */
+export function checkRecentLimit(limit: number): void {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
+    throw new SherpaError(codes.invalidRequest);
+  }
+}
+
 /**
  * The SQLite journal shared with the Swift Apple helper, which journals planner
  * mutations in the same table. Schema and file are unchanged from 0.7.
@@ -75,9 +82,7 @@ export class MutationJournal {
   }
 
   recent(limit: number): MutationRecord[] {
-    if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
-      throw new SherpaError(codes.invalidRequest);
-    }
+    checkRecentLimit(limit);
     return this.db
       .query<MutationRecord, [number]>(
         "SELECT operation_id, capability, status, stable_error_code, created_at FROM native_mutations ORDER BY created_at DESC, operation_id DESC LIMIT ?",
@@ -120,11 +125,13 @@ export async function journaled<T>(
   journal: MutationJournal,
   capability: string,
   attempt: () => Promise<T>,
+  /** An id the caller already showed (the MCP confirmation); a fresh one otherwise. */
+  requestedOperationID?: string,
 ): Promise<JournaledResult<T>> {
   log.info(`[cli:sherpa:mutation-start] capability=${capability}`);
   let operationID: string;
   try {
-    operationID = journal.start(capability);
+    operationID = journal.start(capability, requestedOperationID);
   } catch {
     throw new JournaledMutationError(
       null,
