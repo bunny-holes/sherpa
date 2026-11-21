@@ -482,6 +482,12 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   목록의 근거(§10.2)를 5초까지 기다린다. 그 안에 발견 응답이 없으면 그 순간 발견을 코어 프로세스 전체에서
   실패로 확정한다. planner 도구를 모두 빼고 error 로그를 남기며, 늦게 온 `response` 는 버린다. 목록은 코어가
   사는 동안 바뀌지 않는다(§10.2). [계약]
+- 같은 연결에서 아직 끝나지 않은 요청과 같은 id 의 요청은 SDK 에 넘기지 않고 JSON-RPC -32600(Invalid Request)으로
+  답한다. 규격은 한 세션 안에서 요청자가 이미 쓴 id 를 다시 쓰지 않게 한다. [문서: [MCP 2025-11-25
+  Basic](https://modelcontextprotocol.io/specification/2025-11-25/basic), Requests, "The request ID MUST NOT have been
+  previously used by the requestor within the same session."] SDK 2.4.0 은 요청 id 마다 abort controller 하나만 두어
+  둘째 호출이 첫째의 것을 덮어쓰므로, 연결이 끊기거나 `notifications/cancelled` 가 와도 둘 다 거둘 수 없다(§7.9, §9).
+  [계약]
 
 ### 10.2 도구 목록
 
