@@ -1,14 +1,14 @@
 import { proxyAppleRequest } from "./apple/helper.ts";
+import { serveApp } from "./app/serve.ts";
 import { integer, optionalValue, requireConfirmation, unsigned, value } from "./cli/args.ts";
 import { codes, invalidRequest, SherpaError } from "./cli/errors.ts";
 import { help } from "./cli/help.ts";
 import { boundedStandardInput, utf8 } from "./cli/stdin.ts";
-import * as imessage from "./imessage/commands.ts";
-import { journaled, JournaledMutationError, MutationJournal } from "./journal/journal.ts";
+import { CHECKPOINT_CONFIRMATION, type CoreCommands, systemCommands } from "./commands.ts";
+import { JournaledMutationError, type JournaledResult } from "./journal/journal.ts";
 import * as kakaotalk from "./kakaotalk/commands.ts";
 import { log } from "./log.ts";
-import { EnvelopeIndex } from "./mail/envelope-index.ts";
-import { mailAuthorizationStatus, parseMailMessage, sendMail } from "./mail/outbound.ts";
+import { parseMailMessage } from "./mail/outbound.ts";
 import { SHERPA_VERSION } from "./version.ts";
 
 type Output = string | Uint8Array | { exitCode: number };
@@ -45,9 +45,8 @@ function sortedJSON(value: object): string {
   return JSON.stringify(value, Object.keys(value).sort());
 }
 
-/** Sends through the journal. A send that completed but was not journaled reports the journal error. */
-async function journaledSend(capability: string, send: () => Promise<Uint8Array>): Promise<Output> {
-  const result = await journaled(MutationJournal.openDefault(), capability, send);
+/** A journaled send's output. A send that completed but was not journaled reports the journal error. */
+function sendOutput(result: JournaledResult<Uint8Array>): Output {
   if (!result.journalFailure) return result.output;
   return sortedJSON({
     status: "completed",
@@ -57,17 +56,20 @@ async function journaledSend(capability: string, send: () => Promise<Uint8Array>
   });
 }
 
-async function dispatch(args: readonly string[]): Promise<Output> {
+async function dispatch(args: readonly string[], commands: CoreCommands): Promise<Output> {
   const [domain, command] = args;
   switch (`${domain} ${command}`) {
     case "planner request":
     case "mail request":
     case "reminder-kit request":
       return { exitCode: await proxyAppleRequest([domain!, command!]) };
+    case "app serve":
+      if (args.length !== 2) throw invalidRequest();
+      return { exitCode: await serveApp() };
     case "imessage chats":
-      return imessage.chats(integer(args, "--limit"));
+      return commands.imessageChats(integer(args, "--limit"));
     case "imessage history":
-      return imessage.history({
+      return commands.imessageHistory({
         chatID: unsigned(args, "--chat-id"),
         start: value(args, "--start"),
         end: value(args, "--end"),
@@ -77,53 +79,53 @@ async function dispatch(args: readonly string[]): Promise<Output> {
       const chatID = unsigned(args, "--chat-id");
       requireConfirmation(args, chatID.toString());
       const text = await boundedStandardInput();
-      return journaledSend("imessage.send", () => imessage.send(chatID, text));
+      return sendOutput(await commands.imessageSend({ chatID, text }));
     }
     case "kakaotalk setup":
       return kakaotalk.setup(
         args.includes("--user-id-stdin") ? await boundedStandardInput(64) : null,
       );
     case "kakaotalk status":
-      return kakaotalk.status();
+      return commands.kakaotalkStatus();
     case "kakaotalk search":
-      return kakaotalk.search(await boundedStandardInput(4096), integer(args, "--limit"));
+      return commands.kakaotalkSearch(await boundedStandardInput(4096), integer(args, "--limit"));
     case "kakaotalk history":
-      return kakaotalk.history(await boundedStandardInput(4096), integer(args, "--limit"));
+      return commands.kakaotalkHistory(await boundedStandardInput(4096), integer(args, "--limit"));
     case "kakaotalk archive":
-      return kakaotalk.archive({
+      return commands.kakaotalkArchive({
         since: value(args, "--since"),
         timeZone: value(args, "--time-zone"),
         limit: integer(args, "--limit"),
       });
     case "kakaotalk checkpoint":
-      requireConfirmation(args, "COMMIT_LOCAL_CHECKPOINT");
-      return kakaotalk.commitCheckpoint(await boundedStandardInput(256));
+      // Refused before standard input is read; the command checks the value again for MCP.
+      requireConfirmation(args, CHECKPOINT_CONFIRMATION);
+      return commands.kakaotalkCheckpoint(CHECKPOINT_CONFIRMATION, await boundedStandardInput(256));
     case "mail authorization-status":
-      return mailAuthorizationStatus();
+      return commands.mailAuthorizationStatus();
     case "mail list": {
-      const maximumBodyBytes = integer(args, "--max-body-bytes");
-      if (maximumBodyBytes < 0 || maximumBodyBytes > 1024 * 1024) throw invalidRequest();
+      const maxBodyBytes = integer(args, "--max-body-bytes");
       const cursor = optionalValue(args, "--cursor");
-      return JSON.stringify(
-        new EnvelopeIndex().list({
-          from: value(args, "--from"),
-          to: value(args, "--to"),
-          limit: integer(args, "--limit"),
-          ...(cursor ? { cursor } : {}),
-        }),
-      );
+      return commands.mailList({
+        from: value(args, "--from"),
+        to: value(args, "--to"),
+        limit: integer(args, "--limit"),
+        maxBodyBytes,
+        ...(cursor ? { cursor } : {}),
+      });
     }
     case "mail read":
-      return JSON.stringify(
-        new EnvelopeIndex().read(value(args, "--message-id"), integer(args, "--max-body-bytes")),
-      );
+      return commands.mailRead({
+        messageID: value(args, "--message-id"),
+        maxBodyBytes: integer(args, "--max-body-bytes"),
+      });
     case "mail send": {
       requireConfirmation(args, "SEND_MAIL");
       const message = parseMailMessage(utf8(await boundedStandardInput(1_100_000)));
-      return journaledSend("mail.send", () => sendMail(message));
+      return sendOutput(await commands.mailSend({ message }));
     }
     case "operations list":
-      return JSON.stringify(MutationJournal.openDefault().recent(integer(args, "--limit")));
+      return commands.operationsList(integer(args, "--limit"));
     default:
       throw invalidRequest();
   }
@@ -146,7 +148,7 @@ export async function main(args: readonly string[]): Promise<number> {
   }
   try {
     if (args.length < 2) throw invalidRequest();
-    const output = await dispatch(args);
+    const output = await dispatch(args, systemCommands);
     if (typeof output === "object" && "exitCode" in output) return output.exitCode;
     writeLine(output);
     return 0;

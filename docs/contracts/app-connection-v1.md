@@ -9,9 +9,9 @@ manner: "경계마다 규칙을 먼저 쓰고 근거를 괄호로 붙인다. 시
 
 # 앱 연결 계약 V1
 
-상태: 계약(2026-11-21). 구현 전이다. ADR-0010 2단계의 두 작업, 코어 MCP 서버(bunny-holes/sherpa#27)와
-`Sherpa.app`·`sherpa-relay`(bunny-holes/sherpa#28)는 이 문서만 보고 동시에 만들고, 상대 쪽 없이 자기 쪽을
-시험한다.
+상태: 계약(2026-11-21). 코어 쪽은 bunny-holes/sherpa#27 로 구현됐고 앱·중계는 #28 에서 구현 중이다. ADR-0010 2단계의
+두 작업, 코어 MCP 서버(bunny-holes/sherpa#27)와 `Sherpa.app`·`sherpa-relay`(bunny-holes/sherpa#28)는 이 문서만 보고
+동시에 만들고, 상대 쪽 없이 자기 쪽을 시험한다.
 
 ## 근거 표기
 
@@ -259,7 +259,8 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 ```
 
 - 채널 0 은 제어 채널이고, 1 이상은 MCP 연결 하나다. 앱이 연결을 받을 때마다 1 부터 올려 매기고, 코어 프로세스
-  하나가 사는 동안 다시 쓰지 않는다. [계약]
+  하나가 사는 동안 다시 쓰지 않는다. 번호는 늘 커진다. 앞서 쓴 번호보다 작은 `open` 은 `mux.unexpected_frame`
+  이다. [계약]
 - 시험 빌드의 프레임은 `<id>\t<payload>\n` 이었다. 번호는 `c1`·`c2`…, 본문은 낱말 `open`·`close` 또는 JSON-RPC
   메시지 하나였다. [실측] 바꾼 점과 이유: 형식 칸을 따로 둬 본문이 낱말인지 JSON 인지 짐작하지 않는다. 작업
   요청과 확인 요청을 실을 제어 채널이 필요하다. 번호를 숫자로 해 해석을 단순하게 한다. MCP 메시지 하나가 한
@@ -426,9 +427,12 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
      elicitation 을 적지 않는다. [문서: Codex MCP] 두 에이전트 모두 이 Mac 에서 재지 않았다. [미확인] 그래서
      1판은 elicitation 을 쓰지 않는다. [계약]
 - 흐름:
-  1. 코어는 인자를 검증하고 대상을 읽어 미리보기를 만든다. 삭제는 `*.get` 이나 `*.source.list` 로 읽고,
-     보내기는 인자 자체를 쓴다. 읽기가 실패하면 그 실패로 끝내고 확인을 묻지 않는다.
-  2. 코어는 `confirm` 을 보내고 30초 기다린다.
+  1. 코어는 30초 시계를 시작하고, 인자를 검증하고 대상을 읽어 미리보기를 만든다. 삭제는 `*.get` 이나
+     `*.source.list` 를 `deadline_ms` 5초로 읽는다. 메일 보내기는 인자 자체를 쓰고, iMessage 보내기는 인자에
+     더해 로컬 chat.db 에서 그 대화의 표시 이름(없으면 식별자)과 참여자 핸들을 읽는다. 읽기가 실패하면 그
+     실패로 끝내고 확인을 묻지 않는다.
+  2. 코어는 `confirm` 을 보내고 30초 가운데 남은 시간을 기다린다. `timeout_ms` 는 그 남은 시간이다. 남은
+     시간이 없으면 묻지 않고 `failed`·`confirmation.timed_out`·`after_user_action` 으로 끝낸다.
   3. `approved` 면 실행한다. `declined` 면 실행하지 않고 `failed`·`confirmation.declined`·`after_user_action`
      으로 끝낸다. 30초가 지나면 `withdraw` 를 보내고 `failed`·`confirmation.timed_out`·`after_user_action`.
      앱이 창을 띄울 수 없으면 `unavailable` 로 답하고 코어는
@@ -438,9 +442,10 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
      나중에 실행을 일으키지 않는다.
 
   흐름은 모두 [계약].
-- 30초의 근거: Codex 의 도구 시간 한도 `tool_timeout_sec` 기본값이 60초다. [문서: Codex MCP] 확인 30초, 작업
-  마감 20초, 코어의 여유 5초가 그 안에 든다. Claude Code 의 도구 시간 한도는 따로 정하지 않으면 약 28시간이다.
-  [문서: Claude Code MCP] [계약]
+- 30초의 근거: Codex 의 도구 시간 한도 `tool_timeout_sec` 기본값이 60초다. [문서: Codex MCP] 미리보기 읽기를 포함한
+  확인 30초, 작업 마감 20초, 코어의 여유 5초가 그 안에 든다. 미리보기 읽기는 마감 5초에 §8 의 여유 5초를 더해 길어야
+  10초이므로 사람에게는 적어도 20초가 남는다. Claude Code 의 도구 시간 한도는 따로 정하지 않으면 약 28시간이다. [문서:
+  Claude Code MCP] [계약]
 - 프레임(탭은 `\t` 로 적었다):
 
   ```text
@@ -479,6 +484,12 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   목록의 근거(§10.2)를 5초까지 기다린다. 그 안에 발견 응답이 없으면 그 순간 발견을 코어 프로세스 전체에서
   실패로 확정한다. planner 도구를 모두 빼고 error 로그를 남기며, 늦게 온 `response` 는 버린다. 목록은 코어가
   사는 동안 바뀌지 않는다(§10.2). [계약]
+- 같은 연결에서 아직 끝나지 않은 요청과 같은 id 의 요청은 SDK 에 넘기지 않고 JSON-RPC -32600(Invalid Request)으로
+  답한다. 규격은 한 세션 안에서 요청자가 이미 쓴 id 를 다시 쓰지 않게 한다. [문서: [MCP 2025-11-25
+  Basic](https://modelcontextprotocol.io/specification/2025-11-25/basic), Requests, "The request ID MUST NOT have been
+  previously used by the requestor within the same session."] SDK 2.4.0 은 요청 id 마다 abort controller 하나만 두어
+  둘째 호출이 첫째의 것을 덮어쓰므로, 연결이 끊기거나 `notifications/cancelled` 가 와도 둘 다 거둘 수 없다(§7.9, §9).
+  [계약]
 
 ### 10.2 도구 목록
 

@@ -3,6 +3,7 @@ import { SHERPA_VERSION } from "../version.ts";
 export const help = `Sherpa ${SHERPA_VERSION} — native macOS assistant CLI
 
 USAGE:
+  sherpa app serve
   sherpa planner request
   sherpa imessage chats --limit <count>
   sherpa imessage history --chat-id <id> --start <iso8601> --end <iso8601> --limit <count>
@@ -21,6 +22,8 @@ USAGE:
   sherpa reminder-kit request
   sherpa operations list --limit <count>
 
+App serve is the MCP core Sherpa.app starts; it speaks only frames on standard
+input and output and is not run by hand.
 Planner, Mail request, and ReminderKit request accept strict JSON on standard input.
 iMessage and Mail send bodies are also read from standard input.
 Mail list returns newest first; when limit_reached is true, pass next_cursor to
