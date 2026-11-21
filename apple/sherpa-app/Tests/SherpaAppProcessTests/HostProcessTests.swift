@@ -84,6 +84,37 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         #expect(strictCore.coreSpawns == 0)
     }
 
+    @Test func neverLetsACoreRunWhoseRunningCodeFailsTheRequirement() async throws {
+        // An unsigned script in the core's place: the code it runs is /bin/sh. Were it let go,
+        // it would leave a file behind.
+        let script = try Rig()
+        defer { script.tearDown() }
+        let marker = script.root + "/core-ran"
+        let path = script.root + "/sherpa-core"
+        try Data("#!/bin/sh\ntouch '\(marker)'\n".utf8).write(to: URL(fileURLWithPath: path))
+        chmod(path, 0o755)
+        let host = try await script.startHost(core: path)
+        #expect(await host.waitForError("[app:core:signature] status=rejected"))
+        let relay = try script.startRelay()
+        #expect(await relay.exitStatus() == 75)
+        #expect(relay.errorText.contains("app_reason=core_failed"))
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(!FileManager.default.fileExists(atPath: marker))
+        #expect(host.errorLines(containing: "[app:core:restart]").isEmpty)
+
+        // The fake core signed as another program: killed before it writes its first line.
+        let other = try Rig()
+        defer { other.tearDown() }
+        let copy = other.root + "/sherpa-core"
+        try FileManager.default.copyItem(atPath: Program.core.linkerSignedPath, toPath: copy)
+        #expect(runTool("/usr/bin/codesign", ["--force", "--sign", "-", "--identifier", "dev.xiyo.sherpa.other", copy]) == 0)
+        let otherHost = try await other.startHost(core: copy)
+        #expect(await otherHost.waitForError("[app:core:signature] status=rejected"))
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(other.coreSpawns == 0)
+        #expect(otherHost.errorLines(containing: "[app:core:launch] status=started").isEmpty)
+    }
+
     @Test func letsOneInstanceHoldTheSocket() async throws {
         let rig = try Rig()
         defer { rig.tearDown() }
@@ -330,7 +361,8 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
     @Test func shutsDownOnSIGTERM() async throws {
         let rig = try Rig()
         defer { rig.tearDown() }
-        let host = try await rig.startHost()
+        // A pause in the handling of the core's exit must not let an older status come last.
+        let host = try await rig.startHost(["--exit-handling-delay", "0.05"])
         let relay = try rig.startRelay()
         #expect(try await relay.echo() != nil)
         host.signal(SIGTERM)

@@ -140,6 +140,94 @@ private func decode(_ output: WorkerOutput) throws -> JSONObject {
     #expect(String(decoding: tooLarge, as: UTF8.self) == #"{"error":"protocol.request_too_large","status":"failed"}"#)
 }
 
+private final class Received: @unchecked Sendable {
+    private let lock = NSLock()
+    private var requests: [Data] = []
+    func add(_ request: Data) { lock.withLock { requests.append(request) } }
+    var all: [Data] { lock.withLock { requests } }
+}
+
+private struct RecordingPlanner: PlannerPort {
+    let received: Received
+
+    func respond(to request: Data) async -> WorkerOutput {
+        received.add(request)
+        return .response(Data(#"{"fake":true}"#.utf8))
+    }
+}
+
+@Test func measuresTheRequestAsTheCoreSentItAndPassesThoseBytesOn() throws {
+    // 40 000 slashes: 40 KB as sent, over 64 KiB once an encoder writes each one as \/.
+    let slashes = String(repeating: "/", count: 40_000)
+    let sent = String(decoding: request(), as: UTF8.self)
+        .replacingOccurrences(of: #""payload":{"#, with: #""payload": {"note":"\#(slashes)", "#)
+    #expect(sent.utf8.count < WorkerQueue.requestLimit)
+    let reencoded = try JSONEncoder().encode(try JSONDecoder().decode(JSONValue.self, from: Data(sent.utf8)))
+    #expect(reencoded.count > WorkerQueue.requestLimit)
+
+    let body = Data(#"{"id":4, "worker" : "planner","request":  \#(sent) }"#.utf8)
+    let job = try #require(WorkerJob.parse(body, receivedAt: monotonicSeconds(), generation: 1))
+    #expect(job.request == Data(sent.utf8))
+
+    let received = Received()
+    let replies = Replies()
+    let queue = WorkerQueue(planner: RecordingPlanner(received: received), logger: quiet) { replies.add($0, $1) }
+    queue.enqueue(job)
+    #expect(replies.wait(count: 1).first?.1 == .response(Data(#"{"fake":true}"#.utf8)))
+    #expect(received.all == [Data(sent.utf8)])
+}
+
+@Test func findsTheRawRequestOnlyWhenItIsThereOnce() {
+    #expect(RawJSONMember.value(of: "request", in: Data(#"{"request":{"a":"}\"{"},"x":[1,{"b":2}]}"#.utf8))
+        == Data(#"{"a":"}\"{"}"#.utf8))
+    #expect(RawJSONMember.value(of: "request", in: Data(#"{"\u0072equest":{"a":1}}"#.utf8)) == Data(#"{"a":1}"#.utf8))
+    #expect(RawJSONMember.value(of: "request", in: Data(#"{"request":{},"request":{}}"#.utf8)) == nil)
+    #expect(RawJSONMember.value(of: "request", in: Data(#"{"other":{}}"#.utf8)) == nil)
+    #expect(RawJSONMember.value(of: "request", in: Data("{}".utf8)) == nil)
+}
+
+@Test func waitsForTheRequestsAtShutdownNoLongerThanTheLimit() async throws {
+    let calls = Calls()
+    let replies = Replies()
+    let queue = WorkerQueue(planner: FakePlanner(calls: calls, delay: 2), logger: quiet) { replies.add($0, $1) }
+    queue.enqueue(WorkerJob(id: 1, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
+    let started = monotonicSeconds()
+    queue.waitUntilIdle(limit: 0.3)
+    let waited = monotonicSeconds() - started
+    #expect(waited >= 0.25 && waited < 1.5)
+}
+
+@Test func doesNotWaitForARequestThatArrivedDuringTheWait() async throws {
+    let calls = Calls()
+    let replies = Replies()
+    let queue = WorkerQueue(planner: FakePlanner(calls: calls, delay: 0.3), logger: quiet) { replies.add($0, $1) }
+    queue.enqueue(WorkerJob(id: 1, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
+    let waiting = Task.detached {
+        let started = monotonicSeconds()
+        queue.waitUntilIdle(limit: 35)
+        return monotonicSeconds() - started
+    }
+    try await Task.sleep(for: .milliseconds(100))
+    queue.enqueue(WorkerJob(id: 2, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
+    let waited = await waiting.value
+    // The first request ends at about 0.3 s; the second would end at about 0.6 s.
+    #expect(waited >= 0.2 && waited < 0.55)
+}
+
+@Test func refusesARequestThatArrivesWhileTheAppEnds() async throws {
+    let calls = Calls()
+    let queue = WorkerQueue(planner: FakePlanner(calls: calls, delay: 0), logger: quiet) { _, _ in }
+    let refused = queue.refuse(WorkerJob(id: 5, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
+    let failure = try decode(refused)
+    #expect(failure["status"] == "failed")
+    #expect(failure["error"] == ["code": "app.shutting_down", "retry": "after_backoff"])
+    #expect(failure["effect"] == ["kind": "none", "state": "not_started"])
+    #expect(failure["operation_id"] == "op-1")
+    #expect(await calls.order.isEmpty)
+    let broken = queue.refuse(WorkerJob(id: 6, worker: "planner", request: Data("{}".utf8), receivedAt: 0, generation: 1))
+    #expect(broken == .report(Data(#"{"error":"protocol.invalid_envelope","status":"failed"}"#.utf8)))
+}
+
 @Test func wrapsTheOutputInTheResponseFrameBody() {
     let report = WorkerOutput.report(CommandReport(status: "failed", error: "sherpa.internal_failure").encoded())
     #expect(String(decoding: report.frameBody(id: 2), as: UTF8.self)
@@ -250,11 +338,131 @@ private func temporaryFolder() throws -> String {
     #expect(configuration.relayRequirement == SherpaCodeIdentity.relay.requirement)
     #expect(!configuration.socket.isOverride)
     let tested = try AppServerConfiguration.resolve(executableDirectory: "/x", version: "1.0.0", environment: [
-        "SHERPA_CORE_BIN": "/t/core", "SHERPA_RELAY_REQUIREMENT": "identifier \"r\"", "SHERPA_APP_SOCKET": "/t/s.sock",
+        "SHERPA_TEST_CORE_BIN": "/t/core", "SHERPA_RELAY_REQUIREMENT": "identifier \"r\"", "SHERPA_APP_SOCKET": "/t/s.sock",
     ])
     #if DEBUG
     #expect(tested.corePath == "/t/core" && tested.relayRequirement == "identifier \"r\"" && tested.socket.isOverride)
     #else
     #expect(tested.corePath == "/x/sherpa-core" && !tested.socket.isOverride)
     #endif
+}
+
+// MARK: queues let go of what they wrote (contract §7.7)
+
+private final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    func set() { lock.withLock { value = true } }
+    var isSet: Bool { lock.withLock { value } }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var total = 0
+    func add(_ count: Int) { lock.withLock { total += count } }
+    var value: Int { lock.withLock { total } }
+}
+
+private final class Weak: @unchecked Sendable {
+    weak var value: AnyObject?
+    init(_ value: AnyObject) { self.value = value }
+}
+
+/// A chunk whose storage reports when the last reference to it goes.
+private func trackedChunk(_ count: Int, released: Flag) -> Data {
+    let pointer = UnsafeMutableRawPointer.allocate(byteCount: count, alignment: 1)
+    pointer.initializeMemory(as: UInt8.self, repeating: 0x61, count: count)
+    return Data(bytesNoCopy: pointer, count: count, deallocator: .custom { pointer, _ in
+        pointer.deallocate()
+        released.set()
+    })
+}
+
+private func socketPair() throws -> (Int32, Int32) {
+    var pair: [Int32] = [0, 0]
+    guard socketpair(AF_UNIX, SOCK_STREAM, 0, &pair) == 0 else { throw POSIXError(.EIO) }
+    for descriptor in pair {
+        var on: Int32 = 1
+        setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+    }
+    return (pair[0], pair[1])
+}
+
+/// Reads from `descriptor` on its own thread until end of file and closes it.
+private func readToEnd(_ descriptor: Int32, into counter: Counter) {
+    Thread.detachNewThread {
+        var buffer = [UInt8](repeating: 0, count: 64 * 1_024)
+        while true {
+            let count = read(descriptor, &buffer, buffer.count)
+            if count <= 0 { break }
+            counter.add(count)
+        }
+        close(descriptor)
+    }
+}
+
+private func eventually(_ condition: () -> Bool) async -> Bool {
+    for _ in 0..<250 {
+        if condition() { return true }
+        try? await Task.sleep(for: .milliseconds(20))
+    }
+    return condition()
+}
+
+@Test func letsGoOfAWrittenChunkWhileItKeepsRunning() async throws {
+    let (writer, reader) = try socketPair()
+    let received = Counter()
+    readToEnd(reader, into: received)
+    let outbox = Outbox(descriptor: writer, limit: nil, failed: { _ in }, ended: { close(writer) })
+    let released = Flag()
+    let size = 8 * 1_024 * 1_024
+    #expect(outbox.enqueue(trackedChunk(size, released: released)))
+    // An 8 MiB response, written, with the outbox still open: none of it is kept.
+    #expect(await eventually { received.value == size })
+    #expect(await eventually { released.isSet })
+    #expect(outbox.queuedBytes == 0 && outbox.heldChunks == 0)
+    outbox.finish {}
+}
+
+@Test func keepsNothingOnceItHasStopped() async throws {
+    let (writer, reader) = try socketPair()
+    let received = Counter()
+    readToEnd(reader, into: received)
+    let ended = Flag()
+    let outbox = Outbox(descriptor: writer, limit: nil, failed: { _ in }, ended: {
+        close(writer)
+        ended.set()
+    })
+    let released = (0..<3).map { _ in Flag() }
+    for flag in released { #expect(outbox.enqueue(trackedChunk(256 * 1_024, released: flag))) }
+    outbox.finish {}
+    #expect(await eventually { ended.isSet })
+    #expect(await eventually { released.allSatisfy(\.isSet) })
+    #expect(received.value == 3 * 256 * 1_024)
+    #expect(outbox.heldChunks == 0)
+}
+
+@Test func freesTheConnectionAndOutboxOfEachClosedSession() async throws {
+    var held: [Weak] = []
+    for index in 0..<20 {
+        let (local, remote) = try socketPair()
+        do {
+            let connection = RelayConnection(
+                id: index, descriptor: local, peer: PeerCheck(verdict: .accepted, pid: 0, signingIdentifier: nil)
+            )
+            connection.openOutbox { _ in }
+            #expect(connection.send(Data("ready\n".utf8)))
+            // As the server does: the relay's end of file closes the session once its queue is written.
+            connection.readLines(
+                waitForCapacity: {}, line: { _ in }, tooLarge: {},
+                ended: { [weak connection] _ in connection?.closeAfterFlush() }
+            )
+            held.append(Weak(connection))
+            held.append(Weak(try #require(connection.outbox)))
+        }
+        var buffer = [UInt8](repeating: 0, count: 16)
+        _ = read(remote, &buffer, buffer.count)
+        close(remote)
+    }
+    #expect(await eventually { held.allSatisfy { $0.value == nil } })
 }

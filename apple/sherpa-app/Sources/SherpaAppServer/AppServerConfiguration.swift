@@ -9,8 +9,13 @@ public struct ServerTiming: Sendable {
     public var violationKillGrace: Double = 5
     public var shutdownInputGrace: Double = 5
     public var shutdownTerminateGrace: Double = 5
+    /// The longest the app waits for work requests when it ends (§7.10).
+    public var shutdownWorkLimit: Double = 35
     /// Multiplies restart delays and the restart window.
     public var restartScale: Double = 1
+    /// A pause after a core's exit is recorded and before the rest of its handling: a test
+    /// widens that gap to show that shutdown's last status does not depend on it.
+    public var exitHandlingDelay: Double = 0
 
     public init() {}
 }
@@ -59,7 +64,7 @@ public struct AppServerConfiguration: Sendable {
             coreEnvironment: coreEnvironment(from: environment)
         )
         #if DEBUG
-        if let core = environment["SHERPA_CORE_BIN"], !core.isEmpty { configuration.corePath = core }
+        if let core = environment["SHERPA_TEST_CORE_BIN"], !core.isEmpty { configuration.corePath = core }
         if let relay = environment["SHERPA_RELAY_REQUIREMENT"], !relay.isEmpty {
             configuration.relayRequirement = relay
         }

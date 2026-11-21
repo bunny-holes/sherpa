@@ -53,15 +53,22 @@ enum Products {
     }()
 }
 
+/// The folder of this test process's signed copies, removed when it exits.
+nonisolated(unsafe) private var signedProgramsFolder: String?
+
 enum SignedPrograms {
+    /// A new folder for each test process: runs that overlap never replace or remove each
+    /// other's programs.
     static let directory: Result<String, ProcessTestError> = {
         // SIGPIPE would end the test process when a child closes a pipe first.
         signal(SIGPIPE, SIG_IGN)
-        let directory = Products.directory + "/process-test-programs"
         let files = FileManager.default
         do {
-            if files.fileExists(atPath: directory) { try files.removeItem(atPath: directory) }
-            try files.createDirectory(atPath: directory, withIntermediateDirectories: false)
+            let directory = try makeTemporaryDirectory(prefix: "sap")
+            signedProgramsFolder = directory
+            atexit {
+                if let folder = signedProgramsFolder { try? FileManager.default.removeItem(atPath: folder) }
+            }
             for program in Program.allCases {
                 guard files.isExecutableFile(atPath: program.linkerSignedPath) else {
                     return .failure(ProcessTestError("missing \(program.rawValue); run swift build first"))
@@ -73,10 +80,10 @@ enum SignedPrograms {
                     return .failure(ProcessTestError("codesign \(program.rawValue) exited \(status)"))
                 }
             }
+            return .success(directory)
         } catch {
             return .failure(ProcessTestError("preparing signed programs failed: \(error)"))
         }
-        return .success(directory)
     }()
 }
 
@@ -292,13 +299,14 @@ final class Rig: @unchecked Sendable {
     /// The DEBUG test host: Sherpa.app's server with a scripted confirmation decider.
     func startHost(
         _ arguments: [String] = [],
+        core: String? = nil,
         relayRequirement: String? = Program.relay.testRequirement,
         coreRequirement: String? = Program.core.testRequirement,
         listening: Bool = true
     ) async throws -> Child {
         var environment = environment
         environment["TMPDIR"] = coreDirectory + "/"
-        environment["SHERPA_CORE_BIN"] = try Program.core.path
+        environment["SHERPA_TEST_CORE_BIN"] = try core ?? Program.core.path
         if let relayRequirement { environment["SHERPA_RELAY_REQUIREMENT"] = relayRequirement }
         if let coreRequirement { environment["SHERPA_CORE_REQUIREMENT"] = coreRequirement }
         let host = try launch(try Program.host.path, ["--version", Self.appVersion] + arguments, environment)

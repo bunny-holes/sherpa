@@ -26,7 +26,9 @@ final class RelayConnection: @unchecked Sendable {
         self.peer = peer
     }
 
-    /// Starts the writer. `failed` runs when a write to the relay fails.
+    /// Starts the writer. `failed` runs when a write to the relay fails. The writer holds
+    /// this connection until it stops, so the descriptor closes even when nothing else holds
+    /// it; the outbox lets go of that closure then, so a closed connection is freed.
     func openOutbox(failed: @escaping @Sendable (Int32) -> Void) {
         let outbox = Outbox(descriptor: descriptor, limit: Self.outboxLimit, failed: failed) { [self] in
             release()
@@ -36,7 +38,7 @@ final class RelayConnection: @unchecked Sendable {
         lock.unlock()
     }
 
-    private var outbox: Outbox? {
+    var outbox: Outbox? {
         lock.lock()
         defer { lock.unlock() }
         return outboxStorage

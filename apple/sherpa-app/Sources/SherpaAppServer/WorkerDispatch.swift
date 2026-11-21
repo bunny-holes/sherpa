@@ -19,6 +19,8 @@ public protocol PlannerPort: Sendable {
 public struct WorkerJob: Sendable {
     public let id: UInt64
     public let worker: String
+    /// The request envelope as the bytes the core sent, so the 64 KiB limit and the planner
+    /// see what the helper's standard input would hold.
     public let request: Data
     /// Monotonic seconds when the app read the frame; the deadline counts from here.
     public let receivedAt: Double
@@ -38,10 +40,108 @@ public struct WorkerJob: Sendable {
               Set(object.keys) == ["id", "worker", "request"],
               case let .integer(id)? = object["id"], id > 0, UInt64(id) <= MuxFrame.maximumChannel,
               case let .string(worker)? = object["worker"],
-              case let .object(request)? = object["request"],
-              let encoded = try? JSONEncoder().encode(JSONValue.object(request))
+              case .object? = object["request"],
+              let request = RawJSONMember.value(of: "request", in: body)
         else { return nil }
-        return WorkerJob(id: UInt64(id), worker: worker, request: encoded, receivedAt: receivedAt, generation: generation)
+        return WorkerJob(id: UInt64(id), worker: worker, request: request, receivedAt: receivedAt, generation: generation)
+    }
+}
+
+/// The bytes of one member's value in a JSON object, exactly as they arrived. Encoding the
+/// decoded value again would change them (`/` becomes `\/`, spacing and number forms change).
+/// The body has already decoded as an object; this only finds where each value ends.
+enum RawJSONMember {
+    /// Nil when the member is missing, appears more than once, or the text is not an object.
+    static func value(of name: String, in body: Data) -> Data? {
+        let bytes = [UInt8](body)
+        var index = 0
+
+        func skipSpace() {
+            while index < bytes.count, bytes[index] == 0x20 || bytes[index] == 0x09 || bytes[index] == 0x0a || bytes[index] == 0x0d {
+                index += 1
+            }
+        }
+        // At a quote; ends after the closing quote.
+        func skipString() -> Bool {
+            index += 1
+            while index < bytes.count {
+                switch bytes[index] {
+                case 0x5c: index += 2
+                case 0x22:
+                    index += 1
+                    return true
+                default: index += 1
+                }
+            }
+            return false
+        }
+        func skipValue() -> Bool {
+            guard index < bytes.count else { return false }
+            switch bytes[index] {
+            case 0x22:
+                return skipString()
+            case 0x7b, 0x5b:
+                var depth = 0
+                while index < bytes.count {
+                    switch bytes[index] {
+                    case 0x22:
+                        guard skipString() else { return false }
+                        continue
+                    case 0x7b, 0x5b:
+                        depth += 1
+                    case 0x7d, 0x5d:
+                        depth -= 1
+                        if depth == 0 {
+                            index += 1
+                            return true
+                        }
+                    default:
+                        break
+                    }
+                    index += 1
+                }
+                return false
+            default:
+                let start = index
+                while index < bytes.count, ![0x2c, 0x7d, 0x5d, 0x20, 0x09, 0x0a, 0x0d].contains(bytes[index]) {
+                    index += 1
+                }
+                return index > start
+            }
+        }
+
+        skipSpace()
+        guard index < bytes.count, bytes[index] == 0x7b else { return nil }
+        index += 1
+        var found: Range<Int>?
+        skipSpace()
+        if index < bytes.count, bytes[index] == 0x7d { return nil }
+        while true {
+            skipSpace()
+            guard index < bytes.count, bytes[index] == 0x22 else { return nil }
+            let keyStart = index
+            guard skipString() else { return nil }
+            let key = try? JSONDecoder().decode(String.self, from: Data(bytes[keyStart..<index]))
+            skipSpace()
+            guard index < bytes.count, bytes[index] == 0x3a else { return nil }
+            index += 1
+            skipSpace()
+            let valueStart = index
+            guard skipValue() else { return nil }
+            if key == name {
+                guard found == nil else { return nil }
+                found = valueStart..<index
+            }
+            skipSpace()
+            guard index < bytes.count else { return nil }
+            if bytes[index] == 0x2c {
+                index += 1
+                continue
+            }
+            guard bytes[index] == 0x7d else { return nil }
+            break
+        }
+        return found.map { Data(bytes[$0]) }
     }
 }
 
@@ -90,16 +190,40 @@ public final class WorkerQueue: @unchecked Sendable {
         continuation.yield(job)
     }
 
-    /// Waits until every queued or running request has answered, but not past the latest
-    /// of their deadlines (§7.10).
-    public func waitUntilIdle() {
+    /// Waits until every request queued or running at the call has answered, but not past
+    /// the latest of their deadlines nor `limit` seconds (§7.10). A request that arrives
+    /// meanwhile does not extend the wait.
+    public func waitUntilIdle(limit: Double) {
         condition.lock()
         defer { condition.unlock() }
-        while let latest = outstanding.values.max() {
-            let remaining = latest - now()
+        let waiting = Set(outstanding.keys)
+        guard let latest = outstanding.values.max() else { return }
+        let start = now()
+        let end = start + min(max(0, latest - start), limit)
+        while outstanding.keys.contains(where: waiting.contains) {
+            let remaining = end - now()
             if remaining <= 0 { return }
             _ = condition.wait(until: Date(timeIntervalSinceNow: remaining))
         }
+    }
+
+    /// The answer to a request that arrived after the app began to end: V2 failure
+    /// `app.shutting_down`, not started (§7.10). The planner does not see it.
+    public func refuse(_ job: WorkerJob) -> WorkerOutput {
+        guard job.request.count <= Self.requestLimit else {
+            return report(job, CommandReport(protocolFailure: .requestTooLarge))
+        }
+        let request: WorkerRequest
+        do {
+            request = try WorkerRequest(data: job.request)
+        } catch let failure as WorkerProtocolError {
+            return report(job, CommandReport(protocolFailure: failure))
+        } catch {
+            return report(job, CommandReport(status: "failed", error: "sherpa.internal_failure"))
+        }
+        logger.warn("app:worker:request", "id=\(job.id) worker=\(logToken(job.worker)) capability=\(logToken(request.capability)) "
+            + "operation_id=\(logToken(request.operationID)) code=app.shutting_down")
+        return failure(request, code: "app.shutting_down", retry: .afterBackoff, job: job)
     }
 
     public var outstandingCount: Int {

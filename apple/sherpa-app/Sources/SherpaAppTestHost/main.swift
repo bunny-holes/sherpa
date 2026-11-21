@@ -6,7 +6,27 @@ import SherpaAppServer
 
 // The socket server of Sherpa.app without its menu, for the process tests of contract
 // §13.2. It reads the same DEBUG test variables as the app and answers confirmations with a
-// scripted decision. A release build of this program does nothing.
+// scripted decision. A release build only prints the configuration it resolves, so the gate
+// can give it every test variable and see that a release build ignores them.
+
+/// `--print-configuration`: what this build resolves from its environment, one field a line.
+func printConfiguration() -> Never {
+    let directory = (CommandLine.arguments[0] as NSString).deletingLastPathComponent
+    guard let configuration = try? AppServerConfiguration.resolve(
+        executableDirectory: directory, version: "0.0.0", environment: ProcessInfo.processInfo.environment
+    ) else {
+        FileHandle.standardError.write(Data("[testhost:config:resolve] reason=home_unavailable\n".utf8))
+        exit(70)
+    }
+    print("socket=\(configuration.socket.socketPath)")
+    print("socket_override=\(configuration.socket.isOverride)")
+    print("core=\(configuration.corePath)")
+    print("core_requirement=\(configuration.coreRequirement)")
+    print("relay_requirement=\(configuration.relayRequirement)")
+    exit(0)
+}
+
+if CommandLine.arguments.dropFirst().first == "--print-configuration" { printConfiguration() }
 
 #if DEBUG
 struct ScriptedConfirmations: ConfirmationPort {
@@ -47,6 +67,7 @@ while !arguments.isEmpty {
     case "--confirm": decision = value == "ignore" ? nil : ConfirmationDecision(rawValue: value)
     case "--restart-scale": timing.restartScale = Double(value) ?? 1
     case "--hello-timeout": timing.helloTimeout = Double(value) ?? 10
+    case "--exit-handling-delay": timing.exitHandlingDelay = Double(value) ?? 0
     default:
         logger.error("testhost:cli:arguments", "reason=unknown_argument")
         exit(64)

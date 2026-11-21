@@ -6,9 +6,13 @@ import SwiftUI
 /// Shows each delete or send request in a front-most window with the time left, one at a
 /// time; the others wait their turn while their own time runs. That time is the request's
 /// `timeout_ms`, what is left of the core's 30 seconds after its preview read (contract §9).
-/// The window's content is user data and is never logged.
+/// The window's content is user data and is never logged. Each new request keeps its buttons
+/// off for a moment, so a second click meant for the request before cannot answer one that
+/// took its place unread.
 @MainActor
 final class ConfirmationWindows {
+    static let armingDelay = 1.0
+
     private struct Pending {
         let request: ConfirmationRequest
         let decide: @Sendable (ConfirmationDecision) -> Void
@@ -18,6 +22,8 @@ final class ConfirmationWindows {
     private var current: Pending?
     private var panel: NSPanel?
     private var timer: Timer?
+    /// Counts shown requests, so a late arming finds out whether its request is still shown.
+    private var shown = 0
     private let model = ConfirmationViewModel()
 
     func present(_ request: ConfirmationRequest, decide: @escaping @Sendable (ConfirmationDecision) -> Void) {
@@ -49,7 +55,16 @@ final class ConfirmationWindows {
         current = next
         model.request = next.request
         model.remaining = max(0, Int((next.request.deadline - now).rounded(.up)))
+        model.armed = false
         model.answer = { [weak self] decision in self?.answer(decision) }
+        shown += 1
+        let showing = shown
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.armingDelay) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.shown == showing, self.current != nil else { return }
+                self.model.armed = true
+            }
+        }
 
         let panel = panel ?? makePanel()
         self.panel = panel
@@ -71,7 +86,7 @@ final class ConfirmationWindows {
     }
 
     private func answer(_ decision: ConfirmationDecision) {
-        guard let current else { return }
+        guard let current, model.armed else { return }
         current.decide(decision)
         closeCurrent()
     }
@@ -105,6 +120,8 @@ final class ConfirmationWindows {
 final class ConfirmationViewModel {
     var request: ConfirmationRequest?
     var remaining = 0
+    /// False for the first second of each request.
+    var armed = false
     var answer: (ConfirmationDecision) -> Void = { _ in }
 }
 
@@ -133,7 +150,9 @@ struct ConfirmationView: View {
                     Text("Answer within \(model.remaining) s").monospacedDigit().foregroundStyle(.secondary)
                     Spacer()
                     Button("Decline") { model.answer(.declined) }.keyboardShortcut(.cancelAction)
+                        .disabled(!model.armed)
                     Button("Allow") { model.answer(.approved) }
+                        .disabled(!model.armed)
                 }
             }
             .padding(20)

@@ -43,17 +43,20 @@ log info "check:swift:success" "packages=4"
 # 릴리스 빌드는 실행 경로, 소켓 경로, 서명 요건을 바꾸는 시험용 변수를 읽지 않는다(계약 §2, §13.2).
 # 같은 사용자의 아무 프로세스나 launchctl setenv 로 그 값을 앱에 넣을 수 있기 때문이다. DEBUG 빌드에
 # 있는 이름이 릴리스 빌드에서 사라졌는지 본다. DEBUG 쪽에 이름이 없으면 이 검사는 아무것도 보지 못하므로
-# 그것도 실패로 친다.
+# 그것도 실패로 친다. Swift 는 15 바이트 이하의 문자열 리터럴을 명령어 안에 넣어 grep 이 찾지 못하므로
+# 이름은 16 바이트 이상이어야 한다.
 readonly APP_PACKAGE="$REPO_ROOT/apple/sherpa-app"
 log info "check:app-release:start" "package=sherpa-app"
-for product in sherpa-relay Sherpa; do
+for product in sherpa-relay Sherpa sherpa-app-testhost; do
   swift build -c release --package-path "$APP_PACKAGE" --product "$product" >/dev/null \
     || fail "reason=app_release_build_failed product=$product"
 done
 for entry in "sherpa-relay:SHERPA_APP_SOCKET SHERPA_APP_REQUIREMENT" \
-  "Sherpa:SHERPA_APP_SOCKET SHERPA_CORE_BIN SHERPA_RELAY_REQUIREMENT SHERPA_CORE_REQUIREMENT"; do
+  "Sherpa:SHERPA_APP_SOCKET SHERPA_TEST_CORE_BIN SHERPA_RELAY_REQUIREMENT SHERPA_CORE_REQUIREMENT"; do
   product="${entry%%:*}"
   for name in ${entry#*:}; do
+    [ "$(printf '%s' "$name" | LC_ALL=C wc -c | tr -d ' ')" -ge 16 ] \
+      || fail "reason=test_variable_name_too_short product=$product name=$name"
     LC_ALL=C grep -q -a -F "$name" "$APP_PACKAGE/.build/debug/$product" \
       || fail "reason=debug_variable_missing product=$product name=$name"
     if LC_ALL=C grep -q -a -F "$name" "$APP_PACKAGE/.build/release/$product"; then
@@ -96,6 +99,36 @@ case "$release_exit" in
   *) stop_fake_app; fail "reason=release_relay_unexpected_exit exit=$release_exit" ;;
 esac
 stop_fake_app
+
+# 릴리스 앱 쪽도 돌려 본다. 시험 호스트는 앱과 같은 AppServerConfiguration.resolve 를 쓰고
+# --print-configuration 으로 그 결과를 쓴다. 시험용 변수를 모두 주면 DEBUG 빌드는 그 값을 쓰고(대조),
+# 릴리스 빌드는 하나도 쓰지 않고 번들 배치와 운영 요건을 쓴다.
+config_probe="$(mktemp -d)"
+injected_requirement='identifier "gate.injected"'
+print_configuration() {
+  SHERPA_APP_SOCKET="$config_probe/injected.sock" SHERPA_TEST_CORE_BIN="$config_probe/injected-core" \
+    SHERPA_RELAY_REQUIREMENT="$injected_requirement" SHERPA_CORE_REQUIREMENT="$injected_requirement" \
+    "$1" --print-configuration 2>/dev/null
+}
+debug_configuration="$(print_configuration "$APP_PACKAGE/.build/debug/sherpa-app-testhost")" \
+  || { rm -rf "$config_probe"; fail "reason=debug_configuration_failed"; }
+release_configuration="$(print_configuration "$APP_PACKAGE/.build/release/sherpa-app-testhost")" \
+  || { rm -rf "$config_probe"; fail "reason=release_configuration_failed"; }
+for line in "socket=$config_probe/injected.sock" "core=$config_probe/injected-core" \
+  "core_requirement=$injected_requirement" "relay_requirement=$injected_requirement"; do
+  printf '%s\n' "$debug_configuration" | grep -qxF "$line" \
+    || { rm -rf "$config_probe"; fail "reason=debug_ignored_test_variable field=${line%%=*}"; }
+  if printf '%s\n' "$release_configuration" | grep -qxF "$line"; then
+    rm -rf "$config_probe"; fail "reason=release_reads_test_variable field=${line%%=*}"
+  fi
+done
+rm -rf "$config_probe"
+for line in "socket_override=false" "core=$APP_PACKAGE/.build/release/sherpa-core" \
+  'core_requirement=anchor apple generic and certificate leaf[subject.OU] = "FN2KZ2J47B" and identifier "dev.xiyo.sherpa.core"' \
+  'relay_requirement=anchor apple generic and certificate leaf[subject.OU] = "FN2KZ2J47B" and identifier "dev.xiyo.sherpa.relay"'; do
+  printf '%s\n' "$release_configuration" | grep -qxF "$line" \
+    || fail "reason=release_configuration_unexpected field=${line%%=*}"
+done
 log info "check:app-release:success" "release_relay_exit=$release_exit"
 
 # 2. Bun + TypeScript 코어(ADR-0008). 포맷·린트·타입 검사, Bun 런타임 위의 vitest,

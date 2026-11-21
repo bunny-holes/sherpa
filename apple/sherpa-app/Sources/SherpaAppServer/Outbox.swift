@@ -4,6 +4,9 @@ import SherpaAppConnection
 
 /// A queue of whole writes drained by its own thread, so the reader that fills it never
 /// waits on the descriptor (§7.7). Each enqueued chunk is written in one piece, in order.
+/// The queue lets go of a chunk as soon as the writer takes it, and of everything it holds,
+/// its closures included, once the writer stops: what an agent was sent does not outlive
+/// its session.
 final class Outbox: @unchecked Sendable {
     private let descriptor: Int32
     /// Nil: unbounded. Otherwise a chunk that would pass the limit is refused.
@@ -15,11 +18,12 @@ final class Outbox: @unchecked Sendable {
     private var finishing = false
     private var stopped = false
     private var afterDrain: (@Sendable () -> Void)?
-    private let failed: @Sendable (Int32) -> Void
-    private let ended: @Sendable () -> Void
+    private var failed: (@Sendable (Int32) -> Void)?
+    private var ended: (@Sendable () -> Void)?
 
     /// `failed` gets the errno of a write that did not complete. `ended` runs once when the
-    /// writer thread stops for any reason.
+    /// writer thread stops for any reason. Both are released after that, so a closure that
+    /// holds the outbox's owner does not keep it alive.
     init(descriptor: Int32, limit: Int?, failed: @escaping @Sendable (Int32) -> Void,
          ended: @escaping @Sendable () -> Void) {
         self.descriptor = descriptor
@@ -33,6 +37,13 @@ final class Outbox: @unchecked Sendable {
         condition.lock()
         defer { condition.unlock() }
         return queued
+    }
+
+    /// The chunks the queue still holds, written or not. For tests.
+    var heldChunks: Int {
+        condition.lock()
+        defer { condition.unlock() }
+        return chunks.count - head
     }
 
     /// False when the outbox has stopped or the chunk would pass the limit.
@@ -63,9 +74,8 @@ final class Outbox: @unchecked Sendable {
         condition.lock()
         defer { condition.unlock() }
         stopped = true
-        chunks.removeAll()
-        head = 0
-        queued = 0
+        dropQueued()
+        afterDrain = nil
         condition.broadcast()
     }
 
@@ -78,6 +88,25 @@ final class Outbox: @unchecked Sendable {
         }
     }
 
+    /// Under the lock.
+    private func dropQueued() {
+        chunks.removeAll()
+        head = 0
+        queued = 0
+    }
+
+    /// Under the lock: stops and hands back the closures still to run, each once.
+    private func stopLocked() -> (then: (@Sendable () -> Void)?, failed: (@Sendable (Int32) -> Void)?, ended: (@Sendable () -> Void)?) {
+        let closures = (afterDrain, failed, ended)
+        stopped = true
+        dropQueued()
+        afterDrain = nil
+        failed = nil
+        ended = nil
+        condition.broadcast()
+        return closures
+    }
+
     private func drain() {
         while true {
             condition.lock()
@@ -85,37 +114,41 @@ final class Outbox: @unchecked Sendable {
                 condition.wait()
             }
             if stopped || head == chunks.count {
-                let then = stopped ? nil : afterDrain
-                stopped = true
-                condition.broadcast()
+                let cancelled = stopped
+                let closures = stopLocked()
                 condition.unlock()
-                then?()
-                ended()
+                if !cancelled { closures.then?() }
+                closures.ended?()
                 return
             }
-            let chunk = chunks[head]
+            // The writer's copy is the last reference; it goes when this write ends.
+            var chunk: Data? = chunks[head]
+            chunks[head] = Data()
             head += 1
-            if head > 64, head * 2 > chunks.count {
+            if head == chunks.count {
+                chunks.removeAll()
+                head = 0
+            } else if head > 64, head * 2 > chunks.count {
                 chunks.removeFirst(head)
                 head = 0
             }
             condition.unlock()
 
+            let size = chunk?.count ?? 0
             let failure: Int32? = autoreleasepool {
-                chunk.withUnsafeBytes { FileDescriptorIO.writeAll(descriptor, $0) }
+                chunk?.withUnsafeBytes { FileDescriptorIO.writeAll(descriptor, $0) }
             }
+            chunk = nil
 
             condition.lock()
-            queued -= chunk.count
+            // A cancel during the write already set the count to zero.
+            if !stopped { queued -= size }
             condition.broadcast()
             if let failure {
-                stopped = true
-                chunks.removeAll()
-                head = 0
-                queued = 0
+                let closures = stopLocked()
                 condition.unlock()
-                failed(failure)
-                ended()
+                closures.failed?(failure)
+                closures.ended?()
                 return
             }
             condition.unlock()

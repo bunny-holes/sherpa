@@ -9,6 +9,98 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-21 — PR #45 review fixes: the core runs only after its running code passes, closed sessions keep nothing (bunny-holes/sherpa#28)
+
+This Mac (Mac16,8, Apple M4 Pro, macOS 27.3 26C5035r). The fixes for the review of
+bunny-holes/sherpa#45 on `feat/menu-bar-app`. The checks used a scratch program
+that starts a child with `POSIX_SPAWN_START_SUSPENDED`, the DEBUG test host with
+ad-hoc signed copies of the relay and the fake core, and the Developer ID dev
+bundle's core (`Sherpa.app/Contents/MacOS/sherpa-core`, 89,677,632 bytes,
+hardened runtime).
+
+- A child started with `POSIX_SPAWN_START_SUSPENDED` was stopped before resume
+  (`proc_pidinfo` status 4, `SSTOP`). `SecCodeCopyGuestWithAttributes` with
+  `kSecGuestAttributePid`, then `SecCodeCheckValidity`, gave these results for
+  the stopped child:
+  - An unsigned shell script at the core's path gave -67050
+    (`errSecCSReqFailed`). Its running code is `/bin/sh`.
+  - The fake core signed as another identifier gave -67050.
+  - The fake core signed `dev.xiyo.sherpa.core`, under the test requirement, gave 0
+    in 3–4 ms. After SIGCONT it ran, wrote its hello and exited 0.
+  - A copy signed as another identifier was started stopped. A correctly signed
+    copy was then renamed over its path, and the check gave -67034
+    (`errSecCSStaticCodeChanged`: the code on disk does not match what is
+    running).
+  - The dev bundle's core passed the production core requirement in 9–15 ms over
+    five runs. The relay's requirement rejected it with -67050. The static check of
+    the same core had taken 290–550 ms (entry below).
+  - SIGKILL to a stopped child ended it without a resume. `waitpid` reaped it
+    within 10–13 ms, and the script's marker file was never created.
+- Corrected path: **the core was checked by path, then started from the same path.**
+  The reviewer swapped a signed fake core and an unsigned file under the DEBUG test
+  host. In 3 of 16 starts the unsigned file ran with the app's rights. The app now
+  starts the core stopped, checks the running code, and resumes it only on success.
+  Otherwise it kills and reaps the core and does not start it again. The static
+  pre-check is gone. The process test
+  "neverLetsACoreRunWhoseRunningCodeFailsTheRequirement" puts an unsigned script
+  and a fake core of another identifier in the core's place. It requires the
+  rejection, no marker file and no fake-core start record. With the check bypassed,
+  the same test failed with six issues.
+- Corrected path: **closed sessions kept their connection and what they were sent.**
+  The reviewer found three causes:
+  - The outbox's `ended` closure held the connection, and the connection held the
+    outbox. `leaks` reported a ROOT CYCLE. After 20 sessions, 20 RelayConnection
+    and 21 Outbox objects were alive.
+  - Written chunks stayed in the queue until 64 more were written.
+  - The queue was not cleared when the writer stopped. With five sessions that
+    each received 8 MB, the footprint went from 3.8 to 49 MB.
+
+  The outbox now drops a chunk as soon as the writer takes it. It clears its queue
+  and its closures when the writer stops. Three unit tests failed against the old
+  outbox and pass now:
+  - a written 8 MiB chunk is released while the outbox stays open;
+  - nothing is held after `finish`;
+  - 20 closed sessions free their connection and outbox.
+- After the fix, the DEBUG test host and fake core ran 20 `echo` sessions. Five more
+  sessions each received 8,000,132 bytes (`flood` with 2 × 4,000,000).
+  - `leaks` found 0 leaks and no ROOT CYCLE.
+  - `heap` showed no RelayConnection. It showed one Outbox (the core's input) and
+    one CoreProcess.
+  - Live malloc memory was 287 KB.
+- The footprint still grew with each large session: 2.8 MB at the start, 46 MB
+  after 5 of them and 128 MB after 30. The growth was vmmap's
+  `Malloc Large (empty)`: 208 freed regions, 80 MB resident and 35 MB
+  compressed after 30 sessions. With `MallocLargeCache=0` in the host's
+  environment the footprint stayed flat: 2.8 MB, then 3.1 MB after 10 such
+  sessions. `malloc_zone_pressure_relief(nil, 0)` after each write of 1 MiB or
+  more did not help (73 MB after 10), so it was not kept. Freed pages can still
+  hold sent bytes. The allocator's cache is deferred to bunny-holes/sherpa#46.
+- Corrected path: **shutdown's last status could be an old one.** `shutdown()`
+  waited until the core was cleared, then published. The exit handler wrote
+  `stopped` only later. With a 50 ms delay in that gap, the reviewer saw
+  "shutsDownOnSIGTERM" end on `core=ready`. `stopped` is now set in the same
+  step that clears the core. The test runs with a 50 ms gap
+  (`--exit-handling-delay 0.05`). With the old order the test failed on that
+  line; it passes now.
+- Corrected path: **the gate could not see a 15-byte name.** The reviewer moved
+  `SHERPA_CORE_BIN` (15 bytes) out of `#if DEBUG`. grep then found 0 matches in
+  the release build, because Swift stores a string literal of 15 bytes or fewer
+  inside the instructions. The variable is now `SHERPA_TEST_CORE_BIN`, and the
+  gate rejects a test variable name under 16 bytes. The gate also runs
+  `sherpa-app-testhost --print-configuration` with every test variable set. The
+  DEBUG build printed the injected values. The release build printed the default
+  socket (`socket_override=false`), `.build/release/sherpa-core` and the two
+  production requirements.
+- Corrected path: **the 64 KiB work request limit counted re-encoded bytes.**
+  `JSONEncoder` writes `/` as `\/`, so a request with 40,000 slashes was about
+  40 KB as sent and over 64 KiB once encoded again. The app now keeps the
+  request's bytes as the core sent them. The unit test requires the same bytes at
+  the planner.
+- Not observed yet, for the owner's integrated live check in
+  bunny-holes/sherpa#29: the Allow and Decline buttons of each new confirmation
+  panel stay off for about 1 s, including when a second request replaces the
+  first. No deterministic test covers this AppKit path.
+
 ## 2026-11-21 — Sherpa.app socket server and relay (bunny-holes/sherpa#28, Developer ID dev bundle)
 
 Builds of the `apple/sherpa-app` package on this Mac. Most checks ran the server

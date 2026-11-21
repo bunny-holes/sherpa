@@ -109,7 +109,8 @@ public final class AppServer: @unchecked Sendable {
         state.unlock()
         logger.info("app:server:shutdown", "status=start outstanding_requests=\(workers.outstandingCount)")
 
-        workers.waitUntilIdle()
+        // Requests that arrive from now on are refused, so this wait does not grow.
+        workers.waitUntilIdle(limit: configuration.timing.shutdownWorkLimit)
 
         state.lock()
         let running = core
@@ -135,6 +136,8 @@ public final class AppServer: @unchecked Sendable {
         listener = -1
         status.sessions = 0
         status.listener = .stopped
+        // Also when no core ran, or one outlived SIGKILL: the server has stopped it.
+        status.core = .stopped
         publishLocked()
         state.unlock()
         open.forEach { $0.closeNow() }
@@ -182,29 +185,21 @@ public final class AppServer: @unchecked Sendable {
         publishLocked()
         state.unlock()
 
-        // The core's static signature must pass before it runs (§2).
-        let checkStart = monotonicSeconds()
-        let verdict: Int32
-        do {
-            verdict = try CodeSignature.checkStatic(path: configuration.corePath, requirement: configuration.coreRequirement)
-        } catch {
-            logger.error("app:core:signature", "status=unavailable error=\(error)")
-            coreCannotRun(generation: launching)
-            return
-        }
-        let checkMilliseconds = Int((monotonicSeconds() - checkStart) * 1_000)
-        guard verdict == errSecSuccess else {
-            logger.error("app:core:signature", "status=rejected os_status=\(verdict) duration_ms=\(checkMilliseconds)")
-            coreCannotRun(generation: launching)
-            return
-        }
-        logger.info("app:core:signature", "status=accepted duration_ms=\(checkMilliseconds)")
-
+        // The core runs only after the code it is running passes the core requirement (§2).
         let process: CoreProcess
         do {
             process = try CoreProcess.spawn(
-                path: configuration.corePath, environment: configuration.coreEnvironment, generation: launching
+                path: configuration.corePath, environment: configuration.coreEnvironment,
+                requirement: configuration.coreRequirement, generation: launching
             )
+        } catch .signatureRejected(let status) {
+            logger.error("app:core:signature", "status=rejected os_status=\(status)")
+            coreCannotRun(generation: launching)
+            return
+        } catch .requirementInvalid(let status) {
+            logger.error("app:core:signature", "status=unavailable reason=requirement_invalid os_status=\(status)")
+            coreCannotRun(generation: launching)
+            return
         } catch {
             logger.error("app:core:launch", "status=failed error=\(error)")
             state.lock()
@@ -222,6 +217,7 @@ public final class AppServer: @unchecked Sendable {
         core = process
         coreStartedAt = monotonicSeconds()
         state.unlock()
+        logger.info("app:core:signature", "status=accepted pid=\(process.pid) duration_ms=\(process.signatureMilliseconds)")
         logger.info("app:core:launch", "status=started pid=\(process.pid) generation=\(launching)")
 
         process.start(
@@ -293,10 +289,19 @@ public final class AppServer: @unchecked Sendable {
         let startedAt = coreStartedAt
         let incompatible = status.core == .incompatible
         let planned = shuttingDown
+        // In the same step that clears the core: shutdown() waits for that and then publishes
+        // its last status, which must already say stopped.
+        if planned {
+            status.core = .stopped
+            publishLocked()
+        }
         state.unlock()
         coreGone.lock()
         coreGone.broadcast()
         coreGone.unlock()
+        if configuration.timing.exitHandlingDelay > 0 {
+            Thread.sleep(forTimeInterval: configuration.timing.exitHandlingDelay)
+        }
 
         if planned {
             logger.info("app:core:exit", "pid=\(process.pid) \(termination.logFields) sessions_closed=\(closing.count)")
@@ -306,10 +311,7 @@ public final class AppServer: @unchecked Sendable {
         // A session lives in the core, so every relay ends with 75 and reconnects (§7.8).
         closing.forEach { $0.closeAfterFlush() }
         confirmations.withdrawAll()
-        guard !planned, !incompatible else {
-            if planned { update { $0.core = .stopped } }
-            return
-        }
+        guard !planned, !incompatible else { return }
         scheduleRestart(after: endedAt, startedAt: startedAt, generation: process.generation)
     }
 
@@ -404,7 +406,12 @@ public final class AppServer: @unchecked Sendable {
             guard let job = WorkerJob.parse(body, receivedAt: monotonicSeconds(), generation: process.generation) else {
                 return .frameInvalid
             }
-            workers.enqueue(job)
+            if shuttingDown {
+                // Not started: the app is ending (§7.10).
+                process.send(MuxFrame(channel: 0, type: "response", body: workers.refuse(job).frameBody(id: job.id)))
+            } else {
+                workers.enqueue(job)
+            }
         case "confirm":
             switch ConfirmationRequest.parse(body, receivedAt: monotonicSeconds()) {
             case .failure(.noIdentifier):

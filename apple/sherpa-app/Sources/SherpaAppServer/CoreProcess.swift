@@ -1,10 +1,15 @@
 import Darwin
 import Foundation
+import Security
 import SherpaAppConnection
 
 public enum CoreLaunchFailure: Error, Equatable, Sendable {
     case pipeFailed(errno: Int32)
     case spawnFailed(errno: Int32)
+    case requirementInvalid(status: Int32)
+    /// The started core's running code did not meet the requirement; it was killed before
+    /// its first instruction.
+    case signatureRejected(status: Int32)
 }
 
 /// How a core ended, from `waitpid`.
@@ -28,20 +33,34 @@ final class CoreProcess: @unchecked Sendable {
     let pid: pid_t
     let generation: Int
     let input: Outbox
+    /// How long the check of the running code took, before the core was resumed.
+    let signatureMilliseconds: Int
     private let outputDescriptor: Int32
     private let errorDescriptor: Int32
     private let outputDone = DispatchSemaphore(value: 0)
 
-    private init(pid: pid_t, generation: Int, input: Int32, output: Int32, error: Int32) {
+    private init(pid: pid_t, generation: Int, signatureMilliseconds: Int, input: Int32, output: Int32, error: Int32) {
         self.pid = pid
         self.generation = generation
+        self.signatureMilliseconds = signatureMilliseconds
         outputDescriptor = output
         errorDescriptor = error
         self.input = Outbox(descriptor: input, limit: nil, failed: { _ in }, ended: { close(input) })
     }
 
-    static func spawn(path: String, environment: [String: String], generation: Int) throws(CoreLaunchFailure)
-        -> CoreProcess {
+    /// Starts the core stopped before its first instruction, checks the code that is running
+    /// against `requirement`, and only then lets it run (contract §2). A check of the path
+    /// before a separate start would leave a window in which another file takes its place.
+    static func spawn(
+        path: String, environment: [String: String], requirement: String, generation: Int
+    ) throws(CoreLaunchFailure) -> CoreProcess {
+        let compiled: SecRequirement
+        do {
+            compiled = try CodeSignature.compile(requirement)
+        } catch {
+            if case let .requirementInvalid(status) = error { throw .requirementInvalid(status: status) }
+            throw .requirementInvalid(status: -1)
+        }
         var input: [Int32] = [0, 0], output: [Int32] = [0, 0], error: [Int32] = [0, 0]
         guard pipe(&input) == 0 else { throw .pipeFailed(errno: errno) }
         guard pipe(&output) == 0 else {
@@ -71,7 +90,8 @@ final class CoreProcess: @unchecked Sendable {
         // blocked. The app ignores SIGPIPE, and SIGTERM for its dispatch source; exec keeps an
         // ignored signal ignored, and a core that ignores SIGTERM outlives the app's stop.
         posix_spawnattr_setflags(
-            &attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK)
+            &attributes,
+            Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_START_SUSPENDED)
         )
         var defaults: sigset_t = ~0
         posix_spawnattr_setsigdefault(&attributes, &defaults)
@@ -91,7 +111,24 @@ final class CoreProcess: @unchecked Sendable {
             close(input[1]); close(output[0]); close(error[0])
             throw .spawnFailed(errno: spawned)
         }
-        return CoreProcess(pid: pid, generation: generation, input: input[1], output: output[0], error: error[0])
+
+        // The child is not reaped yet, so its pid names it and no other process.
+        let checkStart = monotonicSeconds()
+        let verdict = CodeSignature.checkRunning(pid: pid, requirement: compiled)
+        let checkMilliseconds = Int((monotonicSeconds() - checkStart) * 1_000)
+        guard verdict == errSecSuccess else {
+            // SIGKILL ends a stopped process without letting it run.
+            kill(pid, SIGKILL)
+            var status: Int32 = 0
+            while waitpid(pid, &status, 0) == -1, errno == EINTR {}
+            close(input[1]); close(output[0]); close(error[0])
+            throw .signatureRejected(status: verdict)
+        }
+        kill(pid, SIGCONT)
+        return CoreProcess(
+            pid: pid, generation: generation, signatureMilliseconds: checkMilliseconds,
+            input: input[1], output: output[0], error: error[0]
+        )
     }
 
     /// Starts the readers and the exit watcher. `frames` returns false to stop handling
