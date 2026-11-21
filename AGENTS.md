@@ -38,8 +38,9 @@ manner: "규칙만 적고 근거는 ADR·live-evidence·스크립트 주석으�
   the chronological log.
 - The CLI and the plugin carry independent versions. The CLI version lives in
   `core/src/version.ts` (`--version` and the help banner), `core/package.json`,
-  the helper's `main.swift` (`sherpa-apple --version` and its help) and both
-  `Info.plist` files;
+  the helper's `main.swift` (`sherpa-apple --version` and its help), both
+  `Info.plist` files and `MARKETING_VERSION` in `apple/sherpa-app/Version.xcconfig`
+  (`Sherpa.app`'s bundle version, which `sherpa-relay --version` prints);
   its tag is `v<version>`, which `scripts/package.sh --publish` requires along
   with the owner's Developer ID Application certificate in the keychain. The
   plugin version lives in both plugin manifests and `plugins/sherpa/CHANGELOG.md`

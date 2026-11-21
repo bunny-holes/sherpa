@@ -20,8 +20,9 @@ log info "$LOG_SCOPE:start" "root=${REPO_ROOT##*/}"
 #    foundation-models-service 는 CLI 가 부르지 않는다 — 의도적으로 배선하지 않은 채
 #    보존한다(승인된 계약 둘의 유일한 구현. docs/roadmap/README.md Phase 2).
 #    이 패키지가 platforms: [.macOS(.v26)] 이라 게이트 전체가 macOS 26 이상을 요구한다.
-#    sherpa-app 은 Sherpa.app·sherpa-relay 와 그 시험 프로그램이다. 프로세스 시험이 swift build 가 만든
-#    DEBUG 실행 파일을 ad-hoc 서명해 띄우므로 build 가 test 보다 먼저다(계약 §13.2).
+#    sherpa-app 은 앱과 중계의 라이브러리, 패키지의 sherpa-relay 와 그 시험 프로그램이다. 프로세스 시험이
+#    swift build 가 만든 DEBUG 실행 파일을 ad-hoc 서명해 띄우므로 build 가 test 보다 먼저다(계약 §13.2).
+#    Sherpa.app 번들은 코어를 빌드한 뒤 2.1 에서 Xcode 프로젝트가 만든다.
 readonly SWIFT_PACKAGES="worker-protocol foundation-models-service eventkit-service sherpa-app"
 for package in $SWIFT_PACKAGES; do
   log info "check:swift:start" "package=$package"
@@ -44,26 +45,31 @@ log info "check:swift:success" "packages=4"
 # 같은 사용자의 아무 프로세스나 launchctl setenv 로 그 값을 앱에 넣을 수 있기 때문이다. DEBUG 빌드에
 # 있는 이름이 릴리스 빌드에서 사라졌는지 본다. DEBUG 쪽에 이름이 없으면 이 검사는 아무것도 보지 못하므로
 # 그것도 실패로 친다. Swift 는 15 바이트 이하의 문자열 리터럴을 명령어 안에 넣어 grep 이 찾지 못하므로
-# 이름은 16 바이트 이상이어야 한다.
+# 이름은 16 바이트 이상이어야 한다. 여기서는 패키지의 중계를 보고, 번들의 앱과 중계는 2.1 에서 본다.
 readonly APP_PACKAGE="$REPO_ROOT/apple/sherpa-app"
+readonly RELAY_TEST_VARIABLES="SHERPA_APP_SOCKET SHERPA_APP_REQUIREMENT"
+readonly APP_TEST_VARIABLES="SHERPA_APP_SOCKET SHERPA_TEST_CORE_BIN SHERPA_RELAY_REQUIREMENT SHERPA_CORE_REQUIREMENT"
+# 이름이 DEBUG 실행 파일에는 있고 릴리스 실행 파일에는 없어야 한다. 인자: 이름표, DEBUG 파일, 릴리스 파일, 이름들.
+check_test_variables() {
+  local label="$1" debug_file="$2" release_file="$3" name
+  shift 3
+  for name in "$@"; do
+    [ "$(printf '%s' "$name" | LC_ALL=C wc -c | tr -d ' ')" -ge 16 ] \
+      || fail "reason=test_variable_name_too_short product=$label name=$name"
+    LC_ALL=C grep -q -a -F "$name" "$debug_file" \
+      || fail "reason=debug_variable_missing product=$label name=$name"
+    if LC_ALL=C grep -q -a -F "$name" "$release_file"; then
+      fail "reason=release_reads_test_variable product=$label name=$name"
+    fi
+  done
+}
 log info "check:app-release:start" "package=sherpa-app"
-for product in sherpa-relay Sherpa sherpa-app-testhost; do
+for product in sherpa-relay sherpa-app-testhost; do
   swift build -c release --package-path "$APP_PACKAGE" --product "$product" >/dev/null \
     || fail "reason=app_release_build_failed product=$product"
 done
-for entry in "sherpa-relay:SHERPA_APP_SOCKET SHERPA_APP_REQUIREMENT" \
-  "Sherpa:SHERPA_APP_SOCKET SHERPA_TEST_CORE_BIN SHERPA_RELAY_REQUIREMENT SHERPA_CORE_REQUIREMENT"; do
-  product="${entry%%:*}"
-  for name in ${entry#*:}; do
-    [ "$(printf '%s' "$name" | LC_ALL=C wc -c | tr -d ' ')" -ge 16 ] \
-      || fail "reason=test_variable_name_too_short product=$product name=$name"
-    LC_ALL=C grep -q -a -F "$name" "$APP_PACKAGE/.build/debug/$product" \
-      || fail "reason=debug_variable_missing product=$product name=$name"
-    if LC_ALL=C grep -q -a -F "$name" "$APP_PACKAGE/.build/release/$product"; then
-      fail "reason=release_reads_test_variable product=$product name=$name"
-    fi
-  done
-done
+check_test_variables sherpa-relay "$APP_PACKAGE/.build/debug/sherpa-relay" "$APP_PACKAGE/.build/release/sherpa-relay" \
+  $RELAY_TEST_VARIABLES
 
 # 릴리스 중계에 시험용 변수를 줘도 기본 경로로 간다. 가짜 앱(식별자 dev.xiyo.sherpa 로 ad-hoc 서명한
 # 사본)을 다른 경로에 띄우고, 같은 변수를 준 DEBUG 중계가 거기 붙어 0 으로 끝나는 것을 먼저 본 뒤, 릴리스 중계는
@@ -154,23 +160,6 @@ printf '%s' "$raw" | grep -Eq '^sherpa [0-9]+\.[0-9]+\.[0-9]+$' \
   || fail "reason=version_format_broken output=$raw"
 cli_version="$(printf '%s' "$raw" | awk '{print $2}')"
 
-# 앱 번들 스크립트는 Mux 1 인사를 하지 않는 코어를 넣지 않는다. #44 전의 낡은 core/dist/sherpa 가
-# 번들에 들어가 앱이 코어를 다섯 번 띄우다 멈춘 것을 2026-11-21 에 재현했다. 그 코어처럼
-# `app serve` 를 모르는 가짜 코어를 넘기면 Swift 빌드 전에 core_not_mux 로 끝나야 한다.
-stale_probe="$(mktemp -d)"
-cat > "$stale_probe/core" <<'SH'
-#!/bin/sh
-echo '{"ok":false,"error":{"code":"invalidRequest"}}'
-exit 64
-SH
-chmod +x "$stale_probe/core"
-if bash "$REPO_ROOT/apple/sherpa-app/scripts/build-app.sh" --core "$stale_probe/core" --identity - \
-  --output "$stale_probe/out" 2>"$stale_probe/log"; then
-  rm -rf "$stale_probe"; fail "reason=app_bundle_accepted_stale_core"
-fi
-grep -q 'reason=core_not_mux' "$stale_probe/log" \
-  || { cat "$stale_probe/log" >&2; rm -rf "$stale_probe"; fail "reason=app_bundle_stale_core_unnamed"; }
-rm -rf "$stale_probe"
 [ "$("$SHERPA_APPLE_BIN" --version)" = "sherpa-apple $cli_version" ] \
   || fail "reason=helper_version_mismatch cli=$cli_version"
 
@@ -216,6 +205,92 @@ ignored="$(printf '%s' "$capabilities" | SHERPA_APPLE_RESPONSE_LIMIT_BYTES=1 "$b
 python3 -c 'import json, sys; assert json.loads(sys.argv[1])["status"] == "succeeded"' "$ignored" \
   || fail "reason=rejected_limit_override_applied"
 log info "check:core:success" "cli_version=$cli_version"
+
+# 2.1 Sherpa.app 번들. apple/sherpa-app/Sherpa.xcodeproj 가 앱과 sherpa-relay 를 빌드하고, Embed Core
+#     단계가 방금 빌드한 core/dist/sherpa 를 확인해 넣는다(계약 §2). Xcode 의 스크립트 PATH 에는 bun 이
+#     없어 코어는 그 전에 빌드해야 한다. 서명은 소유자의 Developer ID 인증서로 한다.
+readonly XCODE_DERIVED="$APP_PACKAGE/.build/xcode"
+log info "check:app-bundle:start" "project=Sherpa.xcodeproj"
+security find-identity -v -p codesigning | grep -q '"Developer ID Application: .*(FN2KZ2J47B)"' \
+  || fail "reason=developer_id_identity_missing team=FN2KZ2J47B"
+xcode_log="$(mktemp)"
+xcode_build() {
+  xcodebuild build -project "$APP_PACKAGE/Sherpa.xcodeproj" -scheme Sherpa -configuration "$1" \
+    -destination 'generic/platform=macOS' -derivedDataPath "$XCODE_DERIVED" "${@:2}" >"$xcode_log" 2>&1
+}
+xcode_failed() { grep -E 'error:' "$xcode_log" | tail -20 >&2; rm -f "$xcode_log"; fail "$1"; }
+# 증분 빌드는 서명 설정만 바뀐 중계를 번들에 다시 복사하지 않았다(2026-11-21 실측). 처음부터 빌드한다.
+rm -rf "$XCODE_DERIVED"
+
+# 낡은 코어 거부. #44 전의 낡은 core/dist/sherpa 가 번들에 들어가 앱이 코어를 다섯 번 띄우다 멈춘 것을
+# 2026-11-21 에 재현했다. 그 코어처럼 `app serve` 를 모르는 가짜 코어를 SHERPA_CORE 로 넘기면 빌드가
+# core_not_mux 로 실패하고, 번들에는 서명도 실행 파일도 남지 않아야 한다.
+stale_probe="$(mktemp -d)"
+cat > "$stale_probe/core" <<'SH'
+#!/bin/sh
+echo '{"ok":false,"error":{"code":"invalidRequest"}}'
+exit 64
+SH
+chmod +x "$stale_probe/core"
+if xcode_build Debug SHERPA_CORE="$stale_probe/core"; then
+  rm -rf "$stale_probe"; xcode_failed "reason=app_bundle_accepted_stale_core"
+fi
+rm -rf "$stale_probe"
+grep -q 'reason=core_not_mux' "$xcode_log" || xcode_failed "reason=app_bundle_stale_core_unnamed"
+debug_app="$XCODE_DERIVED/Build/Products/Debug/Sherpa.app"
+if [ -e "$debug_app/Contents/_CodeSignature" ] || [ -n "$(ls -A "$debug_app/Contents/MacOS" 2>/dev/null)" ]; then
+  xcode_failed "reason=app_bundle_built_with_stale_core"
+fi
+
+xcode_build Debug || xcode_failed "reason=app_debug_build_failed"
+xcode_build Release || xcode_failed "reason=app_release_build_failed"
+rm -f "$xcode_log"
+release_app="$XCODE_DERIVED/Build/Products/Release/Sherpa.app"
+check_test_variables Sherpa "$debug_app/Contents/MacOS/Sherpa" "$release_app/Contents/MacOS/Sherpa" \
+  $APP_TEST_VARIABLES
+check_test_variables Sherpa.app/sherpa-relay "$debug_app/Contents/MacOS/sherpa-relay" \
+  "$release_app/Contents/MacOS/sherpa-relay" $RELAY_TEST_VARIABLES
+
+# 릴리스 번들의 배치, Info.plist, 서명. 셋 다 계약 §2 의 식별자와 hardened runtime 이고, 지정 요건이 팀을
+# 이름한다(§4). 권한 항목은 앱만 갖는다. 보안 타임스탬프는 내보내기(-exportArchive)가 붙인다.
+[ "$(ls "$release_app/Contents/MacOS" | LC_ALL=C sort | tr '\n' ' ')" = "Sherpa sherpa-core sherpa-relay " ] \
+  || fail "reason=app_bundle_layout_unexpected"
+python3 - "$release_app/Contents/Info.plist" "$cli_version" <<'PY' || fail "reason=app_info_plist_unexpected"
+import plistlib, sys
+info = plistlib.load(open(sys.argv[1], "rb"))
+expected = {"CFBundleIdentifier": "dev.xiyo.sherpa", "CFBundleExecutable": "Sherpa", "CFBundlePackageType": "APPL",
+            "CFBundleShortVersionString": sys.argv[2], "CFBundleVersion": sys.argv[2], "LSUIElement": True,
+            "CFBundleInfoDictionaryVersion": "6.0", "CFBundleSupportedPlatforms": ["MacOSX"]}
+wrong = [key for key, value in expected.items() if info.get(key) != value]
+wrong += [key for key in ("NSCalendarsFullAccessUsageDescription", "NSRemindersFullAccessUsageDescription",
+                          "NSAppleEventsUsageDescription", "DTXcode", "DTSDKName") if not info.get(key)]
+sys.exit(f"Info.plist: {', '.join(wrong)}" if wrong else 0)
+PY
+codesign --verify --strict --deep "$release_app" 2>/dev/null || fail "reason=app_bundle_signature_invalid"
+entitlement_keys() {
+  codesign -d --entitlements - --xml "$1" 2>/dev/null | python3 -c '
+import plistlib, sys
+data = sys.stdin.buffer.read()
+print(" ".join(sorted(plistlib.loads(data))) if data.strip() else "")'
+}
+for entry in "Sherpa:dev.xiyo.sherpa:com.apple.security.automation.apple-events com.apple.security.personal-information.calendars" \
+  "sherpa-relay:dev.xiyo.sherpa.relay:" "sherpa-core:dev.xiyo.sherpa.core:"; do
+  name="${entry%%:*}"
+  rest="${entry#*:}"
+  identifier="${rest%%:*}"
+  executable="$release_app/Contents/MacOS/$name"
+  details="$(codesign -dv "$executable" 2>&1)"
+  printf '%s\n' "$details" | grep -qx "Identifier=$identifier" || fail "reason=identifier_mismatch file=$name"
+  printf '%s\n' "$details" | grep -q '^CodeDirectory .*flags=.*(runtime)' || fail "reason=runtime_missing file=$name"
+  requirement="$(codesign -d -r- "$executable" 2>&1)"
+  for clause in "identifier \"$identifier\"" 'anchor apple generic' 'certificate leaf[subject.OU] = FN2KZ2J47B'; do
+    printf '%s' "$requirement" | grep -qF "$clause" || fail "reason=requirement_unexpected file=$name clause=$clause"
+  done
+  [ "$(entitlement_keys "$executable")" = "${rest#*:}" ] || fail "reason=entitlements_unexpected file=$name"
+done
+[ "$("$release_app/Contents/MacOS/sherpa-relay" --version)" = "sherpa-relay $cli_version" ] \
+  || fail "reason=bundled_relay_version_mismatch cli=$cli_version"
+log info "check:app-bundle:success" "version=$cli_version configuration=Release signed=developer_id"
 
 # 3. 에이전트 플러그인. 방금 빌드한 바이너리를 넘겨 스킬이 부르는 명령이 실제로
 #    존재하는지까지 확인시킨다.

@@ -8,7 +8,13 @@ let package = Package(
     name: "sherpa-app",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "Sherpa", targets: ["SherpaApp"]),
+        // Linked by Sherpa.xcodeproj, which builds Sherpa.app and its sherpa-relay.
+        .library(name: "SherpaAppConnection", targets: ["SherpaAppConnection"]),
+        .library(name: "SherpaAppServer", targets: ["SherpaAppServer"]),
+        .library(name: "SherpaAppPlanner", targets: ["SherpaAppPlanner"]),
+        .library(name: "SherpaRelayKit", targets: ["SherpaRelayKit"]),
+        // The process tests start this relay as swift build wrote it (contract §13.2). The
+        // bundled relay is the project's sherpa-relay target, built from the same main.swift.
         .executable(name: "sherpa-relay", targets: ["SherpaRelay"]),
         // Test programs. They are never copied into Sherpa.app.
         .executable(name: "sherpa-app-testhost", targets: ["SherpaAppTestHost"]),
@@ -38,15 +44,6 @@ let package = Package(
                 "SherpaAppServer",
                 workerProtocol,
                 .product(name: "SherpaPlannerService", package: "eventkit-service"),
-            ]
-        ),
-        .executableTarget(
-            name: "SherpaApp",
-            dependencies: ["SherpaAppConnection", "SherpaAppServer", "SherpaAppPlanner", workerProtocol],
-            linkerSettings: [
-                .linkedFramework("AppKit"),
-                .linkedFramework("EventKit"),
-                .linkedFramework("CoreServices"),
             ]
         ),
         .executableTarget(

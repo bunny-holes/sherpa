@@ -1,0 +1,453 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		5E0A00000000000000000401 /* sherpa-relay in Embed Relay */ = {isa = PBXBuildFile; fileRef = 5E0A00000000000000000102 /* sherpa-relay */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		5E0A00000000000000000402 /* SherpaAppConnection in Frameworks */ = {isa = PBXBuildFile; productRef = 5E0A00000000000000000502 /* SherpaAppConnection */; };
+		5E0A00000000000000000403 /* SherpaAppServer in Frameworks */ = {isa = PBXBuildFile; productRef = 5E0A00000000000000000503 /* SherpaAppServer */; };
+		5E0A00000000000000000404 /* SherpaAppPlanner in Frameworks */ = {isa = PBXBuildFile; productRef = 5E0A00000000000000000504 /* SherpaAppPlanner */; };
+		5E0A00000000000000000405 /* SherpaWorkerProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 5E0A00000000000000000505 /* SherpaWorkerProtocol */; };
+		5E0A00000000000000000406 /* SherpaRelayKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5E0A00000000000000000506 /* SherpaRelayKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		5E0A00000000000000000702 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5E0A00000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5E0A00000000000000000202;
+			remoteInfo = "sherpa-relay";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5E0A00000000000000000305 /* Embed Relay */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+				5E0A00000000000000000401 /* sherpa-relay in Embed Relay */,
+			);
+			name = "Embed Relay";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		5E0A00000000000000000007 /* Version.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Version.xcconfig; sourceTree = "<group>"; };
+		5E0A00000000000000000101 /* Sherpa.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sherpa.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5E0A00000000000000000102 /* sherpa-relay */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "sherpa-relay"; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		5E0A00000000000000000004 /* App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = App;
+			sourceTree = "<group>";
+		};
+		5E0A00000000000000000005 /* SherpaRelay */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			name = SherpaRelay;
+			path = Sources/SherpaRelay;
+			sourceTree = "<group>";
+		};
+		5E0A00000000000000000006 /* Resources */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5E0A00000000000000000303 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5E0A00000000000000000402 /* SherpaAppConnection in Frameworks */,
+				5E0A00000000000000000403 /* SherpaAppServer in Frameworks */,
+				5E0A00000000000000000404 /* SherpaAppPlanner in Frameworks */,
+				5E0A00000000000000000405 /* SherpaWorkerProtocol in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5E0A00000000000000000312 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5E0A00000000000000000406 /* SherpaRelayKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5E0A00000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				5E0A00000000000000000004 /* App */,
+				5E0A00000000000000000005 /* SherpaRelay */,
+				5E0A00000000000000000006 /* Resources */,
+				5E0A00000000000000000007 /* Version.xcconfig */,
+				5E0A00000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5E0A00000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5E0A00000000000000000101 /* Sherpa.app */,
+				5E0A00000000000000000102 /* sherpa-relay */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5E0A00000000000000000201 /* Sherpa */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5E0A00000000000000000802 /* Build configuration list for PBXNativeTarget "Sherpa" */;
+			buildPhases = (
+				5E0A00000000000000000301 /* Embed Core */,
+				5E0A00000000000000000302 /* Sources */,
+				5E0A00000000000000000303 /* Frameworks */,
+				5E0A00000000000000000304 /* Resources */,
+				5E0A00000000000000000305 /* Embed Relay */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5E0A00000000000000000701 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5E0A00000000000000000004 /* App */,
+			);
+			name = Sherpa;
+			packageProductDependencies = (
+				5E0A00000000000000000502 /* SherpaAppConnection */,
+				5E0A00000000000000000503 /* SherpaAppServer */,
+				5E0A00000000000000000504 /* SherpaAppPlanner */,
+				5E0A00000000000000000505 /* SherpaWorkerProtocol */,
+			);
+			productName = Sherpa;
+			productReference = 5E0A00000000000000000101 /* Sherpa.app */;
+			productType = "com.apple.product-type.application";
+		};
+		5E0A00000000000000000202 /* sherpa-relay */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5E0A00000000000000000803 /* Build configuration list for PBXNativeTarget "sherpa-relay" */;
+			buildPhases = (
+				5E0A00000000000000000311 /* Sources */,
+				5E0A00000000000000000312 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5E0A00000000000000000005 /* SherpaRelay */,
+			);
+			name = "sherpa-relay";
+			packageProductDependencies = (
+				5E0A00000000000000000506 /* SherpaRelayKit */,
+			);
+			productName = "sherpa-relay";
+			productReference = 5E0A00000000000000000102 /* sherpa-relay */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5E0A00000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2720;
+				LastUpgradeCheck = 2720;
+				TargetAttributes = {
+					5E0A00000000000000000201 = {
+						CreatedOnToolsVersion = 27.2;
+					};
+					5E0A00000000000000000202 = {
+						CreatedOnToolsVersion = 27.2;
+					};
+				};
+			};
+			buildConfigurationList = 5E0A00000000000000000801 /* Build configuration list for PBXProject "Sherpa" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 5E0A00000000000000000002;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5E0A00000000000000000601 /* XCLocalSwiftPackageReference "." */,
+				5E0A00000000000000000602 /* XCLocalSwiftPackageReference "../worker-protocol" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 5E0A00000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5E0A00000000000000000201 /* Sherpa */,
+				5E0A00000000000000000202 /* sherpa-relay */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5E0A00000000000000000304 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		5E0A00000000000000000301 /* Embed Core */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/embed-core.sh",
+				"$(SHERPA_CORE)",
+			);
+			name = "Embed Core";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/sherpa-core",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec \"$SRCROOT/scripts/embed-core.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5E0A00000000000000000302 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5E0A00000000000000000311 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5E0A00000000000000000701 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5E0A00000000000000000202 /* sherpa-relay */;
+			targetProxy = 5E0A00000000000000000702 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		5E0A00000000000000000901 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5E0A00000000000000000007 /* Version.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = FN2KZ2J47B;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		5E0A00000000000000000902 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5E0A00000000000000000007 /* Version.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = FN2KZ2J47B;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		5E0A00000000000000000903 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Resources/Sherpa.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_DEBUG_DYLIB = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "../eventkit-service/Resources/Info.plist";
+				INFOPLIST_KEY_LSUIElement = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.xiyo.sherpa;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SHERPA_CORE = "$(SRCROOT)/../../core/dist/sherpa";
+			};
+			name = Debug;
+		};
+		5E0A00000000000000000904 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Resources/Sherpa.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_DEBUG_DYLIB = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "../eventkit-service/Resources/Info.plist";
+				INFOPLIST_KEY_LSUIElement = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.xiyo.sherpa;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SHERPA_CORE = "$(SRCROOT)/../../core/dist/sherpa";
+			};
+			name = Release;
+		};
+		5E0A00000000000000000905 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENTITLEMENTS_REQUIRED = NO;
+				OTHER_CODE_SIGN_FLAGS = "--identifier dev.xiyo.sherpa.relay";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		5E0A00000000000000000906 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENTITLEMENTS_REQUIRED = NO;
+				OTHER_CODE_SIGN_FLAGS = "--identifier dev.xiyo.sherpa.relay";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5E0A00000000000000000801 /* Build configuration list for PBXProject "Sherpa" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5E0A00000000000000000901 /* Debug */,
+				5E0A00000000000000000902 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5E0A00000000000000000802 /* Build configuration list for PBXNativeTarget "Sherpa" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5E0A00000000000000000903 /* Debug */,
+				5E0A00000000000000000904 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5E0A00000000000000000803 /* Build configuration list for PBXNativeTarget "sherpa-relay" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5E0A00000000000000000905 /* Debug */,
+				5E0A00000000000000000906 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		5E0A00000000000000000601 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+		5E0A00000000000000000602 /* XCLocalSwiftPackageReference "../worker-protocol" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../worker-protocol";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5E0A00000000000000000502 /* SherpaAppConnection */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5E0A00000000000000000601 /* XCLocalSwiftPackageReference "." */;
+			productName = SherpaAppConnection;
+		};
+		5E0A00000000000000000503 /* SherpaAppServer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5E0A00000000000000000601 /* XCLocalSwiftPackageReference "." */;
+			productName = SherpaAppServer;
+		};
+		5E0A00000000000000000504 /* SherpaAppPlanner */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5E0A00000000000000000601 /* XCLocalSwiftPackageReference "." */;
+			productName = SherpaAppPlanner;
+		};
+		5E0A00000000000000000505 /* SherpaWorkerProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5E0A00000000000000000602 /* XCLocalSwiftPackageReference "../worker-protocol" */;
+			productName = SherpaWorkerProtocol;
+		};
+		5E0A00000000000000000506 /* SherpaRelayKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5E0A00000000000000000601 /* XCLocalSwiftPackageReference "." */;
+			productName = SherpaRelayKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 5E0A00000000000000000001 /* Project object */;
+}
