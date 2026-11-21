@@ -74,6 +74,57 @@ sherpa-relay ──Unix 소켓──▶ Sherpa.app ──stdin/stdout 프레임�
   열린다. [실측; 이름은 계약]
 - 세 실행 파일은 CLI 버전을 함께 쓴다. `sherpa-relay --version` 은 `sherpa-relay <버전>` 한 줄을 쓴다. 새로
   생기는 버전 위치는 그 파일을 만드는 작업이 `AGENTS.md` 의 버전 목록에 더한다. [계약]
+
+### 번들 빌드
+
+- 번들은 `apple/sherpa-app/Sherpa.xcodeproj` 의 `Sherpa` 스킴이 빌드한다(소유자 결정 2026-11-21, #49). 앱 타깃
+  `Sherpa` 는 `apple/sherpa-app/App/` 의 SwiftUI 소스를 컴파일하고, 같은 폴더의 패키지 `apple/sherpa-app` 이 내는
+  라이브러리 `SherpaAppConnection`·`SherpaAppServer`·`SherpaAppPlanner` 와 worker-protocol 의
+  `SherpaWorkerProtocol` 을 로컬 패키지 의존성으로 링크한다. 명령 타깃 `sherpa-relay` 는 패키지의
+  `Sources/SherpaRelay/main.swift` 를 그대로 컴파일하고 `SherpaRelayKit` 을 링크한다. 앱 타깃의 Embed Relay 복사
+  단계(Executables, Code Sign On Copy)가 그것을 `Contents/MacOS/` 에 넣는다. 폴더는 동기화 그룹이라 소스 파일을
+  더해도 `project.pbxproj` 가 바뀌지 않는다. [소유자; 동작은 실측: live-evidence 2026-11-21 "Sherpa.app built by
+  an Xcode project"]
+- 패키지의 `sherpa-relay`·시험 호스트·가짜 코어·가짜 앱은 패키지에 남는다. 프로세스 시험은 그것들을 `swift build`
+  가 만든 그대로 띄운다(§13.2). [계약]
+- 코어는 앱 타깃의 첫 단계 Embed Core(`apple/sherpa-app/scripts/embed-core.sh`)가 넣는다. Xcode 의 스크립트
+  PATH 에는 bun 이 없어 이 단계는 코어를 빌드하지 않는다. xcodebuild 전에 `core/` 에서 `bun run build` 를
+  한다. 단계는 빌드 설정 `SHERPA_CORE`(기본 `core/dist/sherpa`)를 `app serve </dev/null` 로 띄워 첫 줄이 채널 0
+  의 Mux 1 인사이고 버전이 앱의 버전인지 본다. 아니면 `reason=core_not_mux` 로 빌드를 실패시키고, 번들에는
+  서명도 실행 파일도 남지 않는다. 통과하면 식별자 `dev.xiyo.sherpa.core`, hardened runtime, 권한 항목 없이
+  Xcode 가 앱에 고른 인증서(`EXPANDED_CODE_SIGN_IDENTITY`)로 서명해 `Contents/MacOS/sherpa-core` 에 둔다. [계약;
+  동작은 실측]
+- 스크립트 샌드박스(`ENABLE_USER_SCRIPT_SANDBOXING`)는 켜 둔다. 샌드박스 안에서도 코어는 실행된다. codesign 은
+  대상 옆에 임시 파일을 써서 번들 안에서 서명하면 "Write permissions error" 로 실패하므로, 단계는 `TEMP_DIR` 의
+  사본을 서명한 뒤 번들에 복사한다. [실측]
+- Info.plist 는 Xcode 가 만든다(`GENERATE_INFOPLIST_FILE`). 사용 설명 세 개는 헬퍼의
+  `apple/eventkit-service/Resources/Info.plist` 를 `INFOPLIST_FILE` 로 받는다. `LSUIElement` 는 빌드 설정이다. 판은
+  `apple/sherpa-app/Version.xcconfig` 의 `MARKETING_VERSION` 이 `CFBundleShortVersionString` 과
+  `CFBundleVersion` 이 된다. 생성된 판 키가 파일의 판 키를 덮어, `MARKETING_VERSION` 이 없으면 번들에서 판 키가
+  사라지고 중계는 `version_unavailable`(70)로 끝났다. [실측]
+- 릴리스 구성은 base entitlements 를 넣지 않는다(`CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO`). 넣으면 보통 빌드의
+  릴리스 앱과 중계에도 `get-task-allow` 가 붙었다. 중계 타깃은 `ENTITLEMENTS_REQUIRED = NO` 다. 아니면 Xcode 가
+  SDK 의 `Entitlements.plist` 에서 `com.apple.application-identifier`(`FN2KZ2J47B.`)를 넣었다. 중계 식별자는
+  `OTHER_CODE_SIGN_FLAGS = --identifier dev.xiyo.sherpa.relay` 로 준다. 중계에는 Info.plist 를 박지 않는다.
+  `Contents/MacOS/` 의 중계는 `Bundle.main` 으로 앱의 Info.plist 판을 읽는다. [실측]
+- 아키텍처는 arm64 하나다. 코어(`bun-darwin-arm64`)가 arm64 뿐이라 Intel 에서 뜨는 앱은 코어를 띄우지 못한다.
+  [계약]
+- 에셋 카탈로그 `App/Assets.xcassets` 에 빈 AppIcon 자리를 둔다. 아이콘 그림은 소유자 몫이다. 메뉴 막대는 SF
+  Symbol 을 쓴다. 빈 자리라 `Contents/Resources` 는 비어 있다. [소유자; 비어 있는 것은 실측]
+- 배포본은 아카이브를 Developer ID 로 내보낸다. 내보내기는 세 실행 파일을 식별자·flags·runtime 을 지킨 채 다시
+  서명하고 보안 타임스탬프를 붙인다. 공증과 cask 는 bunny-holes/sherpa#31 이다. [실측]
+
+```sh
+(cd core && bun run build)
+xcodebuild build -project apple/sherpa-app/Sherpa.xcodeproj -scheme Sherpa -configuration Release \
+  -destination 'generic/platform=macOS' -derivedDataPath apple/sherpa-app/.build/xcode
+# 배포본: 아카이브와 Developer ID 내보내기
+xcodebuild archive -project apple/sherpa-app/Sherpa.xcodeproj -scheme Sherpa -configuration Release \
+  -destination 'generic/platform=macOS' -derivedDataPath apple/sherpa-app/.build/xcode \
+  -archivePath apple/sherpa-app/.build/Sherpa.xcarchive
+xcodebuild -exportArchive -archivePath apple/sherpa-app/.build/Sherpa.xcarchive \
+  -exportOptionsPlist apple/sherpa-app/ExportOptions.plist -exportPath apple/sherpa-app/.build/export
+```
 - 에이전트의 MCP 설정은 설치된 앱 안 중계의 절대 경로를 가리키고 인자를 주지 않는다. 서버 이름은 `sherpa` 다.
   [계약; 같은 모양의 설정으로 두 에이전트가 시험 빌드 중계에 붙은 것은 실측] 플러그인이 이 설정을 등록하는
   방식은 3단계에서 정한다.
@@ -790,7 +841,10 @@ MCP stdio 명령 시험(빌드한 `core/dist/sherpa app serve` 를 가짜 앱 �
   준비 전 연결의 10초 대기, `slow_consumer` 가 다른 채널을 멈추지 않음, 16개 초과 거부, 확인 요청에 시험용
   결정기로 답함.
 - 릴리스 빌드는 시험용 변수를 읽지 않음: 릴리스 중계에 시험용 변수를 줘도 기본 경로와 운영 요건을 쓴다. 게이트
-  (`scripts/check-all.sh`)가 아래 이름이 DEBUG 빌드에는 있고 릴리스 `Sherpa`·`sherpa-relay` 에는 없는지 본다.
+  (`scripts/check-all.sh`)가 아래 이름이 DEBUG 빌드에는 있고 릴리스 빌드에는 없는지 본다. 보는 파일은 패키지의
+  `sherpa-relay` 와 Xcode 가 빌드한 Debug·Release 번들의 `Sherpa`·`sherpa-relay` 다. Debug 앱 타깃은
+  `ENABLE_DEBUG_DYLIB = NO` 다. 켜면 앱의 코드가 `Sherpa.debug.dylib` 로 가 실행 파일에서 이름을 찾을 수 없다.
+  [계약]
   Swift 최적화기는 15 바이트 이하의 문자열 리터럴을 명령어 안에 넣어 grep 이 찾지 못한다. 15 바이트인
   `SHERPA_CORE_BIN` 을 `#if DEBUG` 밖으로 옮긴 릴리스 빌드에서 grep 이 0건이었다. [실측: PR #45 리뷰,
   2026-11-21] 그래서 이름은 16 바이트 이상이고, 게이트가 그 길이도 확인한다. [계약]
@@ -798,6 +852,11 @@ MCP stdio 명령 시험(빌드한 `core/dist/sherpa app serve` 를 가짜 앱 �
   (`sherpa-app-testhost --print-configuration`, 앱과 같은 설정 해석)는 시험용 변수를 모두 받고도 기본 소켓, 번들
   배치의 코어 경로, 운영 요건을 써야 한다. 같은 변수를 받은 DEBUG 시험 호스트는 그 값을 쓰는지 보는 대조다.
   [계약]
+- 번들(§2 "번들 빌드"): 게이트는 소유자의 Developer ID 인증서로 Xcode Release 번들을 빌드하고 배치(`Contents/MacOS/`
+  의 셋), Info.plist(식별자, 판, `LSUIElement`, 사용 설명, Xcode 표준 키), 세 식별자와 hardened runtime, 지정
+  요건의 팀, 앱만 가진 권한 항목, `codesign --verify --strict --deep`, 번들 중계의 `--version` 을 본다. 오류
+  봉투를 쓰는 가짜 코어를 `SHERPA_CORE` 로 주면 빌드가 `core_not_mux` 로 실패하고 번들에 서명과 실행 파일이
+  없어야 한다. 보안 타임스탬프는 내보낸 번들에만 있어 게이트는 보지 않는다. [계약]
 
 DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TEST_CORE_BIN`, `SHERPA_RELAY_REQUIREMENT`,
 `SHERPA_CORE_REQUIREMENT`, 중계는 `SHERPA_APP_SOCKET`, `SHERPA_APP_REQUIREMENT`. 릴리스 빌드에는 컴파일되지

@@ -84,7 +84,11 @@ through `sherpa-relay`. The
 [app connection contract](../contracts/app-connection-v1.md) fixes the
 boundaries between the relay, the app and the core. Both sides are
 built: the core's `sherpa app serve` (`core/src/app/`, `core/src/mcp/`) and the
-app and relay in `apple/sherpa-app`. They are not released yet (notarized cask,
+app and relay in `apple/sherpa-app`. The Swift package there holds the
+connection, server, planner and relay libraries and the test programs;
+`apple/sherpa-app/Sherpa.xcodeproj` builds `Sherpa.app` from them, embeds its
+`sherpa-relay` target and the core built in `core/`, and exports it with
+Developer ID (contract §2 "번들 빌드"). They are not released yet (notarized cask,
 bunny-holes/sherpa#31), and the CLI keeps the helper path above until then.
 
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of

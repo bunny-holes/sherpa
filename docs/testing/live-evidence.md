@@ -9,6 +9,94 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-21 — Sherpa.app built by an Xcode project (bunny-holes/sherpa#49)
+
+This Mac (macOS 27.3, Xcode 27.2 27B52), branch `build/xcode-app`.
+`apple/sherpa-app/Sherpa.xcodeproj` now builds the bundle, and
+`apple/sherpa-app/scripts/build-app.sh` is deleted. Signing used the owner's
+Developer ID Application certificate (team `FN2KZ2J47B`). The exported app was
+not launched.
+
+- Clean builds with `-derivedDataPath apple/sherpa-app/.build/xcode` took 12 s
+  (Debug) and 15 s (Release), with the three local packages. `xcodebuild archive`
+  took 15 s. `-exportArchive` with `ExportOptions.plist` (method
+  `developer-id`, manual signing) took 12–13 s.
+- The exported bundle had these contents:
+  - `Contents/MacOS/Sherpa` (1,197,280 bytes), `sherpa-core` (89,678,048) and
+    `sherpa-relay` (266,704).
+  - An empty `Contents/Resources`. The asset catalog has only an empty AppIcon
+    slot.
+  - An Info.plist with Xcode's standard keys (`CFBundleInfoDictionaryVersion`,
+    `CFBundleSupportedPlatforms`, `DTXcode` 2720, `DTSDKName` macosx27.2,
+    `BuildMachineOSBuild`). It also had `CFBundleShortVersionString` and
+    `CFBundleVersion` 0.8.5, `LSUIElement` true and the three usage
+    descriptions.
+- `codesign -dvv` showed the following for each of the three executables:
+  - its identifier (`dev.xiyo.sherpa`, `dev.xiyo.sherpa.relay`,
+    `dev.xiyo.sherpa.core`);
+  - `flags=0x10000(runtime)`, `TeamIdentifier=FN2KZ2J47B` and a `Timestamp=` line;
+  - the designated requirement `anchor apple generic and identifier "<id>" and
+    (... certificate leaf[subject.OU] = FN2KZ2J47B)`.
+
+  Only the app had entitlements (calendars and Apple Events). The relay and the
+  core had an empty entitlements dictionary.
+- Checks on the whole exported bundle:
+  - `codesign --verify --strict --deep` reported "valid on disk" and "satisfies
+    its Designated Requirement".
+  - `sherpa-relay --version` printed `sherpa-relay 0.8.5`.
+  - `spctl -a -vv` printed `rejected` and `source=Unnotarized Developer ID`
+    (exit 3). Notarization is bunny-holes/sherpa#31.
+  - None of the five test variable names was in the exported `Sherpa` or
+    `sherpa-relay`.
+- The export signed every executable again with
+  `--preserve-metadata=identifier,flags,runtime,...` and a secure timestamp. The
+  core therefore kept `dev.xiyo.sherpa.core` and gained a timestamp, although the
+  build phase signs it with `--timestamp=none`. Plain builds carry no timestamp.
+- A stand-in core that prints an error envelope was given as `SHERPA_CORE`. The
+  Debug build failed at the Embed Core phase with
+  `reason=core_not_mux version=none expected=0.8.5`:
+  - On warm derived data it failed in 4.6 s. The bundle's `Contents/MacOS`
+    stayed empty, there was no `_CodeSignature`, and the log had no
+    `CodeSign` step.
+  - On fresh derived data it failed in 9.5 s. The independent `sherpa-relay`
+    target still finished after the failure and signed its own product outside
+    the bundle.
+- Corrected path: **the generated Info.plist dropped the helper plist's version.**
+  The target used `GENERATE_INFOPLIST_FILE` with the helper's `Info.plist` as
+  `INFOPLIST_FILE`. While `MARKETING_VERSION` was unset, the built plist had no
+  `CFBundleShortVersionString` or `CFBundleVersion`. The bundled relay then
+  ended with `reason=version_unavailable` (exit 70). The version now comes from
+  `MARKETING_VERSION` in `apple/sherpa-app/Version.xcconfig`, a new version
+  location listed in `AGENTS.md`. The usage descriptions still come from the
+  helper's plist.
+- Corrected path: **codesign could not sign inside the sandboxed script phase.**
+  User script sandboxing was on, and the core ran inside it. `codesign` on the
+  bundle path still failed with "Write permissions error". The generated sandbox
+  profile lets the phase write only its declared output and `TEMP_DIR`. The
+  phase now signs a copy in `TEMP_DIR` and then copies it into the bundle.
+  Sandboxing stays on.
+- Corrected path: **plain Release builds carried debugging entitlements.** The app
+  and the relay got `com.apple.security.get-task-allow`. With no entitlements
+  file, the relay also got `com.apple.application-identifier` = `FN2KZ2J47B.`
+  from the SDK's `Entitlements.plist`. Two settings removed both:
+  `CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO` in Release and
+  `ENTITLEMENTS_REQUIRED = NO` on the relay. With them, the plain Release build,
+  the archive and the export had only the app's two entitlements.
+- Corrected path: **an incremental build left a stale relay in the bundle.** Only
+  the relay's signing settings had changed. The relay product was signed again,
+  but the app's Code Sign On Copy step did not run again, so the bundle kept the
+  old signature. The gate now deletes its derived data and builds from scratch.
+- Settings the build needs, each checked by changing it back:
+  - Without `OTHER_CODE_SIGN_FLAGS = --identifier dev.xiyo.sherpa.relay`, the
+    relay was signed `Identifier=sherpa-relay`. With it, Code Sign On Copy kept
+    `dev.xiyo.sherpa.relay`.
+  - With `ENABLE_DEBUG_DYLIB = YES`, the Debug bundle also held
+    `Sherpa.debug.dylib` and `__preview.dylib`. `SHERPA_TEST_CORE_BIN` was then
+    in the dylib, not in `Contents/MacOS/Sherpa`, so the app target sets it to
+    `NO`.
+- Not observed yet: the exported app running, and `initialize` and
+  `tools/list` through its bundled relay.
+
 ## 2026-11-21 — The app bundle carried a core from before the MCP server (bunny-holes/sherpa#28)
 
 This Mac. The Developer ID dev bundle was built on `main` after bunny-holes/sherpa#44
