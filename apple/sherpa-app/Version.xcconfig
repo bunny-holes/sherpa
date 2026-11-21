@@ -1,0 +1,5 @@
+// The CLI version of Sherpa.app (AGENTS.md lists every place that carries it). The Sherpa target
+// writes it to CFBundleShortVersionString and CFBundleVersion, and sherpa-relay --version reads it
+// from there. scripts/check-all.sh fails when the built app's version differs from the CLI's.
+MARKETING_VERSION = 0.8.5
+CURRENT_PROJECT_VERSION = $(MARKETING_VERSION)

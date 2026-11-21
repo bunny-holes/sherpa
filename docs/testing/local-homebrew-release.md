@@ -53,9 +53,10 @@ before `brew upgrade` can detect it.
 
 The canonical version is `SHERPA_VERSION` in `core/src/version.ts`, which the
 core prints for `--version` and in its help banner. The helper's `main.swift`
-(`sherpa-apple <version>` and its help), `core/package.json`, and both
-`Info.plist` files carry the same value; the packager refuses a helper whose
-version differs.
+(`sherpa-apple <version>` and its help), `core/package.json`, both
+`Info.plist` files and `MARKETING_VERSION` in `apple/sherpa-app/Version.xcconfig`
+(the version of `Sherpa.app`) carry the same value; the packager refuses a helper
+whose version differs, and the gate refuses an app bundle whose version differs.
 `scripts/package.sh` reads it back from the built binary and refuses to package
 anything whose output does not match `sherpa X.Y.Z`, because the plugin's
 version guard parses exactly that shape.

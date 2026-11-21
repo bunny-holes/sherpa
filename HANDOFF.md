@@ -1,4 +1,4 @@
-# sherpa HANDOFF — 2026-11-21 21:15 KST
+# sherpa HANDOFF — 2026-11-21 23:30 KST
 
 ## 목표
 
@@ -17,13 +17,17 @@ Swift 중계로 연다(소유자 결정 2026-11-21, `docs/adr/0010-menu-bar-app-
 - 리뷰로 고친 결함: 같은 JSON-RPC id 가 연결 종료 철회를 피하던 것(-32600, 계약 §10.1), 코어 서명 확인과
   실행 사이 바꿔치기, 세션마다 새던 연결·버퍼, 서술자 스키마 이름(PR #42), 릴리스 묶음 검사의 로캘 정렬(#38).
 - 계약 정정: 1판은 같은 사용자를 믿는 범위로 둔다(ADR-0010 정정, 후속 #39).
-- `build-app.sh` 가 #44 전의 낡은 `core/dist/sherpa` 를 번들에 넣던 결함: 이제 코어를 직접 빌드하고 Mux 1
-  인사와 버전을 확인한다(게이트 회귀, live-evidence 2026-11-21).
+- 낡은 `core/dist/sherpa` 가 번들에 들어가던 결함(PR #48): 번들 빌드가 코어의 Mux 1 인사와 버전을 확인한다.
+  이 확인은 #49 에서 Xcode 프로젝트의 Embed Core 단계로 옮겼다(게이트 회귀).
+- #49 `Sherpa.app` 을 `apple/sherpa-app/Sherpa.xcodeproj` 로 빌드한다. `build-app.sh` 는 지웠다. 아카이브 →
+  Developer ID 내보내기, 세 실행 파일의 식별자·팀·runtime·타임스탬프, 게이트의 Xcode Release·Debug 빌드와 낡은
+  코어 거부를 확인했다. 내보낸 앱을 띄워 번들 중계로 `initialize`(2025-11-25)·`tools/list` 35개 성공
+  (live-evidence 2026-11-21 "Sherpa.app built by an Xcode project").
 
 ## 진행 중
 
-- #29 통합 실기(소유자 손): main 에서 빌드한 `apple/sherpa-app/.build/app/Sherpa.app`(release, Developer ID)으로
-  한다. 빌드는 `bash apple/sherpa-app/scripts/build-app.sh`.
+- #29 통합 실기(소유자 손)는 main 에서 내보낸 앱으로 한다. 명령은 계약 §2 "번들 빌드"(`bun run build` 뒤
+  `xcodebuild archive`·`-exportArchive`, 결과 `apple/sherpa-app/.build/export/Sherpa.app`, 미공증).
 
 ## 하지 말 것 (실패한 시도, 되돌린 것)
 
@@ -39,6 +43,10 @@ Swift 중계로 연다(소유자 결정 2026-11-21, `docs/adr/0010-menu-bar-app-
   넣는다. 시험용 변수 이름은 16바이트 이상이다.
 - zsh 에서 `log` 는 셸 내장 명령이다. 통합 로그는 `/usr/bin/log` 로 읽는다.
 - 문서 검사는 저장소 루트를 인자로 받는다: `python3 scripts/checks/verify_docs.py .`.
+- Xcode 증분 빌드로 번들 서명을 판정하지 않는다. 서명 설정만 바뀐 중계가 번들에 다시 복사되지 않았다. 게이트는
+  derived data 를 지우고 빌드한다.
+- Embed Core 단계에서 번들 안 코어를 직접 `codesign` 하지 않는다. 스크립트 샌드박스가 codesign 의 임시 파일을
+  막아 "Write permissions error" 가 난다. `TEMP_DIR` 에서 서명하고 복사한다.
 
 ## 막힌 것 · 오너 결정 대기
 
@@ -65,4 +73,4 @@ Swift 중계로 연다(소유자 결정 2026-11-21, `docs/adr/0010-menu-bar-app-
   `XIYO/homebrew-tap`. 로컬 브랜치와 워크트리는 `main` 하나다.
 - 2단계 Orca 워커 둘(core-mcp, app-relay)은 끝나 터미널을 닫았고 워크트리와 브랜치를 지웠다.
 - 개발 실행: `cd core && bun run build`, `swift build --package-path apple/eventkit-service`, 앱 번들은
-  `bash apple/sherpa-app/scripts/build-app.sh`.
+  `xcodebuild`(계약 §2 "번들 빌드").
