@@ -82,7 +82,10 @@ ADR-0010 (adopted 2026-11-21) replaces this shape: `Sherpa.app` becomes the
 permission subject and runs the core as one MCP server that agents reach
 through `sherpa-relay`. The
 [app connection contract](../contracts/app-connection-v1.md) fixes the
-boundaries between the relay, the app and the core. Both sides are
+boundaries between the relay, the app and the core. The core speaks MCP
+revision 2026-07-28 only (ADR-0011, owner decision 2026-11-22): it answers a
+2025-era `initialize` with -32022 and reads each call's client from that
+request's `_meta` envelope, since the revision has no protocol session. Both sides are
 built: the core's `sherpa app serve` (`core/src/app/`, `core/src/mcp/`) and the
 app and relay in `apple/sherpa-app`. The Swift package there holds the
 connection, server, planner and relay libraries and the test programs;
