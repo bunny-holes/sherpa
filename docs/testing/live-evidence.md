@@ -11,9 +11,9 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 ## 2026-11-21 — Sherpa.app socket server and relay (bunny-holes/sherpa#28, before the menu app ran)
 
-Builds of the `apple/sherpa-app` package on this Mac. The Sherpa menu app itself
-was built but not launched; the server ran inside the DEBUG test host, which is
-the same server library without the menu.
+Builds of the `apple/sherpa-app` package on this Mac. Most checks ran the server
+inside the DEBUG test host, which is the same server library without the menu.
+The coordinator also launched the menu app itself, as the Developer ID dev bundle.
 
 - Signed with the owner's Developer ID and hardened runtime, three programs passed
   the production requirements (`anchor apple generic`, leaf OU `FN2KZ2J47B`,
@@ -27,6 +27,11 @@ the same server library without the menu.
 - The static check of the Developer ID signed 89 MB core (`core/dist/sherpa`,
   hardened runtime) took 290–550 ms over repeated runs. It used
   `kSecCSCheckAllArchitectures | kSecCSStrictValidate`.
+- The dev bundle ran as `dev.xiyo.sherpa`, team `FN2KZ2J47B`, with hardened runtime,
+  and listened on the default socket. Its own `sherpa-relay` passed both signature
+  checks, got the preface `unavailable` / `core_failed` because main's core
+  cannot serve yet, and exited 75. A linker-signed release relay accepted the app
+  and was refused with `peer_signature`, exit 77.
 - The core on main has no `app serve` yet. Started by the host, it wrote a line
   that is not a frame, and the host logged `mux.frame_invalid`. The core exited
   1, and the host restarted it after 0 s and 1 s.
@@ -50,8 +55,7 @@ the same server library without the menu.
   a child's exit could be seen before its last stderr line, and
   `Process.waitUntilExit` on a Swift concurrency thread waited forever for a child
   that had already ended.
-- Not observed: the menu app launched under the Developer ID, its menu bar icon,
-  the first-run status window, the Calendar, Reminders and Automation prompts,
+- Not observed yet: the menu bar icon, the first-run status window, the Calendar, Reminders and Automation prompts,
   the Full Disk Access pane, and the front-most confirmation panel. A signed run
   with the real core waits for `app serve` (bunny-holes/sherpa#27).
 
