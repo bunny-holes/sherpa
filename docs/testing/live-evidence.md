@@ -9,6 +9,25 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-21 — Oversized response after an applied change, through the command (CLI 0.8.5 build)
+
+The 0.8.4 entry below rested on deterministic tests alone. A Developer ID
+signed package of this change (`scripts/package.sh`, run from its extracted
+`bin/sherpa`) ran `scripts/live/oversized-response.py` twice on this Mac with no
+permission prompt. Both runs: the disposable list was created; `reminder.create`
+with `SHERPA_APPLE_RESPONSE_LIMIT_BYTES=1024` exited 0 with a 393-byte
+`partial` response, effect `native_mutation`/`applied`, evidence
+`native_readback`/`matched`, error `protocol.result_too_large`/`never`, and no
+result; `sherpa operations list` held one row for that operation with status
+`partial` and the same code; `reminder.list` found the Reminder; the list was
+deleted. `scripts/check-all.sh` now checks the read case through the core
+command (`failed`, effect `none`/`not_applicable`, exit 0) and that an
+unacceptable override is ignored.
+
+Observed on the way: Swift-encoded responses omit keys whose value is null
+(`result`, `error`), while the Objective-C shims write `null`. Recorded as open
+in `HANDOFF.md`.
+
 ## 2026-11-20 — Oversized helper responses after an applied change (CLI 0.8.4)
 
 Before 0.8.4, `sherpa-apple planner request` journaled a mutation `completed`
@@ -21,8 +40,8 @@ reading; no oversized response was produced live.
 0.8.4 (PR bunny-holes/sherpa#19, merge `3ee4b7a`, tag `v0.8.4`, tap `28f7da6`)
 keeps the effect and evidence, drops only the result, and answers `partial`
 (or `uncertain`) with `protocol.result_too_large` and `retry: never`; reads
-still fail. Proof is deterministic only: `ProtocolTests.swift` and
-`JournalStoreTests.swift`. `brew upgrade xiyo/tap/sherpa` installed 0.8.4,
+still fail. Proof at release was deterministic only (`ProtocolTests.swift`,
+`JournalStoreTests.swift`); the 2026-11-21 entry above adds the command run. `brew upgrade xiyo/tap/sherpa` installed 0.8.4,
 `brew test` passed, the bundle's signature verified, and both
 `*.authorization.status` reads stayed `full_access` with no prompt across the
 0.8.3 → 0.8.4 upgrade.

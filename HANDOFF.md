@@ -1,4 +1,4 @@
-# sherpa HANDOFF — 2026-11-20 23:07 KST
+# sherpa HANDOFF — 2026-11-21 09:41 KST
 
 ## 목표
 
@@ -12,7 +12,8 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
   문서 명령 검사 `scripts/checks/verify_doc_commands.py`, 스킬·README·아키텍처·배포 스크립트, 플러그인 0.8.0.
 - 0.8.4 배포(PR bunny-holes/sherpa#19, 태그 `v0.8.4`, tap `28f7da6`): 변경 적용 뒤 응답이 한도를 넘으면
   결과만 빼고 `partial`/`uncertain` + `protocol.result_too_large` 로 보고한다(planner·Mail·ReminderKit).
-  근거는 결정적 시험뿐이고 실기 초과 응답은 만들지 않았다. 0.8.3 → 0.8.4 업그레이드에서 권한이 이어졌다.
+  0.8.3 → 0.8.4 업그레이드에서 권한이 이어졌다. 2026-11-21 명령 실기(`scripts/live/oversized-response.py`)와
+  게이트의 명령 시험(읽기 초과)이 더해졌다(`SHERPA_APPLE_RESPONSE_LIMIT_BYTES`, CLI 0.8.5).
 - 0.8.3 배포(PR bunny-holes/sherpa#17, 태그 `v0.8.3`, tap `e2aba79`): 권한 창이 안 뜬 권한 요청을
   `eventkit.authorization_prompt_unavailable` 로 답한다. 0.8.2 → 0.8.3 업그레이드에서 권한이 창 없이 이어졌다.
 - 0.8.2 배포(PR bunny-holes/sherpa#15, 태그 `v0.8.2`, tap `47b68ca`): 헬퍼를 Developer ID 로 서명한
@@ -44,12 +45,15 @@ Bun + TypeScript 코어(`core/`) + Swift Apple 헬퍼(`sherpa-apple`)로 바꾼 
   KakaoTalk 로컬 체크포인트 커밋,
   로그인된 Claude Code·Codex 세션에서 스킬 호출,
   `SR-CX-013` 재검증, Discord 이모지·스티커 명령. 관측하면 `live-evidence.md` 에 날짜로 적고 여기서 지운다.
+- 미확인: Swift 헬퍼 응답은 null 인 키(`result`·`error`)를 빼고, ObjC 셈(Mail·ReminderKit)은 `null` 로
+  쓴다(2026-11-21 재현). `worker-protocol.md` 의 "exact-key" 가 응답에도 걸리는지 계약이 정하지 않았다.
+  코어는 응답을 그대로 넘기므로 지금 깨지는 호출자는 확인되지 않았다.
 
 ## 다음 행동
 
 1. plist 파서 중복 정리: `core/src/imessage/bplist.ts` 와 `core/src/kakaotalk/plist.ts`.
 2. 문서 부채: `docs/testing/verification-matrix.md` 를 Bun 코어 기준으로 재검토. `docs/` 21개 문서의 옛
-   front matter 키(`id`·`title`·`status`·`owner`). `docs/contracts/worker-protocol.md:94` 가
+   front matter 키(`id`·`title`·`status`·`owner`). `docs/contracts/worker-protocol.md:98` 가
    가리키는 없는 `protocols/worker-v2.schema.json`.
 3. 웹 수집 소스(patchright 등)는 코어의 새 어댑터로 붙인다(소유자 방향, ADR-0008). 착수 전 대상 소스를 정한다.
 

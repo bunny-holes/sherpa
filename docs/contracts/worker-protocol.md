@@ -54,6 +54,10 @@ effect is reported as `partial` (or stays `uncertain`), anything else as
 journals that same status, so an oversized result after an applied change never
 reads as a change that did not happen. `SherpaFittedResponseData` (Objective-C
 shims) and `WorkerResponse.fitted(maximumBytes:)` (Swift) carry the rule.
+`SHERPA_APPLE_RESPONSE_LIMIT_BYTES` lowers the EventKit limit (a decimal byte
+count from 512 to 8 MiB; any other value is ignored with a warning) so the
+oversized path can be exercised through the command: `scripts/check-all.sh`
+checks the read case and `scripts/live/oversized-response.py` the applied case.
 
 ## Compatibility
 

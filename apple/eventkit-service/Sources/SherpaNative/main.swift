@@ -13,7 +13,7 @@ enum SherpaNativeMain {
         do {
             let arguments = Array(CommandLine.arguments.dropFirst())
             if arguments == ["--version"] || arguments == ["version"] {
-                FileHandle.standardOutput.write(Data("sherpa-apple 0.8.4\n".utf8))
+                FileHandle.standardOutput.write(Data("sherpa-apple 0.8.5\n".utf8))
                 return
             }
             if arguments == ["--help"] || arguments == ["help"] || arguments.isEmpty {
@@ -52,7 +52,7 @@ enum SherpaNativeMain {
 }
 
 private let nativeHelp = """
-sherpa-apple 0.8.4 — Apple framework helper of the sherpa CLI
+sherpa-apple 0.8.5 — Apple framework helper of the sherpa CLI
 
 The sherpa CLI starts this helper; run sherpa instead. It reads one strict
 Worker Protocol V2 request on standard input and writes one response:
@@ -85,7 +85,20 @@ private func plannerRequest() async throws -> Data {
     return result.attempt.output
 }
 
-private let plannerResponseLimit = 8 * 1_024 * 1_024
+/// 8 MiB unless `SHERPA_APPLE_RESPONSE_LIMIT_BYTES` lowers it for a command-level test.
+private let plannerResponseLimit: Int = {
+    let maximumBytes = 8 * 1_024 * 1_024
+    let override = ProcessInfo.processInfo.environment["SHERPA_APPLE_RESPONSE_LIMIT_BYTES"]
+    let limit = WorkerResponse.limit(override: override, maximumBytes: maximumBytes)
+    if override != nil {
+        if limit == maximumBytes, override != String(maximumBytes) {
+            WorkerLog.warn("[apple:sherpa-apple:response-limit] override rejected; limit=\(limit)")
+        } else {
+            WorkerLog.info("[apple:sherpa-apple:response-limit] override limit=\(limit)")
+        }
+    }
+    return limit
+}()
 
 /// What stdout carries when a command does not end with its normal output. Every
 /// field is a Sherpa-owned code, status, or operation ID; provider text and error

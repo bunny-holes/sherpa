@@ -87,3 +87,11 @@ private func oversized(_ request: WorkerRequest, status: WorkerStatus, effect: W
     #expect(fitted.data == (try response.encoded()))
     #expect(fitted.response.status == .succeeded)
 }
+
+@Test(arguments: [
+    (nil, 8_388_608), ("1024", 1_024), ("512", 512), ("8388608", 8_388_608),
+    ("511", 8_388_608), ("8388609", 8_388_608), ("-1", 8_388_608), ("1k", 8_388_608), ("", 8_388_608),
+] as [(String?, Int)])
+func responseLimitOverrideCanOnlyLowerTheLimit(override: String?, expected: Int) {
+    #expect(WorkerResponse.limit(override: override, maximumBytes: 8 * 1024 * 1024) == expected)
+}
