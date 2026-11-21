@@ -91,7 +91,9 @@ command = "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay"
   같은 사용자의 아무 프로세스나 `launchctl setenv` 로 앱이 다른 코드를 앱의 권한으로 실행하게 만들 수 있다.
   ADR-0010 이 닫으려는 권한 공유와 같은 구멍이다. [추론] 시험용 변수는 DEBUG 빌드에서만 읽는다(§13.2). [계약]
 - 앱은 코어를 띄우기 전에 코어 실행 파일의 정적 서명을 §4 의 코어 요건으로 확인하고, 실패하면 띄우지 않는다.
-  [계약] 89 MB 파일을 정적으로 확인하는 데 걸리는 시간은 재지 않았다. [미확인]
+  [계약] Developer ID 로 서명하고 hardened runtime 을 켠 89 MB 코어를 `kSecCSCheckAllArchitectures |
+  kSecCSStrictValidate` 로 확인하는 데 이 Mac 에서 290–550 ms 걸렸다(`docs/testing/live-evidence.md`
+  2026-11-21 "Sherpa.app socket server and relay"). [실측]
 
 ## 3. 소켓
 
@@ -757,11 +759,13 @@ MCP stdio 명령 시험(빌드한 `core/dist/sherpa app serve` 를 가짜 앱 �
   함), 연결마다 `open`·`close`, 코어가 끝나면 모든 중계가 75, 재시작 간격과 다섯 번 뒤 멈춤(시간은 주입), 코어
   준비 전 연결의 10초 대기, `slow_consumer` 가 다른 채널을 멈추지 않음, 16개 초과 거부, 확인 요청에 시험용
   결정기로 답함.
-- 릴리스 빌드는 시험용 변수를 읽지 않음: 릴리스 중계에 시험용 변수를 줘도 기본 경로와 운영 요건을 쓴다. 패키징
-  검사에 넣는다.
+- 릴리스 빌드는 시험용 변수를 읽지 않음: 릴리스 중계에 시험용 변수를 줘도 기본 경로와 운영 요건을 쓴다. 게이트
+  (`scripts/check-all.sh`)가 아래 이름이 DEBUG 빌드에는 있고 릴리스 `Sherpa`·`sherpa-relay` 에는 없는지 보고,
+  릴리스 중계가 시험용 소켓 경로를 무시하는지 돌려 본다.
 
-DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_CORE_BIN`, `SHERPA_RELAY_REQUIREMENT`, 중계는
-`SHERPA_APP_SOCKET`, `SHERPA_APP_REQUIREMENT`. 릴리스 빌드에는 컴파일되지 않는다. [계약]
+DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_CORE_BIN`, `SHERPA_RELAY_REQUIREMENT`,
+`SHERPA_CORE_REQUIREMENT`, 중계는 `SHERPA_APP_SOCKET`, `SHERPA_APP_REQUIREMENT`. 릴리스 빌드에는 컴파일되지
+않는다. 코어 요건을 바꿀 수 있어야 게이트에서 ad-hoc 서명한 가짜 코어를 띄울 수 있다. [계약]
 
 ### 13.3 두 작업이 합쳐진 뒤
 
