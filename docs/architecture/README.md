@@ -36,6 +36,13 @@ Human / LLM
     v
 sherpa — Bun + TypeScript core (one compiled executable, core/)
     |-- cli/ -------------- argv parsing, bounded stdin, reports with remedies
+    |-- commands.ts ------- the core commands both the CLI and the MCP tools call
+    |-- app/ -------------- `sherpa app serve`: Mux 1 frames, control channel,
+    |                       one MCP transport per channel (app-connection-v1 §7–§9)
+    |-- mcp/ -------------- tool registry, input schemas, outcome envelope,
+    |                       confirmation previews (app-connection-v1 §10)
+    |-- planner/ ---------- planner port: Worker Protocol V2 request and reply,
+    |                       helper-process adapter
     |-- journal/ ---------- journal state of each external mutation (bun:sqlite)
     |-- mail/ ------------- Mail.app envelope index reads with a keyset cursor,
     |                       Mail.app send through osascript
@@ -71,11 +78,13 @@ Calendar, Reminders, and Automation on behalf of the helper — bundle identifie
 hosts the shell. Without it a host lacking the usage description (the Claude
 desktop app has none for Calendar) gets `not_determined` and no prompt.
 
-ADR-0010 (adopted 2026-11-21, not yet implemented) replaces this shape:
-`Sherpa.app` becomes the permission subject and runs the core as one MCP server
-that agents reach through `sherpa-relay`. The
+ADR-0010 (adopted 2026-11-21) replaces this shape: `Sherpa.app` becomes the
+permission subject and runs the core as one MCP server that agents reach
+through `sherpa-relay`. The
 [app connection contract](../contracts/app-connection-v1.md) fixes the
-boundaries between the relay, the app and the core before either side is built.
+boundaries between the relay, the app and the core. The core side,
+`sherpa app serve` (`core/src/app/`, `core/src/mcp/`), is built; the app and
+the relay are not yet, so the CLI keeps the helper path above.
 
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of
 truth for Calendar and Reminders; Messages, KakaoTalk, and Mail.app remain the
@@ -98,9 +107,17 @@ Application code owns the ports it needs. Adapters depend inward to implement
 those ports. The composition roots choose implementations.
 
 ```text
-core/src/main.ts (composition root)
-    -> cli + journal + mail + imessage + kakaotalk + apple helper proxy
+core/src/main.ts (composition root of the CLI)
+    -> cli + commands + apple helper proxy; `app serve` -> app/serve
+core/src/app/serve.ts (composition root of `sherpa app serve`)
+    -> app + mcp + commands; picks the control-channel planner port
 
+app (frame, mux, control, channel transport) -> mcp/confirmation, planner/port, log
+mcp (registry, tools, outcome)    -> commands, planner/port, cli/errors, journal,
+                                     the send validation of imessage and mail, log
+planner/helper-process            -> planner/port, apple/helper, log
+planner/port                      -> no Sherpa module
+commands                          -> journal, mail, imessage, kakaotalk, cli/errors
 core adapters (mail, imessage, kakaotalk) -> cli/errors, process/runner, log
 journal                                   -> cli/errors, log
 

@@ -9,6 +9,42 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-21 — `sherpa app serve` memory and planner schema names (core 0.8.5 branch build)
+
+This Mac (Mac16,8, Apple M4 Pro, macOS 27.3 26C5035r). A local `bun run build`
+of `feat/core-mcp-server` (bunny-holes/sherpa#27), not signed with Developer ID
+and without hardened runtime, driven through its pipes by the fake app of the
+stdio tests with a scratch `HOME` and `LOG_LEVEL=warn`. Physical footprint
+from `footprint`, resident size from `ps`, one sample every 10 s.
+
+- Idle, `bun scripts/measure-app-serve.ts --idle-seconds 120` (three sessions,
+  12 samples): footprint 24 MB falling to 21 MB, resident 41.8–42.1 MB.
+- Soak, the same run's `--soak-seconds 480`: 26,082 calls over three sessions
+  in turn — `event_list` through the control channel (about one in five with a
+  200 KB result), `operations_list` on the scratch journal, `tools/list`, and
+  `reminder_delete` with an approved confirmation (preview read, then the
+  delete) — while one session was closed and a new one opened every 10 s, 50
+  sessions in all. Footprint 26 MB at the start, 31 MB at the end, at most
+  49 MB; resident size grew from 48.9 MB to 156.9 MB. EOF ended the process
+  with 0.
+- A 4-minute rerun (13,341 calls, 26 sessions) ended at footprint 37 MB, peak
+  57 MB. `footprint` put 30 MB dirty and 59 MB reclaimable in the JS heap
+  region (App-Specific Tag 1), so the resident growth was mostly freed heap
+  pages macOS may reclaim rather than footprint. These runs do not show a leak;
+  longer runs were not made.
+- The ADR-0010 spike's multiplexer stayed at 13.6 MB over 941 calls; this core
+  idles at 21–24 MB. The difference was not traced.
+- Not covered: a core started by a signed `Sherpa.app`, real agents, and
+  Calendar or Reminders access (app-connection-v1 §13.4).
+
+Corrected path: the planner schema test of the core gate sends the
+`event_command_validate` example to the built `sherpa-apple planner request`
+with the descriptor's `request_schema`. Before bunny-holes/sherpa#42 the
+descriptor named `sherpa.planner.event.command.validate.request.v2`, which got
+`protocol.invalid_payload`, while `sherpa.planner.event-command-validate.request.v2`
+succeeded with `command_count` 2. Descriptors now spell the capability with
+hyphens, and the test passes against the rebuilt helper.
+
 ## 2026-11-21 — Menu bar app and MCP spike (throwaway build, ADR-0010)
 
 Throwaway Swift and Bun programs in the session scratch area, signed with the
