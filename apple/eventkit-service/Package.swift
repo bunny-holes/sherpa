@@ -9,6 +9,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .executable(name: "sherpa-apple", targets: ["SherpaNative"]),
+        .library(name: "SherpaPlannerService", targets: ["SherpaPlannerService"]),
         .executable(
             name: "sherpa-eventkit-live-verify",
             targets: ["SherpaEventKitLiveVerifier"]
@@ -70,12 +71,20 @@ let package = Package(
                 .linkedLibrary("dl"),
             ]
         ),
+        .target(
+            name: "SherpaPlannerService",
+            dependencies: [
+                "SherpaEventKitAdapter",
+                "SherpaMutationApplication",
+                "SherpaJournalStore",
+                .product(name: "SherpaWorkerProtocol", package: "worker-protocol"),
+            ]
+        ),
         .executableTarget(
             name: "SherpaNative",
             dependencies: [
-                "SherpaMutationApplication",
+                "SherpaPlannerService",
                 "SherpaJournalStore",
-                "SherpaEventKitAdapter",
                 "SherpaMailShim",
                 "SherpaReminderKitShim",
                 .product(name: "SherpaWorkerProtocol", package: "worker-protocol"),

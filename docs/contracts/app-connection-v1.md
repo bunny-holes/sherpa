@@ -90,8 +90,24 @@ command = "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay"
 - 릴리스 빌드는 실행 경로, 소켓 경로, 서명 요건을 바꾸는 환경 변수나 인자를 읽지 않는다. 그런 변수가 있으면
   같은 사용자의 아무 프로세스나 `launchctl setenv` 로 앱이 다른 코드를 앱의 권한으로 실행하게 만들 수 있다.
   ADR-0010 이 닫으려는 권한 공유와 같은 구멍이다. [추론] 시험용 변수는 DEBUG 빌드에서만 읽는다(§13.2). [계약]
-- 앱은 코어를 띄우기 전에 코어 실행 파일의 정적 서명을 §4 의 코어 요건으로 확인하고, 실패하면 띄우지 않는다.
-  [계약] 89 MB 파일을 정적으로 확인하는 데 걸리는 시간은 재지 않았다. [미확인]
+- 앱은 코어를 멈춘 채 띄운다(`posix_spawn` 의 `POSIX_SPAWN_START_SUSPENDED`). 그 자식은 SIGSTOP 을 받은 것처럼
+  사용자 공간에서 실행을 시작하기 전에 멈춘다. [문서: macOS `posix_spawnattr_setflags(3)`] 앱은 그 자식의 실행
+  중인 코드를 pid 로 얻어(`SecCodeCopyGuestWithAttributes` 와 `kSecGuestAttributePid`) §4 의 코어 요건으로
+  `SecCodeCheckValidity` 하고, 통과한 뒤에만 SIGCONT 로 재개한다. 실패하면 SIGKILL 로 끝내고 거둔 뒤 다시 띄우지
+  않는다(`core_failed`). 앱이 아직 거두지 않은 자식이므로 그 pid 는 다른 프로세스를 가리킬 수 없다. [계약]
+- 실행 전에 경로의 정적 서명을 확인하는 단계는 두지 않는다. 경로를 확인한 뒤 같은 경로를 따로 띄우면 그 사이에
+  다른 파일이 들어올 수 있다. DEBUG 시험 호스트에서 서명된 가짜 코어와 서명 없는 파일을 바꿔치기하자 16번 중
+  3번 서명 없는 파일이 앱의 권한으로 실행됐다. [실측: PR #45 리뷰, 2026-11-21]
+- 실행 중 확인은 이 Mac 에서 다음과 같았다. [실측: `docs/testing/live-evidence.md` 2026-11-21 "PR #45 review
+  fixes"]
+  - 코어 자리의 서명 없는 셸 스크립트는 실행 중인 코드가 `/bin/sh` 라 -67050(`errSecCSReqFailed`)으로
+    거부된다.
+  - 멈춘 뒤 경로의 파일을 서명된 사본으로 바꾸면 -67034(`errSecCSStaticCodeChanged`, 디스크의 코드가 실행
+    중인 코드와 다름)로 거부된다.
+  - 멈춘 자식은 SIGKILL 을 받으면 재개되지 않은 채 10 ms 안에 끝나 거둬진다. 시험 스크립트의 표식 파일은 생기지
+    않았다.
+  - Developer ID 로 서명하고 hardened runtime 을 켠 89 MB 코어의 실행 중 확인은 9–15 ms 걸렸다. 같은 코어의
+    정적 확인(`kSecCSCheckAllArchitectures | kSecCSStrictValidate`)은 290–550 ms 였다.
 
 ## 3. 소켓
 
@@ -144,7 +160,7 @@ command = "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay"
 | --- | --- | --- |
 | 중계 → 앱 | `anchor apple generic and certificate leaf[subject.OU] = "<TEAM_ID>" and identifier "dev.xiyo.sherpa"` | 실측: 시험 빌드 중계 설정의 문자열. 가짜 서버는 거부(77) |
 | 앱 → 중계 | `anchor apple generic and certificate leaf[subject.OU] = "<TEAM_ID>" and identifier "dev.xiyo.sherpa.relay"` | 실측: 이 식별자의 Developer ID 중계는 통과, ad-hoc 중계와 서명 없는 직접 연결은 거부 |
-| 앱 → 코어 (정적, 실행 전) | `anchor apple generic and certificate leaf[subject.OU] = "<TEAM_ID>" and identifier "dev.xiyo.sherpa.core"` | 계약 |
+| 앱 → 코어 (멈춘 자식의 실행 중 코드, 재개 전) | `anchor apple generic and certificate leaf[subject.OU] = "<TEAM_ID>" and identifier "dev.xiyo.sherpa.core"` | 계약: §2 |
 
 - 요건에 코드 해시를 넣지 않는다. 업그레이드한 바이너리도 같은 요건을 만족해야 한다. ADR-0009 의 지정 요건과
   같은 이유다. [실측: ADR-0009] `anchor apple generic` 과 팀 OU 만 보므로 같은 팀의 Apple Development 인증서로
@@ -379,6 +395,8 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 
 - 앱은 새 연결을 받지 않는다(머리말 `unavailable`·`shutting_down`). 진행 중인 작업 요청이 끝나기를 그 요청의
   마감까지 기다린 뒤 코어의 표준 입력을 닫는다. 기록부가 끝 상태에 이르게 하려는 것이다. [계약]
+- 종료가 시작된 뒤 온 작업 요청은 실행하지 않고 V2 실패 `app.shutting_down`(효과 `not_started`)으로 답한다.
+  기다림은 종료 시작 때 이미 받은 요청의 가장 늦은 마감까지이고, 고정 상한 35초를 넘지 않는다. [계약]
 - 코어는 표준 입력 EOF 를 받으면 모든 세션을 닫고 5초 안에 0 으로 끝난다. 앱은 5초 뒤 SIGTERM, 10초 뒤 SIGKILL
   을 보내고, 그다음 중계 소켓을 닫는다. [계약]
 
@@ -671,6 +689,7 @@ result         object | null
 | --- | --- | --- | --- |
 | `app.worker_timeout` | 읽기 `failed`, 변경 `uncertain` | `after_backoff` / `never` | 작업 응답이 마감 + 5초 안에 오지 않았다 |
 | `app.deadline_exceeded` | `failed` | `after_backoff` | 앱이 시작하기 전에 마감이 지났다 |
+| `app.shutting_down` | `failed` | `after_backoff` | 앱이 끝나는 중이라 작업을 시작하지 않았다(효과 `not_started`, §7.10) |
 | `app.unsupported_worker` | `failed` | `never` | 앱이 모르는 작업자 |
 | `confirmation.declined` | `failed` | `after_user_action` | 사람이 거부했다 |
 | `confirmation.timed_out` | `failed` | `after_user_action` | 30초 안에 답이 없었다 |
@@ -762,17 +781,27 @@ MCP stdio 명령 시험(빌드한 `core/dist/sherpa app serve` 를 가짜 앱 �
   남의 것이면 듣지 않음.
 - 서명: ad-hoc 서명한 시험 자식은 운영 요건에 거부되고, 그 자식의 식별자만 요구하는 시험 요건에는 통과함.
   게이트에 소유자의 인증서가 없어도 돈다. 서명 없는 직접 연결은 거부됨.
+- 코어의 실행 중 확인(§2): 코어 자리의 서명 없는 스크립트와 다른 식별자로 서명한 가짜 코어는 한 번도 재개되지
+  않음. 스크립트의 표식 파일과 가짜 코어의 시작 기록이 없어야 한다.
 - 중계 종료 코드: 69(소켓 없음), 77(ad-hoc 가짜 서버), 76(잘못된 머리말), 75(`unavailable` 머리말, 입력이 열린
   채 EOF), 78(긴 경로), 64(인자), 0(정상).
 - 가짜 코어(프레임을 말하는 작은 시험 프로그램)와 다중화: 인사와 버전 불일치(`core_incompatible`, 재시작 안
   함), 연결마다 `open`·`close`, 코어가 끝나면 모든 중계가 75, 재시작 간격과 다섯 번 뒤 멈춤(시간은 주입), 코어
   준비 전 연결의 10초 대기, `slow_consumer` 가 다른 채널을 멈추지 않음, 16개 초과 거부, 확인 요청에 시험용
   결정기로 답함.
-- 릴리스 빌드는 시험용 변수를 읽지 않음: 릴리스 중계에 시험용 변수를 줘도 기본 경로와 운영 요건을 쓴다. 패키징
-  검사에 넣는다.
+- 릴리스 빌드는 시험용 변수를 읽지 않음: 릴리스 중계에 시험용 변수를 줘도 기본 경로와 운영 요건을 쓴다. 게이트
+  (`scripts/check-all.sh`)가 아래 이름이 DEBUG 빌드에는 있고 릴리스 `Sherpa`·`sherpa-relay` 에는 없는지 본다.
+  Swift 최적화기는 15 바이트 이하의 문자열 리터럴을 명령어 안에 넣어 grep 이 찾지 못한다. 15 바이트인
+  `SHERPA_CORE_BIN` 을 `#if DEBUG` 밖으로 옮긴 릴리스 빌드에서 grep 이 0건이었다. [실측: PR #45 리뷰,
+  2026-11-21] 그래서 이름은 16 바이트 이상이고, 게이트가 그 길이도 확인한다. [계약]
+- 게이트는 릴리스 빌드를 돌려도 본다. 릴리스 중계는 시험용 소켓 경로를 무시해야 한다. 릴리스 시험 호스트
+  (`sherpa-app-testhost --print-configuration`, 앱과 같은 설정 해석)는 시험용 변수를 모두 받고도 기본 소켓, 번들
+  배치의 코어 경로, 운영 요건을 써야 한다. 같은 변수를 받은 DEBUG 시험 호스트는 그 값을 쓰는지 보는 대조다.
+  [계약]
 
-DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_CORE_BIN`, `SHERPA_RELAY_REQUIREMENT`, 중계는
-`SHERPA_APP_SOCKET`, `SHERPA_APP_REQUIREMENT`. 릴리스 빌드에는 컴파일되지 않는다. [계약]
+DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TEST_CORE_BIN`, `SHERPA_RELAY_REQUIREMENT`,
+`SHERPA_CORE_REQUIREMENT`, 중계는 `SHERPA_APP_SOCKET`, `SHERPA_APP_REQUIREMENT`. 릴리스 빌드에는 컴파일되지
+않는다. 코어 요건을 바꿀 수 있어야 게이트에서 ad-hoc 서명한 가짜 코어를 띄울 수 있다. [계약]
 
 ### 13.3 두 작업이 합쳐진 뒤
 
@@ -876,7 +905,6 @@ not json\n                                                                      
 - Codex 가 띄운 중계가 새 소켓 경로에 닿는지.
 - 앱이 띄운 코어의 `osascript` 보내기가 앱의 Apple Events 권한으로 판정되는지.
 - 중계가 끝났을 때 Codex 가 서버를 다시 띄우는지, 그리고 이 Mac 에서 Claude Code 가 문서대로 동작하는지.
-- 89 MB 코어의 정적 서명 확인 시간.
 - Developer ID 로 양방향 서명이 통과하는 경로. 인증서가 소유자 키체인에만 있어 게이트는 거부 쪽과 시험 요건만
   돈다.
 - 미리보기 앱의 메뉴 막대 아이콘이 보이지 않은 원인.

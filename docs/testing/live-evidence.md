@@ -9,6 +9,179 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-21 — PR #45 review fixes: the core runs only after its running code passes, closed sessions keep nothing (bunny-holes/sherpa#28)
+
+This Mac (Mac16,8, Apple M4 Pro, macOS 27.3 26C5035r). The fixes for the review of
+bunny-holes/sherpa#45 on `feat/menu-bar-app`. The checks used a scratch program
+that starts a child with `POSIX_SPAWN_START_SUSPENDED`, the DEBUG test host with
+ad-hoc signed copies of the relay and the fake core, and the Developer ID dev
+bundle's core (`Sherpa.app/Contents/MacOS/sherpa-core`, 89,677,632 bytes,
+hardened runtime).
+
+- A child started with `POSIX_SPAWN_START_SUSPENDED` was stopped before resume
+  (`proc_pidinfo` status 4, `SSTOP`). `SecCodeCopyGuestWithAttributes` with
+  `kSecGuestAttributePid`, then `SecCodeCheckValidity`, gave these results for
+  the stopped child:
+  - An unsigned shell script at the core's path gave -67050
+    (`errSecCSReqFailed`). Its running code is `/bin/sh`.
+  - The fake core signed as another identifier gave -67050.
+  - The fake core signed `dev.xiyo.sherpa.core`, under the test requirement, gave 0
+    in 3–4 ms. After SIGCONT it ran, wrote its hello and exited 0.
+  - A copy signed as another identifier was started stopped. A correctly signed
+    copy was then renamed over its path, and the check gave -67034
+    (`errSecCSStaticCodeChanged`: the code on disk does not match what is
+    running).
+  - The dev bundle's core passed the production core requirement in 9–15 ms over
+    five runs. The relay's requirement rejected it with -67050. The static check of
+    the same core had taken 290–550 ms (entry below).
+  - SIGKILL to a stopped child ended it without a resume. `waitpid` reaped it
+    within 10–13 ms, and the script's marker file was never created.
+- Corrected path: **the core was checked by path, then started from the same path.**
+  The reviewer swapped a signed fake core and an unsigned file under the DEBUG test
+  host. In 3 of 16 starts the unsigned file ran with the app's rights. The app now
+  starts the core stopped, checks the running code, and resumes it only on success.
+  Otherwise it kills and reaps the core and does not start it again. The static
+  pre-check is gone. The process test
+  "neverLetsACoreRunWhoseRunningCodeFailsTheRequirement" puts an unsigned script
+  and a fake core of another identifier in the core's place. It requires the
+  rejection, no marker file and no fake-core start record. With the check bypassed,
+  the same test failed with six issues.
+- Corrected path: **closed sessions kept their connection and what they were sent.**
+  The reviewer found three causes:
+  - The outbox's `ended` closure held the connection, and the connection held the
+    outbox. `leaks` reported a ROOT CYCLE. After 20 sessions, 20 RelayConnection
+    and 21 Outbox objects were alive.
+  - Written chunks stayed in the queue until 64 more were written.
+  - The queue was not cleared when the writer stopped. With five sessions that
+    each received 8 MB, the footprint went from 3.8 to 49 MB.
+
+  The outbox now drops a chunk as soon as the writer takes it. It clears its queue
+  and its closures when the writer stops. Three unit tests failed against the old
+  outbox and pass now:
+  - a written 8 MiB chunk is released while the outbox stays open;
+  - nothing is held after `finish`;
+  - 20 closed sessions free their connection and outbox.
+- After the fix, the DEBUG test host and fake core ran 20 `echo` sessions. Five more
+  sessions each received 8,000,132 bytes (`flood` with 2 × 4,000,000).
+  - `leaks` found 0 leaks and no ROOT CYCLE.
+  - `heap` showed no RelayConnection. It showed one Outbox (the core's input) and
+    one CoreProcess.
+  - Live malloc memory was 287 KB.
+- The footprint still grew with each large session: 2.8 MB at the start, 46 MB
+  after 5 of them and 128 MB after 30. The growth was vmmap's
+  `Malloc Large (empty)`: 208 freed regions, 80 MB resident and 35 MB
+  compressed after 30 sessions. With `MallocLargeCache=0` in the host's
+  environment the footprint stayed flat: 2.8 MB, then 3.1 MB after 10 such
+  sessions. `malloc_zone_pressure_relief(nil, 0)` after each write of 1 MiB or
+  more did not help (73 MB after 10), so it was not kept. Freed pages can still
+  hold sent bytes. The allocator's cache is deferred to bunny-holes/sherpa#46.
+- Corrected path: **shutdown's last status could be an old one.** `shutdown()`
+  waited until the core was cleared, then published. The exit handler wrote
+  `stopped` only later. With a 50 ms delay in that gap, the reviewer saw
+  "shutsDownOnSIGTERM" end on `core=ready`. `stopped` is now set in the same
+  step that clears the core. The test runs with a 50 ms gap
+  (`--exit-handling-delay 0.05`). With the old order the test failed on that
+  line; it passes now.
+- Corrected path: **the gate could not see a 15-byte name.** The reviewer moved
+  `SHERPA_CORE_BIN` (15 bytes) out of `#if DEBUG`. grep then found 0 matches in
+  the release build, because Swift stores a string literal of 15 bytes or fewer
+  inside the instructions. The variable is now `SHERPA_TEST_CORE_BIN`, and the
+  gate rejects a test variable name under 16 bytes. The gate also runs
+  `sherpa-app-testhost --print-configuration` with every test variable set. The
+  DEBUG build printed the injected values. The release build printed the default
+  socket (`socket_override=false`), `.build/release/sherpa-core` and the two
+  production requirements.
+- Corrected path: **the 64 KiB work request limit counted re-encoded bytes.**
+  `JSONEncoder` writes `/` as `\/`, so a request with 40,000 slashes was about
+  40 KB as sent and over 64 KiB once encoded again. The app now keeps the
+  request's bytes as the core sent them. The unit test requires the same bytes at
+  the planner.
+- Not observed yet, for the owner's integrated live check in
+  bunny-holes/sherpa#29: the Allow and Decline buttons of each new confirmation
+  panel stay off for about 1 s, including when a second request replaces the
+  first. No deterministic test covers this AppKit path.
+
+## 2026-11-21 — Sherpa.app socket server and relay (bunny-holes/sherpa#28, Developer ID dev bundle)
+
+Builds of the `apple/sherpa-app` package on this Mac. Most checks ran the server
+inside the DEBUG test host, which is the same server library without the menu.
+The menu app itself ran as the Developer ID dev bundle from
+`apple/sherpa-app/scripts/build-app.sh`: `dev.xiyo.sherpa`, team `FN2KZ2J47B`,
+hardened runtime, listening on the default socket.
+
+- Signed with the owner's Developer ID and hardened runtime, three programs passed
+  the production requirements (`anchor apple generic`, leaf OU `FN2KZ2J47B`,
+  identifier). They were the release `sherpa-relay` (`dev.xiyo.sherpa.relay`),
+  the test host as `dev.xiyo.sherpa` and the fake core as `dev.xiyo.sherpa.core`.
+  On the default socket `~/Library/Application Support/Sherpa/run/app.sock`, the
+  relay accepted the host and the host accepted the relay. The core's static
+  check passed in 5 ms, `echo` answered on channel 1, and the relay exited 0. The
+  same release relay, given `SHERPA_APP_SOCKET` for another path, logged
+  `socket=default`.
+- The static check of the Developer ID signed 89 MB core (`core/dist/sherpa`,
+  hardened runtime) took 290–550 ms over repeated runs. It used
+  `kSecCSCheckAllArchitectures | kSecCSStrictValidate`.
+- With the core of main after bunny-holes/sherpa#44, the menu app started
+  `sherpa-core app serve` as its child. Through the bundle's own relay, MCP
+  `initialize` answered protocol `2025-11-25` and server `sherpa` 0.8.5.
+  `tools/list` listed 35 tools, the planner tools included, and the relay exited
+  0 at the end of its input.
+- SIGTERM to the menu app ended it in 0.12 s. The core exited, the socket file
+  was removed, and `app.lock` stayed.
+- A linker-signed release relay accepted the menu app and was refused with
+  `peer_signature`, exit 77. That is the gate's release relay check whenever the
+  app runs; with no app it exits 69.
+- The first-run status window, launched by `open` from a shell, was on the
+  current Space (`kCGWindowIsOnscreen` true).
+- The core's environment held HOME, LOG_LEVEL, PATH and TMPDIR, plus
+  `__CF_USER_TEXT_ENCODING`. That last variable appears even under `env -i`: the
+  child's own CoreFoundation sets it.
+- `spctl` assessed the dev bundle as `Unnotarized Developer ID`; notarization is
+  bunny-holes/sherpa#31. Signing needed no keychain prompt.
+- Corrected on the way:
+  - **Core ignored SIGTERM.** posix_spawn reset only SIGPIPE in the core, so the
+    core inherited the SIGTERM that the app ignores for its own signal source.
+    After a frame violation the core ignored SIGTERM, and SIGKILL ended it 5 s
+    later. The host now resets every signal. The fake core records which signals
+    it inherited as ignored, and the process tests require none and a SIGTERM end.
+  - **Stale status.** Status changes reached the observer from concurrent queues,
+    so a stale `ready` could follow `stopped`. They now pass through one serial
+    queue.
+  - **Core on main could not serve.** Before bunny-holes/sherpa#44 the core had no
+    `app serve`. Started by the host, it wrote a line that is not a frame. The
+    host logged `mux.frame_invalid` and restarted it after 0 s and 1 s. The menu
+    app showed `core_failed`, and its relay got that preface and exited 75.
+  - **Menu app never quit on SIGTERM.** The first menu app build never ended after
+    SIGTERM. It sat in `-[NSApplication _shouldTerminate]` after the server had
+    already removed the socket. The SIGTERM source runs on the main queue, so the
+    `.terminateLater` wait loop could not run the completion that
+    `DispatchQueue.main` held. The completion is now a run loop block. No
+    deterministic test covers this AppKit path; the 0.12 s run above is its check.
+  - **Window on another Space.** When the coordinator launched the first build,
+    its first-run window was on another Space (offscreen). The window now moves to
+    the active Space and may join a full-screen Space.
+  - **Flaky first hook run.** The pre-push hook's first run of commit `c3610f0`
+    failed in the sherpa-app tests. The gate then discarded test output, so the
+    failing test is unknown. The next hook run passed, and so did 12 later runs,
+    three of them with every core busy. The gate now prints failing tests. Two
+    races in the test helpers were fixed. A child's exit could be seen before its
+    last stderr line. `Process.waitUntilExit` on a Swift concurrency thread waited
+    forever for a child that had already ended.
+- Measured for the Messages request: `AEDeterminePermissionToAutomateTarget` asked
+  without a prompt returned `errAEEventWouldRequireUserConsent` for a running
+  Messages and Mail. AppleEvents.h says a target that is not running gives
+  `procNotFound` and no prompt, so the request now starts the target without
+  activating it, then asks.
+- Not observed yet. The first four wait for the owner's integrated live check in
+  bunny-holes/sherpa#29:
+  - the menu bar icon;
+  - the Messages Automation prompt from the Request button;
+  - quitting from the menu;
+  - the front-most confirmation panel with the real core;
+  - a Calendar, Reminders or Mail prompt, since all of them were already allowed
+    for this identifier;
+  - the Full Disk Access pane.
+
 ## 2026-11-21 — Confirmation under a reused request id, a cut connection and the 30 s budget (core 0.8.5 branch build)
 
 This Mac (Mac16,8, Apple M4 Pro, macOS 27.3 26C5035r). The coordinator's
