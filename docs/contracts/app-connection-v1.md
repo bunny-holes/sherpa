@@ -150,10 +150,24 @@ command = "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay"
   같은 이유다. [실측: ADR-0009] `anchor apple generic` 과 팀 OU 만 보므로 같은 팀의 Apple Development 인증서로
   서명한 소유자의 개발 빌드도 통과한다. [추론]
 - 팀 ID 는 소스의 상수 하나에서 앱과 중계에 컴파일해 넣고, 실행 중에는 바꿀 수 없다. 패키징 단계는
-  `codesign -d -r-` 로 앱과 중계의 지정 요건에 같은 팀과 식별자가 있는지 확인한다. [계약] 이 저장소는 아직 팀
-  ID 값을 담지 않는다. ADR-0009 도 `<팀>` 으로 적었다. 값을 소스에 커밋할지는 소유자가 정한다(§15).
+  `codesign -d -r-` 로 앱과 중계의 지정 요건에 같은 팀과 식별자가 있는지 확인한다. [계약] 팀 ID 는
+  `FN2KZ2J47B` 이고 소스 상수로 커밋한다. 서명된 실행 파일마다 보이는 공개 값이다. [소유자 결정 2026-11-21;
+  값은 실측: 시험 빌드 요건]
 - 실패: 중계는 77 로 끝나고, 앱은 머리말 `refused` 를 쓰고 연결을 닫는다(§5). 양쪽 다 상대의 pid 와 서명
   식별자를 warn 로그로 남기고, MCP 바이트는 한 바이트도 보내지 않는다. [계약]
+
+### 믿는 범위
+
+- 서명 확인이 증명하는 것은 소켓 상대가 같은 사용자이고 같은 팀의 정해진 실행 파일이라는 것뿐이다. 누가 그
+  실행 파일을 띄웠는지는 가리지 않는다. 같은 사용자의 아무 프로세스나 설치된 `sherpa-relay` 를 띄워 MCP
+  도구를 부를 수 있다. [추론: 중계는 누구나 실행할 수 있는 실행 파일이고 앱은 중계의 서명만 본다. 재현 안 함]
+- 1판은 같은 사용자를 믿는 범위 안에 둔다. [소유자 결정 2026-11-21] 1판이 막는 것은 다른 사용자(uid 확인),
+  바뀌거나 가짜인 앱·중계·코어(서명 요건), 환경 변수나 인자로 경로와 요건을 바꾸는 것(§2), 사람 확인 없는
+  삭제와 보내기(§9)다. 막지 않는 것은 같은 사용자의 프로세스가 중계를 거쳐 읽기·만들기·고치기 도구를 부르는
+  것이다. [계약]
+- 지금 헬퍼는 같은 사용자의 프로세스가 `dev.xiyo.sherpa` 의 Calendar·Reminders 권한으로 삭제까지 사람 확인
+  없이 하게 둔다. [추론, ADR-0010 맥락] 1판은 이 범위를 좁히지만 닫지는 않는다. 중계를 띄운 프로그램을 앱이
+  처음 한 번 사람에게 허용받는 방식은 후속 작업이다(bunny-holes/sherpa#39).
 
 ## 5. 앱 머리말
 
@@ -485,7 +499,7 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
 | `imessage_chats`, `imessage_history` | core | read | |
 | `imessage_send` | core | send | 예 |
 | `kakaotalk_status`, `kakaotalk_search`, `kakaotalk_history`, `kakaotalk_archive` | core | read | |
-| `kakaotalk_checkpoint` | core | local | |
+| `kakaotalk_checkpoint` | core | local | 인자 `confirm` |
 | `mail_authorization_status`, `mail_list`, `mail_read` | core | read | |
 | `mail_send` | core | send | 예 |
 | `operations_list` | core | read | |
@@ -519,8 +533,10 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
 - 스키마는 코어가 Swift 요청 타입(`SherpaPlannerContract`)을 옮겨 쓴 zod 엄격
   객체(`additionalProperties: false`)다. V2 가 정확한 키만 받기 때문이다. 인자 없는 도구는
   `{"type":"object","additionalProperties":false}` 다. [계약; 빈 객체 모양은 문서: MCP 2025-11-25 Tools]
-- core 도구의 인자는 그 CLI 명령이 플래그와 표준 입력으로 받는 값과 같고, 이름은 snake_case 다. CLI 의
-  `--confirm` 값은 인자가 아니다(§9). [계약; 명령과 입력은 실측: `core/src/cli/help.ts`]
+- core 도구의 인자는 그 CLI 명령이 플래그와 표준 입력으로 받는 값과 같고, 이름은 snake_case 다. 삭제와 보내기는
+  §9 의 앱 창이 확인하므로 CLI 의 `--confirm` 값은 인자가 아니다. 예외로 `kakaotalk_checkpoint` 는 앱 창 없이
+  CLI 와 같은 확인 값을 `confirm` 인자(상수 `"COMMIT_LOCAL_CHECKPOINT"`)로 받고, 없거나 다르면 CLI 와 같은 코드로
+  거부한다. [소유자 결정 2026-11-21] [계약; 명령과 입력은 실측: `core/src/cli/help.ts`]
 
 | 도구 | 인자(`?` 는 생략 가능) | CLI 에서의 출처 |
 | --- | --- | --- |
@@ -531,7 +547,7 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
 | `kakaotalk_search` | `query`, `limit` | 표준 입력의 검색어, `--limit` |
 | `kakaotalk_history` | `display_name`, `limit` | 표준 입력의 표시 이름, `--limit` |
 | `kakaotalk_archive` | `since`, `time_zone`, `limit` | 같은 이름의 플래그 |
-| `kakaotalk_checkpoint` | `token` | 표준 입력의 체크포인트 토큰 |
+| `kakaotalk_checkpoint` | `token`, `confirm` | 표준 입력의 체크포인트 토큰, `--confirm` |
 | `mail_authorization_status` | 없음 | |
 | `mail_list` | `from`, `to`, `limit`, `max_body_bytes`, `cursor?` | 같은 이름의 플래그 |
 | `mail_read` | `message_id`, `max_body_bytes` | 같은 이름의 플래그 |
@@ -653,8 +669,9 @@ result         object | null
   그대로이고, MCP 는 그것을 §10.5 의 감싸개에 담기만 한다. [소유자, ADR-0010 결정 5; 방법은 계약]
 - 코어의 planner 포트에는 어댑터가 둘이다. CLI 의 헬퍼 프로세스(`sherpa-apple`)와 `app serve` 의 제어
   채널이다. 조립 지점이 하나를 고른다. [계약; 아키텍처 문서의 조립 지점 규칙]
-- 앱이 나오기 전까지 CLI 는 지금의 헬퍼 경로를 그대로 쓴다. 헬퍼 번들을 걷어 낸 뒤 CLI 가 EventKit 에 닿는
-  길(예: CLI 가 앱 소켓에 붙기)은 이 계약이 정하지 않는다. [미확인, §15]
+- 2단계(bunny-holes/sherpa#27, #28, #29) 동안 CLI 는 지금의 헬퍼 경로(`SherpaHelper.app` 의 `sherpa-apple`)를
+  그대로 쓴다. 헬퍼 번들을 걷어 내는 일과 CLI 가 앱 소켓에 붙어 EventKit 에 닿는 길은 3단계
+  (bunny-holes/sherpa#31)에서 함께 정하고 이 계약의 다음 판에 적는다. [소유자 결정 2026-11-21]
 - 메뉴의 "최근 작업" 은 기록부(`native_mutations`)를 읽어 보여 준다. 1판에는 그것을 위한 프레임이 없다. [계약]
 
 ## 12. 로그
@@ -807,23 +824,22 @@ not json\n                                                                      
 15초 동안 아무것도 오지 않음                                                          75
 ```
 
-## 15. 소유자 검토 대기
+## 15. 소유자 결정 (2026-11-21)
 
-두 작업이 시작되기 전에 소유자가 볼 계약의 선택이다. 바꾸면 이 문서를 고친 뒤 시작한다.
+두 작업이 시작되기 전에 소유자가 이 계약의 선택을 정했다.
 
-1. 확인을 앱 창에서 받는다(§9). Claude Code 의 도구 권한 창이 켜져 있으면 두 번 묻는다. 대안은 에이전트 쪽
-   확인인데, Codex 승인 방식은 사용자 설정이 정하고, Claude Code `requiresUserInteraction` 은 Codex 에 없고
-   `-p` 실행에서 호출을 거부하며, elicitation 은 두 에이전트에서 재지 않았다.
-2. 확인 대기 30초(Codex 기본 60초에 맞췄다).
-3. 1판 도구 목록(§10.2): `*.authorization.request`, 비공개 ReminderKit, Mail shim, `kakaotalk setup` 을 빼고
-   `*.command.validate` 를 넣었다. `kakaotalk_checkpoint` 는 로컬 상태라 CLI 의
-   `--confirm COMMIT_LOCAL_CHECKPOINT` 없이, 확인 창도 없이 실행한다.
-4. 팀 ID 를 소스 상수로 커밋하는지(§4). 서명된 바이너리마다 보이는 값이지만 이 저장소는 아직 적지 않았다.
-5. 코어와 CLI 를 같은 실행 파일(`sherpa app serve`)로, 식별자를 `dev.xiyo.sherpa.core` 로 둔다(§2).
-6. 소켓 경로 `~/Library/Application Support/Sherpa/run/app.sock`(§3).
-7. 헬퍼 번들을 걷어 낸 뒤 CLI 가 EventKit 에 닿는 길(§11). 이 계약은 정하지 않았다.
-8. 코어가 다시 뜨면 모든 MCP 세션이 끊기고, 대화형 Claude Code 는 사람이 `/mcp` 에서 다시 연결해야 한다(§7.8).
-   세션을 다시 뜬 코어로 옮기는 설계는 1판에 없다.
+1. 삭제와 보내기는 앱 창에서 확인한다(§9). Claude Code 의 도구 권한 창이 켜져 있으면 두 번 묻는다. 그대로 둔다.
+2. 확인 대기는 30초다. 그대로 둔다.
+3. 1판 도구 목록(§10.2)은 그대로이고, `kakaotalk_checkpoint` 는 CLI 와 같은 확인 값을 `confirm` 인자로
+   받는다(§10.4).
+4. 팀 ID 를 소스 상수로 커밋한다(§4).
+5. 코어와 CLI 는 같은 실행 파일(`sherpa app serve`), 식별자 `dev.xiyo.sherpa.core`, 번들 안 이름
+   `sherpa-core` 다(§2).
+6. 소켓 경로는 `~/Library/Application Support/Sherpa/run/app.sock` 이다(§3).
+7. 2단계 동안 CLI 는 헬퍼 경로를 쓰고, 헬퍼 제거와 CLI 의 앱 소켓 연결은 3단계에서 정한다(§11).
+8. 코어가 다시 뜨면 모든 MCP 세션이 끊기는 것을 1판은 받아들인다(§7.8).
+9. 1판은 같은 사용자를 믿는 범위로 둔다(§4 "믿는 범위"). 중계를 띄운 프로그램의 허용은
+   bunny-holes/sherpa#39 이다.
 
 ## 16. 미확인
 
