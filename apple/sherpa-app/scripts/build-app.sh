@@ -22,7 +22,7 @@ log() { printf '%s [%s:%s] %s\n' "$1" "$LOG_SCOPE" "$2" "$3" >&2; }
 fail() { log error "$1" "$2"; exit 1; }
 
 configuration=release
-core="$REPO_ROOT/core/dist/sherpa"
+core=""
 identity=""
 output="$PACKAGE/.build/app"
 while [ $# -gt 0 ]; do
@@ -35,7 +35,26 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -x "$core" ] || fail input "reason=core_missing remedy=\"run 'bun run build' in core/ or pass --core\""
+# Without --core the core is built from this checkout, so the bundle never carries a
+# core/dist/sherpa left from an older commit.
+if [ -z "$core" ]; then
+  (cd "$REPO_ROOT/core" && bun run build >/dev/null 2>&1) || fail build "reason=core_build_failed"
+  core="$REPO_ROOT/core/dist/sherpa"
+fi
+[ -x "$core" ] || fail input "reason=core_missing"
+
+# The app starts the core as `sherpa-core app serve` (contract §7.1). A core without that
+# subcommand fails every start with frame violations until the app gives up (2026-11-21: a
+# stale core/dist/sherpa from before #44 was bundled), so the core must greet with a Mux 1
+# hello of this checkout's version before anything is built.
+expected_version="$(plutil -extract CFBundleShortVersionString raw -o - "$REPO_ROOT/apple/eventkit-service/Resources/Info.plist")"
+greeting="$("$core" app serve </dev/null 2>/dev/null | head -n 1 || true)"
+python3 - "$greeting" "$expected_version" <<'PY' || fail input "reason=core_not_mux remedy=\"build the core from this checkout (bun run build in core/) or pass a matching --core\""
+import json, sys
+channel, kind, body = (sys.argv[1].split("\t") + ["", "", ""])[:3]
+hello = json.loads(body) if channel == "0" and kind == "hello" else {}
+sys.exit(0 if hello.get("mux") == 1 and hello.get("version") == sys.argv[2] else 1)
+PY
 
 log info start "configuration=$configuration"
 swift build --package-path "$PACKAGE" -c "$configuration" --product Sherpa >/dev/null 2>&1 \
