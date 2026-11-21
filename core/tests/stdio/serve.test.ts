@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "vite-plus/test";
 import type { FakeApp } from "./fake-app.ts";
 import { cleanHomes, launch } from "./launch.ts";
 import { type FixtureChat, writeChatDatabase } from "../support/chat-db.ts";
+import { MCP_REVISION, withEnvelope } from "../support/mcp.ts";
 import { defaultPlanner, v2Response } from "../support/planner.ts";
 
 // app-connection-v1 §13.1: the built core driven through its pipes by a fake app.
@@ -39,15 +40,20 @@ const isWithdraw = (frame: { channel: number; type: string }) =>
   frame.channel === 0 && frame.type === "withdraw";
 
 describe("sessions", () => {
-  test("three channels initialize, list tools and call a read at the same time", async () => {
+  test("three channels discover, list tools and call a read at the same time", async () => {
     const app = await ready();
-    const initialized = await Promise.all([1, 2, 3].map((channel) => app.open(channel)));
-    for (const result of initialized) {
-      expect(result).toEqual({
-        protocolVersion: "2025-11-25",
-        capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "sherpa", version: expect.stringMatching(/^\d+\.\d+\.\d+$/) },
+    const discovered = await Promise.all([1, 2, 3].map((channel) => app.open(channel)));
+    for (const result of discovered) {
+      expect(result).toMatchObject({
+        supportedVersions: [MCP_REVISION],
+        _meta: {
+          "io.modelcontextprotocol/serverInfo": {
+            name: "sherpa",
+            version: expect.stringMatching(/^\d+\.\d+\.\d+$/),
+          },
+        },
       });
+      expect(result.capabilities).toEqual({ tools: { listChanged: false } });
     }
     const lists = await Promise.all([1, 2, 3].map((channel) => app.rpc(channel, "tools/list", {})));
     for (const list of lists) {
@@ -145,6 +151,48 @@ describe("sessions", () => {
   });
 });
 
+describe("protocol revision 2026-07-28 only (§10.1, ADR-0011)", () => {
+  test.each(["2025-11-25", "2025-06-18"])(
+    "initialize %s is refused with -32022 and the channel still opens on 2026-07-28",
+    async (version) => {
+      const app = await ready();
+      app.frame(1, "open");
+      expect(
+        await app.requestBare(1, "initialize", {
+          protocolVersion: version,
+          capabilities: {},
+          clientInfo: { name: "legacy-agent", version: "1.0.0" },
+        }),
+      ).toMatchObject({
+        error: {
+          code: -32022,
+          message: `Unsupported protocol version: ${version}`,
+          data: { supported: [MCP_REVISION], requested: version },
+        },
+      });
+      app.frame(1, "data", { jsonrpc: "2.0", method: "notifications/initialized" });
+      expect((await app.requestBare(1, "tools/list", {})).error).toEqual({
+        code: -32022,
+        message: "Unsupported protocol version: the request did not name a protocol version",
+        data: { supported: [MCP_REVISION] },
+      });
+      await app.discover(1);
+      expect(((await app.rpc(1, "tools/list", {})).tools as unknown[]).length).toBe(35);
+      const call = await app.call(1, "event_list", range);
+      expect(call.structuredContent).toMatchObject({
+        status: "succeeded",
+        capability: "event.list",
+      });
+      expect(app.requested()).toEqual(["capabilities", "event.list"]);
+      app.closeInput();
+      expect(await app.exited).toBe(0);
+      expect(app.stderr.join("")).toContain(
+        "[core:mcp-transport:send] refused channel=1 reason=unsupported_protocol_version",
+      );
+    },
+  );
+});
+
 describe("confirmation (§9)", () => {
   test("an approved delete sends the request under the confirmed operation id", async () => {
     const app = await ready();
@@ -215,7 +263,10 @@ describe("confirmation (§9)", () => {
         jsonrpc: "2.0",
         id: 5,
         method: "tools/call",
-        params: { name: "reminder_delete", arguments: { native_locator: locator } },
+        params: withEnvelope(
+          { name: "reminder_delete", arguments: { native_locator: locator } },
+          { name: "fake-agent", version: "1.0.0" },
+        ),
       });
     call("r-1");
     const confirm = await app.next(isConfirm);
@@ -398,7 +449,9 @@ describe("process (§7.8)", () => {
     first.closeInput();
     expect(await first.exited).toBe(0);
     const second = await ready();
-    expect((await second.open(1)).serverInfo).toMatchObject({ name: "sherpa" });
+    expect((await second.open(1))._meta).toMatchObject({
+      "io.modelcontextprotocol/serverInfo": { name: "sherpa" },
+    });
   });
 
   test("logs carry no message bodies or tool arguments", async () => {

@@ -1,10 +1,12 @@
 import {
   INVALID_REQUEST,
+  isJSONRPCErrorResponse,
   isJSONRPCNotification,
   isJSONRPCRequest,
   isJSONRPCResponse,
   type JSONRPCMessage,
   parseJSONRPCMessage,
+  ProtocolErrorCode,
   type RequestId,
   type Transport,
 } from "@modelcontextprotocol/server";
@@ -47,6 +49,15 @@ export class MuxChannelTransport implements Transport {
   async send(message: JSONRPCMessage): Promise<void> {
     if (this.closed) return;
     if (isJSONRPCResponse(message) && message.id !== undefined) this.inFlight.delete(message.id);
+    if (
+      isJSONRPCErrorResponse(message) &&
+      message.error.code === ProtocolErrorCode.UnsupportedProtocolVersion
+    ) {
+      // A 2025-era agent (`initialize`, or a request without the 2026-07-28 envelope; ADR-0011).
+      log.warn(
+        `[core:mcp-transport:send] refused channel=${this.channel.id} reason=unsupported_protocol_version`,
+      );
+    }
     let body = JSON.stringify(message);
     if (Buffer.byteLength(body) > frameLimits.data) {
       // §10.5 keeps results far below this; reaching it is a core defect.
