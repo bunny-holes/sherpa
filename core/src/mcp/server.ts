@@ -10,11 +10,13 @@ export const activeCalls = new Set<Promise<unknown>>();
 /**
  * One MCP session's server (§10.1): name `sherpa`, the core version, and only
  * `{"tools":{"listChanged":false}}`. Every tool has the same output schema
- * and all four annotation hints of its effect class.
+ * and all four annotation hints of its effect class. `session` ends with the
+ * connection, so every call still waiting is withdrawn when it closes (§9),
+ * not only the one the SDK last registered under a request id.
  */
 export function createSherpaServer(
   tools: readonly ResolvedTool[],
-  options: { version: string; channel: number },
+  options: { version: string; channel: number; session: AbortSignal },
 ): McpServer {
   const server = new McpServer(
     { name: "sherpa", version: options.version },
@@ -37,7 +39,7 @@ export function createSherpaServer(
         log.info(`[core:mcp:tool-call] start ${fields}`);
         const info = server.server.getClientVersion();
         const call = tool.handle(args, {
-          signal: ctx.mcpReq.signal,
+          signal: AbortSignal.any([ctx.mcpReq.signal, options.session]),
           client: { name: info?.name ?? "unknown", version: info?.version ?? "unknown" },
         });
         activeCalls.add(call);

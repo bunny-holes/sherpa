@@ -84,13 +84,17 @@ export const annotationTable: Record<EffectClass, Required<Omit<ToolAnnotations,
   },
 };
 
-function plannerEntry(
+/** Builds one planner entry; a delete, confirmed in the app, must name the read of its preview (§9). */
+export function plannerEntry(
   capability: string,
   effectClass: Exclude<EffectClass, "send" | "local">,
   inputSchema: z.ZodObject,
   description: string,
   previewCapability?: string,
 ): PlannerEntry {
+  if (effectClass === "delete" && !previewCapability) {
+    throw new Error(`${capability} is confirmed in the app but has no preview read`);
+  }
   const expected =
     effectClass === "read"
       ? { effect: "read" as const, requiredEvidence: "none" as const }

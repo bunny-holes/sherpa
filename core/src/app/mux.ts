@@ -115,7 +115,6 @@ export interface AppConnectionOptions {
   input: AsyncIterable<Uint8Array>;
   output: FrameSink;
   handlers: AppConnectionHandlers;
-  confirmationTimeoutMs?: number;
   timers?: ControlTimers;
 }
 
@@ -139,12 +138,10 @@ export class AppConnection {
 
   constructor(private readonly options: AppConnectionOptions) {
     this.writer = new FrameWriter(options.output);
-    this.control = new ControlChannel((type, body) => this.writeFrame(encodeFrame(0, type, body)), {
-      ...(options.confirmationTimeoutMs === undefined
-        ? {}
-        : { confirmationTimeoutMs: options.confirmationTimeoutMs }),
-      ...(options.timers ? { timers: options.timers } : {}),
-    });
+    this.control = new ControlChannel(
+      (type, body) => this.writeFrame(encodeFrame(0, type, body)),
+      options.timers ? { timers: options.timers } : {},
+    );
   }
 
   /** Runs until standard input ends (0) or a violation (65). */

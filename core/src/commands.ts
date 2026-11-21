@@ -1,6 +1,11 @@
 import { invalidRequest } from "./cli/errors.ts";
 import * as imessage from "./imessage/commands.ts";
-import { journaled, type JournaledResult, MutationJournal } from "./journal/journal.ts";
+import {
+  checkRecentLimit,
+  journaled,
+  type JournaledResult,
+  MutationJournal,
+} from "./journal/journal.ts";
 import * as kakaotalk from "./kakaotalk/commands.ts";
 import { EnvelopeIndex } from "./mail/envelope-index.ts";
 import { type MailMessage, mailAuthorizationStatus, sendMail } from "./mail/outbound.ts";
@@ -19,6 +24,8 @@ export interface CoreCommands {
     end: string;
     limit: number;
   }): Promise<string>;
+  /** The chat a send targets, for the confirmation window only (§9): never logged or journaled. */
+  imessageChat(chatID: bigint): Promise<imessage.ChatPreview>;
   imessageSend(input: {
     chatID: bigint;
     text: Uint8Array;
@@ -47,12 +54,12 @@ export interface CoreCommands {
 
 /** The confirmation value of `kakaotalk checkpoint` (`--confirm` and the tool's `confirm`). */
 export const CHECKPOINT_CONFIRMATION = "COMMIT_LOCAL_CHECKPOINT";
-const MAIL_BODY_BYTES_MAX = 1024 * 1024;
 
 /** The commands against this Mac's stores, journal and apps. */
 export const systemCommands: CoreCommands = {
   imessageChats: (limit) => imessage.chats(limit),
   imessageHistory: (input) => imessage.history(input),
+  imessageChat: (chatID) => imessage.chat(chatID),
   imessageSend: ({ chatID, text, operationID }) =>
     journaled(
       MutationJournal.openDefault(),
@@ -69,15 +76,17 @@ export const systemCommands: CoreCommands = {
     return kakaotalk.commitCheckpoint(token);
   },
   mailAuthorizationStatus: () => mailAuthorizationStatus(),
-  mailList: async ({ from, to, limit, maxBodyBytes, cursor }) => {
-    if (maxBodyBytes < 0 || maxBodyBytes > MAIL_BODY_BYTES_MAX) throw invalidRequest();
-    return JSON.stringify(
-      new EnvelopeIndex().list({ from, to, limit, ...(cursor ? { cursor } : {}) }),
-    );
-  },
+  mailList: async ({ from, to, limit, maxBodyBytes, cursor }) =>
+    JSON.stringify(
+      new EnvelopeIndex().list({ from, to, limit, maxBodyBytes, ...(cursor ? { cursor } : {}) }),
+    ),
   mailRead: async ({ messageID, maxBodyBytes }) =>
-    JSON.stringify(new EnvelopeIndex().read(messageID, maxBodyBytes)),
+    JSON.stringify(await new EnvelopeIndex().read(messageID, maxBodyBytes)),
   mailSend: ({ message, operationID }) =>
     journaled(MutationJournal.openDefault(), "mail.send", () => sendMail(message), operationID),
-  operationsList: async (limit) => JSON.stringify(MutationJournal.openDefault().recent(limit)),
+  operationsList: async (limit) => {
+    // Checked first: opening the journal creates it.
+    checkRecentLimit(limit);
+    return JSON.stringify(MutationJournal.openDefault().recent(limit));
+  },
 };

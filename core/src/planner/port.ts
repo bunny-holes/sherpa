@@ -59,6 +59,7 @@ export function plannerRequest(
   payload: Record<string, unknown>,
   policy: PlannerPolicy,
   operationID: string,
+  deadlineMs = PLANNER_DEADLINE_MS,
 ): PlannerRequest {
   return {
     kind: "request",
@@ -68,7 +69,7 @@ export function plannerRequest(
     operation_id: operationID,
     capability,
     payload,
-    deadline_ms: PLANNER_DEADLINE_MS,
+    deadline_ms: deadlineMs,
     idempotency_key: operationID,
     policy,
   };

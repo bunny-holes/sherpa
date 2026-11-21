@@ -17,6 +17,14 @@ export interface IMessageEnvironment {
   run?: Runner;
 }
 
+/** What the confirmation window of a send shows about its chat (app-connection-v1 §9). */
+export interface ChatPreview {
+  /** The chat's display name, or its identifier when it has none. */
+  name: string;
+  /** Handles of the other participants. */
+  participants: string[];
+}
+
 const MAX_TEXT_BYTES = 64 * 1024;
 const INT64_MAX = 9_223_372_036_854_775_807n;
 
@@ -67,7 +75,7 @@ export function imessageCommands(environment: IMessageEnvironment) {
       if (!Number.isInteger(limit) || limit < 1 || limit > 10_000) throw invalidRequest();
       const start = parseInstant(options.start);
       const end = parseInstant(options.end);
-      log.info(`[adapter:imessage:history] start chat_id=${chatID} limit=${limit}`);
+      log.info(`[adapter:imessage:history] start limit=${limit}`);
       if (chatID > BigInt(Number.MAX_SAFE_INTEGER)) return "";
       const id = Number(chatID);
       const lines = withStore(environment, (store) => {
@@ -92,8 +100,29 @@ export function imessageCommands(environment: IMessageEnvironment) {
           );
         });
       });
-      log.info(`[adapter:imessage:history] success chat_id=${chatID} count=${lines.length}`);
+      log.info(`[adapter:imessage:history] success count=${lines.length}`);
       return lines.join("\n");
+    },
+
+    /** The chat `send` would target; a chat `send` would refuse is not found here either. */
+    async chat(chatID: bigint): Promise<ChatPreview> {
+      log.info("[adapter:imessage:chat] start");
+      const found =
+        chatID > BigInt(Number.MAX_SAFE_INTEGER)
+          ? null
+          : withStore(environment, (store) => {
+              const info = store.chatInfo(Number(chatID));
+              return info ? { info, participants: store.participants(info.id) } : null;
+            });
+      if (!found || found.info.guid === "" || /[\r\n]/.test(found.info.guid)) {
+        log.warn("[adapter:imessage:chat] failure code=imessage.chat_not_found");
+        throw new SherpaError("imessage.chat_not_found");
+      }
+      log.info(`[adapter:imessage:chat] success participants=${found.participants.length}`);
+      return {
+        name: found.info.name || found.info.identifier,
+        participants: found.participants,
+      };
     },
 
     async send(chatID: bigint, text: Uint8Array): Promise<Uint8Array> {
@@ -102,17 +131,17 @@ export function imessageCommands(environment: IMessageEnvironment) {
         chatID > INT64_MAX ? [] : withStore(environment, (store) => store.chatGUIDs(chatID));
       const guid = guids.length === 1 ? guids[0]! : "";
       if (guid === "" || /[\r\n]/.test(guid)) throw new SherpaError("imessage.chat_not_found");
-      log.info(`[adapter:imessage:send] start chat_id=${chatID} bytes=${text.byteLength}`);
+      log.info(`[adapter:imessage:send] start bytes=${text.byteLength}`);
       try {
         const result = await sendToChat(guid, body, {
           ...(environment.osascript ? { executable: environment.osascript } : {}),
           ...(environment.run ? { run: environment.run } : {}),
         });
-        log.info(`[adapter:imessage:send] success chat_id=${chatID} status=${result.status}`);
+        log.info(`[adapter:imessage:send] success status=${result.status}`);
         return new TextEncoder().encode(JSON.stringify(result));
       } catch (error) {
         const code = error instanceof SherpaError ? error.code : "unknown";
-        log.error(`[adapter:imessage:send] failure chat_id=${chatID} code=${code}`);
+        log.error(`[adapter:imessage:send] failure code=${code}`);
         throw error;
       }
     },
@@ -129,6 +158,8 @@ export const history = (options: {
   end: string;
   limit: number;
 }): Promise<string> => live().history(options);
+
+export const chat = (chatID: bigint): Promise<ChatPreview> => live().chat(chatID);
 
 export const send = (chatID: bigint, text: Uint8Array): Promise<Uint8Array> =>
   live().send(chatID, text);

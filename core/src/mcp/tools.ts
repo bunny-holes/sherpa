@@ -2,7 +2,14 @@ import { codes } from "../cli/errors.ts";
 import type { CoreCommands } from "../commands.ts";
 import { log } from "../log.ts";
 import { newOperationID, type PlannerPort, plannerRequest } from "../planner/port.ts";
-import type { ConfirmationLine, ConfirmationPort } from "./confirmation.ts";
+import {
+  CONFIRMATION_TIMEOUT_MS,
+  type ConfirmationDecision,
+  type ConfirmationLine,
+  type ConfirmationPort,
+  type ConfirmationPrompt,
+  PREVIEW_DEADLINE_MS,
+} from "./confirmation.ts";
 import { type CoreEntry, type CoreRun, coreEntries } from "./core-tools.ts";
 import {
   commandResult,
@@ -33,6 +40,8 @@ export interface ToolDependencies {
   confirmations: ConfirmationPort;
   commands: CoreCommands;
   newOperationID?: () => string;
+  /** Monotonic milliseconds for the §9 budget. */
+  now?: () => number;
 }
 
 function effectKind(effectClass: EffectClass): EffectKind {
@@ -48,7 +57,11 @@ function effectKind(effectClass: EffectClass): EffectKind {
   }
 }
 
-/** The tools of one core process: confirmed planner entries, then every core entry. */
+/**
+ * The tools of one core process: confirmed planner entries, then every core
+ * entry. An entry confirmed in the app without a preview is refused here, so
+ * no such tool is ever served.
+ */
 export function resolveTools(
   planner: readonly ConfirmedPlannerEntry[],
   dependencies: ToolDependencies,
@@ -64,6 +77,29 @@ type Preview =
   | { kind: "ready"; title: string; lines: ConfirmationLine[] }
   | { kind: "ended"; outcome: ToolOutcome | null };
 
+/** Starts the §9 clock before the preview read; the result gives what is left of it. */
+function budget(dependencies: ToolDependencies): () => number {
+  const now = dependencies.now ?? (() => performance.now());
+  const started = now();
+  return () => Math.floor(CONFIRMATION_TIMEOUT_MS - (now() - started));
+}
+
+/** Asks the app for the rest of the budget; a spent budget times out without asking. */
+function ask(
+  dependencies: ToolDependencies,
+  prompt: ConfirmationPrompt,
+  signal: AbortSignal,
+  remainingMs: number,
+): Promise<ConfirmationDecision> {
+  if (remainingMs < 1) {
+    log.warn(
+      `[core:mcp:confirm] timeout tool=${prompt.tool} operation_id=${prompt.operation_id} reason=preview_spent_budget`,
+    );
+    return Promise.resolve("timed_out");
+  }
+  return dependencies.confirmations.confirm(prompt, signal, remainingMs);
+}
+
 function plannerTool(
   confirmed: ConfirmedPlannerEntry,
   dependencies: ToolDependencies,
@@ -71,11 +107,15 @@ function plannerTool(
 ): ResolvedTool {
   const { entry } = confirmed;
   const kind = effectKind(entry.effectClass);
+  if (entry.confirmation === "app" && !confirmed.preview) {
+    throw new Error(`${entry.name} is confirmed in the app but has no preview read`);
+  }
   return {
     entry,
     async handle(args, call) {
       const operationID = mint();
       if (entry.confirmation === "app") {
+        const remaining = budget(dependencies);
         const preview = await plannerPreview(
           confirmed,
           args as Record<string, unknown>,
@@ -84,7 +124,8 @@ function plannerTool(
           mint,
         );
         if (preview.kind === "ended") return preview.outcome;
-        const decision = await dependencies.confirmations.confirm(
+        const decision = await ask(
+          dependencies,
           {
             tool: entry.name,
             operation_id: operationID,
@@ -93,6 +134,7 @@ function plannerTool(
             lines: preview.lines,
           },
           call.signal,
+          remaining(),
         );
         if (decision === "withdrawn" || call.signal.aborted) return null;
         if (decision !== "approved") {
@@ -132,7 +174,10 @@ function reminderDate(value: unknown): string {
   return typeof date.hour === "number" ? `${day} ${pad(date.hour)}:${pad(date.minute ?? 0)}` : day;
 }
 
-/** Reads the delete target through `*.get` or `*.source.list` (§9). A failed read ends the call. */
+/**
+ * Reads the delete target through `*.get` or `*.source.list` within
+ * `PREVIEW_DEADLINE_MS` (§9). A failed read ends the call.
+ */
 async function plannerPreview(
   confirmed: ConfirmedPlannerEntry,
   args: Record<string, unknown>,
@@ -151,6 +196,7 @@ async function plannerPreview(
     { schema: preview.requestSchema, ...readArgs },
     preview.policy,
     mint(),
+    PREVIEW_DEADLINE_MS,
   );
   const reply = await dependencies.planner.request(request, call.signal);
   if (reply.kind !== "response" || reply.response.status !== "succeeded") {
@@ -257,16 +303,24 @@ function coreTool(
   mint: () => string,
 ): ResolvedTool {
   const kind = effectKind(entry.effectClass);
+  const preview = entry.confirmation === "app" ? entry.preview : null;
+  if (preview === undefined) {
+    throw new Error(`${entry.name} is confirmed in the app but has no preview`);
+  }
   return {
     entry,
     async handle(args, call) {
-      const operationID = entry.confirmation === "app" ? mint() : "";
+      const operationID = preview ? mint() : "";
       try {
-        if (entry.confirmation === "app" && entry.preview) {
-          const preview = entry.preview(args);
-          const decision = await dependencies.confirmations.confirm(
-            { tool: entry.name, operation_id: operationID, client: call.client, ...preview },
+        if (preview) {
+          const remaining = budget(dependencies);
+          const shown = await preview(dependencies.commands, args);
+          if (call.signal.aborted) return null;
+          const decision = await ask(
+            dependencies,
+            { tool: entry.name, operation_id: operationID, client: call.client, ...shown },
             call.signal,
+            remaining(),
           );
           if (decision === "withdrawn" || call.signal.aborted) return null;
           if (decision !== "approved") {

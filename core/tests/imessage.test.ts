@@ -9,6 +9,7 @@ import { imessageCommands } from "../src/imessage/commands.ts";
 import type { Runner } from "../src/imessage/send.ts";
 import { formatAppleSeconds, parseInstant } from "../src/imessage/time.ts";
 import { parseAttributedBody } from "../src/imessage/typedstream.ts";
+import { createChatSchema } from "./support/chat-db.ts";
 
 // All fixture data is synthetic: 555 numbers, example.com addresses, made-up guids and text.
 
@@ -120,26 +121,6 @@ const ns = (iso: string, extra = 0n): bigint =>
 let root: string;
 let dbPath: string;
 
-function createSchema(db: Database): void {
-  db.run(`CREATE TABLE chat (ROWID INTEGER PRIMARY KEY, guid TEXT, chat_identifier TEXT, display_name TEXT,
-    service_name TEXT, account_id TEXT, account_login TEXT, last_addressed_handle TEXT)`);
-  db.run("CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT, service TEXT)");
-  db.run(`CREATE TABLE message (ROWID INTEGER PRIMARY KEY, guid TEXT, text TEXT, handle_id INTEGER, service TEXT,
-    date INTEGER, is_from_me INTEGER DEFAULT 0, attributedBody BLOB, associated_message_guid TEXT,
-    associated_message_type INTEGER DEFAULT 0, associated_message_emoji TEXT, destination_caller_id TEXT,
-    is_audio_message INTEGER DEFAULT 0, thread_originator_guid TEXT, thread_originator_part TEXT,
-    balloon_bundle_id TEXT, payload_data BLOB, message_summary_info BLOB, reply_to_guid TEXT,
-    is_read INTEGER DEFAULT 0, date_read INTEGER DEFAULT 0, date_edited INTEGER DEFAULT 0,
-    date_retracted INTEGER DEFAULT 0)`);
-  db.run(
-    "CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER, message_date INTEGER)",
-  );
-  db.run("CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER)");
-  db.run(`CREATE TABLE attachment (ROWID INTEGER PRIMARY KEY, filename TEXT, transfer_name TEXT, uti TEXT,
-    mime_type TEXT, total_bytes INTEGER, is_sticker INTEGER, user_info BLOB)`);
-  db.run("CREATE TABLE message_attachment_join (message_id INTEGER, attachment_id INTEGER)");
-}
-
 type MessageRow = Partial<{
   guid: string;
   text: string | null;
@@ -176,7 +157,7 @@ function insertMessage(db: Database, rowID: number, chatID: number | null, row: 
 
 function seed(): void {
   const db = new Database(dbPath, { create: true });
-  createSchema(db);
+  createChatSchema(db);
   db.run(
     "INSERT INTO handle VALUES (1, '+15550000001', 'iMessage'), (2, 'friend@example.com', 'iMessage')",
   );
@@ -547,6 +528,34 @@ describe("imessage history", () => {
   ])("rejects %o", async (override) => {
     const options = { chatID: 1n, ...january, limit: 10, ...override };
     expect((await rejection(commands().history(options))).code).toBe(codes.invalidRequest);
+  });
+});
+
+describe("imessage chat preview (app-connection-v1 §9)", () => {
+  test("shows the display name, or the identifier without one, and the participants", async () => {
+    expect(await commands().chat(2n)).toEqual({
+      name: "Group Title",
+      participants: ["+15550000001", "friend@example.com"],
+    });
+    expect(await commands().chat(1n)).toEqual({
+      name: "+15550000001",
+      participants: ["+15550000001"],
+    });
+    // An empty display name counts as none.
+    expect((await commands().chat(3n)).name).toBe("+15550000002");
+  });
+
+  test("a chat a send would refuse is not found", async () => {
+    for (const chatID of [99n, 4n, 2n ** 64n - 1n])
+      expect((await rejection(commands().chat(chatID))).code).toBe("imessage.chat_not_found");
+  });
+
+  test("an unreadable store fails with the permission remedy", async () => {
+    const error = await rejection(
+      commands({ databasePath: join(root, "missing/chat.db") }).chat(1n),
+    );
+    expect(error.code).toBe("imessage.store_unreadable");
+    expect(error.remedy).toContain("Full Disk Access");
   });
 });
 

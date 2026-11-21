@@ -28,7 +28,7 @@ function control() {
     async (type, body) => {
       written.push({ type, body: JSON.parse(body) as Record<string, unknown> });
     },
-    { timers, confirmationTimeoutMs: 30_000 },
+    { timers },
   );
   return { channel, written, timers };
 }
@@ -147,7 +147,7 @@ describe("work requests (§8)", () => {
   test("shutdown ends every wait as abandoned", async () => {
     const { channel } = control();
     const reply = channel.request("planner", plannerRequest("event.list", {}, READ, "op-1"));
-    const decision = channel.confirm(prompt, new AbortController().signal);
+    const decision = channel.confirm(prompt, new AbortController().signal, 30_000);
     channel.closeAll();
     expect(await reply).toEqual({ kind: "aborted" });
     expect(await decision).toBe("withdrawn");
@@ -159,7 +159,7 @@ describe("confirmations (§9)", () => {
     "the app's %s is the decision",
     async (answer) => {
       const { channel, written } = control();
-      const decision = channel.confirm(prompt, new AbortController().signal);
+      const decision = channel.confirm(prompt, new AbortController().signal, 30_000);
       expect(written[0]).toEqual({
         type: "confirm",
         body: { id: 1, ...prompt, timeout_ms: 30_000 },
@@ -170,9 +170,20 @@ describe("confirmations (§9)", () => {
     },
   );
 
+  test("the wait is the time the caller gives, and timeout_ms says so", async () => {
+    const { channel, written, timers } = control();
+    const decision = channel.confirm(prompt, new AbortController().signal, 21_500);
+    expect(written[0]?.body.timeout_ms).toBe(21_500);
+    timers.fire(30_000);
+    expect(written).toHaveLength(1);
+    timers.fire(21_500);
+    expect(await decision).toBe("timed_out");
+    expect(written.at(-1)).toEqual({ type: "withdraw", body: { id: 1 } });
+  });
+
   test("no answer within 30 s withdraws the request", async () => {
     const { channel, written, timers } = control();
-    const decision = channel.confirm(prompt, new AbortController().signal);
+    const decision = channel.confirm(prompt, new AbortController().signal, 30_000);
     timers.fire(30_000);
     expect(await decision).toBe("timed_out");
     expect(written.at(-1)).toEqual({ type: "withdraw", body: { id: 1 } });
@@ -181,7 +192,7 @@ describe("confirmations (§9)", () => {
   test("cancelling the call withdraws the request and a later approval is ignored", async () => {
     const { channel, written } = control();
     const cancel = new AbortController();
-    const decision = channel.confirm(prompt, cancel.signal);
+    const decision = channel.confirm(prompt, cancel.signal, 30_000);
     cancel.abort();
     expect(await decision).toBe("withdrawn");
     expect(written.at(-1)).toEqual({ type: "withdraw", body: { id: 1 } });
@@ -192,7 +203,7 @@ describe("confirmations (§9)", () => {
   test("requests and confirmations share one id counter", () => {
     const { channel, written } = control();
     void channel.request("planner", plannerRequest("event.list", {}, READ, "op-1"));
-    void channel.confirm(prompt, new AbortController().signal);
+    void channel.confirm(prompt, new AbortController().signal, 30_000);
     void channel.request("planner", plannerRequest("event.list", {}, READ, "op-3"));
     expect(written.map((frame) => frame.body.id)).toEqual([1, 2, 3]);
   });
@@ -207,7 +218,7 @@ describe("confirmations (§9)", () => {
         value: "가".repeat(5_000),
       })),
     };
-    void channel.confirm(long, new AbortController().signal);
+    void channel.confirm(long, new AbortController().signal, 30_000);
     const body = written[0]!.body as unknown as ConfirmationPrompt;
     expect(Array.from(body.title)).toHaveLength(100);
     expect(body.lines).toHaveLength(12);

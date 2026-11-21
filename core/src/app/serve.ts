@@ -110,7 +110,6 @@ export interface ServeOptions {
   output: FrameSink;
   commands?: CoreCommands;
   discoveryWaitMs?: number;
-  confirmationTimeoutMs?: number;
 }
 
 /** Runs one app connection with MCP sessions until EOF (0) or a violation (65). */
@@ -133,23 +132,22 @@ export async function serveConnection(options: ServeOptions): Promise<number> {
     version: SHERPA_VERSION,
     input: options.input,
     output: options.output,
-    ...(options.confirmationTimeoutMs === undefined
-      ? {}
-      : { confirmationTimeoutMs: options.confirmationTimeoutMs }),
     handlers: {
       ready(hello) {
         if (hello.workers.includes("planner")) basis.discover(planner);
         else basis.fail("planner_worker_missing");
       },
       open: (channel: MuxChannel) => {
+        const transport = new MuxChannelTransport(channel);
         serveStdio(
           async () =>
             createSherpaServer(await basis.resolved(), {
               version: SHERPA_VERSION,
               channel: channel.id,
+              session: transport.signal,
             }),
           {
-            transport: new MuxChannelTransport(channel),
+            transport,
             onerror: (error) =>
               log.warn(`[core:mcp:session] error channel=${channel.id} error_type=${error.name}`),
           },

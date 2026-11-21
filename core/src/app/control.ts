@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { log } from "../log.ts";
 import {
-  CONFIRMATION_TIMEOUT_MS,
   type ConfirmationDecision,
   type ConfirmationPort,
   type ConfirmationPrompt,
@@ -64,7 +63,7 @@ export class ControlChannel {
 
   constructor(
     private readonly write: ControlWriter,
-    private readonly options: { confirmationTimeoutMs?: number; timers?: ControlTimers } = {},
+    private readonly options: { timers?: ControlTimers } = {},
   ) {}
 
   private get timers(): ControlTimers {
@@ -101,11 +100,14 @@ export class ControlChannel {
     });
   }
 
-  /** Asks the app to confirm; withdraws on timeout or abort. */
-  confirm(prompt: ConfirmationPrompt, signal: AbortSignal): Promise<ConfirmationDecision> {
+  /** Asks the app to confirm within `timeoutMs`; withdraws on timeout or abort. */
+  confirm(
+    prompt: ConfirmationPrompt,
+    signal: AbortSignal,
+    timeoutMs: number,
+  ): Promise<ConfirmationDecision> {
     if (signal.aborted) return Promise.resolve("withdrawn");
     const id = this.nextID++;
-    const timeoutMs = this.options.confirmationTimeoutMs ?? CONFIRMATION_TIMEOUT_MS;
     const fields = `id=${id} tool=${prompt.tool} operation_id=${prompt.operation_id}`;
     const bounded = boundedPrompt(prompt);
     return new Promise<ConfirmationDecision>((resolve) => {
@@ -206,8 +208,12 @@ export class ControlChannelPlanner implements PlannerPort {
 export class ControlChannelConfirmations implements ConfirmationPort {
   constructor(private readonly control: ControlChannel) {}
 
-  confirm(prompt: ConfirmationPrompt, signal: AbortSignal): Promise<ConfirmationDecision> {
-    return this.control.confirm(prompt, signal);
+  confirm(
+    prompt: ConfirmationPrompt,
+    signal: AbortSignal,
+    timeoutMs: number,
+  ): Promise<ConfirmationDecision> {
+    return this.control.confirm(prompt, signal, timeoutMs);
   }
 }
 

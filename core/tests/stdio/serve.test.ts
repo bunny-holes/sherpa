@@ -1,6 +1,8 @@
+import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import type { FakeApp } from "./fake-app.ts";
 import { cleanHomes, launch } from "./launch.ts";
+import { type FixtureChat, writeChatDatabase } from "../support/chat-db.ts";
 import { defaultPlanner, v2Response } from "../support/planner.ts";
 
 // app-connection-v1 §13.1: the built core driven through its pipes by a fake app.
@@ -10,12 +12,25 @@ afterEach(() => {
   cleanHomes();
 });
 
-async function ready(env?: Record<string, string>): Promise<FakeApp> {
-  const app = launch(env);
+async function ready(
+  env?: Record<string, string>,
+  chats: readonly FixtureChat[] = [],
+): Promise<FakeApp> {
+  const app = launch(env, (home) => {
+    if (chats.length) writeChatDatabase(join(home, "Library/Messages/chat.db"), chats);
+  });
   apps.push(app);
   await app.handshake();
   return app;
 }
+
+const family: FixtureChat = {
+  id: 1,
+  guid: "iMessage;+;chat-family",
+  identifier: "chat-family",
+  displayName: "Family",
+  handles: ["+15555550100", "b@example.com"],
+};
 
 const range = { from: "2026-11-21T00:00:00+09:00", to: "2026-11-22T00:00:00+09:00" };
 const isConfirm = (frame: { channel: number; type: string }) =>
@@ -140,8 +155,10 @@ describe("confirmation (§9)", () => {
     expect(confirm).toMatchObject({
       tool: "reminder_delete",
       client: { name: "fake-agent", version: "1.0.0" },
-      timeout_ms: 30_000,
     });
+    // The 30 s started before the preview read, which took part of them (§9).
+    expect(confirm.timeout_ms).toBeLessThanOrEqual(30_000);
+    expect(confirm.timeout_ms).toBeGreaterThan(25_000);
     expect(app.requested()).toEqual(["capabilities", "reminder.get", "reminder.delete"]);
     expect(call.structuredContent).toMatchObject({
       status: "succeeded",
@@ -189,8 +206,88 @@ describe("confirmation (§9)", () => {
     expect(app.requested()).toEqual(["capabilities", "reminder.get"]);
   });
 
-  test("closing the connection withdraws its request and the core keeps running", async () => {
+  test("two calls under one request id: the second is refused and a cut connection withdraws the first", async () => {
     const app = await ready();
+    await app.open(1);
+    app.confirm = () => null;
+    const call = (locator: string) =>
+      app.frame(1, "data", {
+        jsonrpc: "2.0",
+        id: 5,
+        method: "tools/call",
+        params: { name: "reminder_delete", arguments: { native_locator: locator } },
+      });
+    call("r-1");
+    const confirm = await app.next(isConfirm);
+    call("r-2");
+    expect(await app.reply(1, 5)).toEqual({
+      jsonrpc: "2.0",
+      id: 5,
+      error: { code: -32600, message: "Request id already in use" },
+    });
+    app.frame(1, "close");
+    const confirmID = (confirm.body as { id: number }).id;
+    expect((await app.next(isWithdraw)).body).toEqual({ id: confirmID });
+    app.frame(0, "confirmation", { id: confirmID, decision: "approved" });
+    expect(await app.absent(isConfirm, 500)).toBe(true);
+    expect(app.log.filter(isConfirm)).toHaveLength(1);
+    expect(app.requested()).toEqual(["capabilities", "reminder.get"]);
+  });
+
+  test("EOF while a delete waits for the person exits 0 within 5 s and deletes nothing", async () => {
+    const app = await ready();
+    await app.open(1);
+    app.confirm = () => null;
+    app.send(1, "tools/call", { name: "reminder_delete", arguments: { native_locator: "r-1" } });
+    await app.next(isConfirm);
+    const started = Date.now();
+    app.closeInput();
+    expect(await app.exited).toBe(0);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(app.requested()).toEqual(["capabilities", "reminder.get"]);
+  });
+
+  test("an iMessage send shows the chat's name and participants read from chat.db", async () => {
+    const app = await ready(undefined, [family]);
+    await app.open(1);
+    app.confirm = () => "declined";
+    const call = await app.call(1, "imessage_send", { chat_id: 1, text: "hello" });
+    expect(app.log.find(isConfirm)?.body).toMatchObject({
+      tool: "imessage_send",
+      title: "Send this iMessage?",
+      lines: [
+        { label: "Chat", value: "Family" },
+        { label: "Participants", value: "+15555550100, b@example.com" },
+        { label: "Message", value: "hello" },
+      ],
+    });
+    expect(call.structuredContent).toMatchObject({
+      status: "failed",
+      error: { code: "confirmation.declined" },
+    });
+  });
+
+  test("an iMessage send whose chat cannot be read fails before anyone is asked", async () => {
+    const app = await ready(undefined, [family]);
+    await app.open(1);
+    const missing = await app.call(1, "imessage_send", { chat_id: 2, text: "hello" });
+    expect(missing.structuredContent).toMatchObject({
+      status: "failed",
+      effect: { kind: "outbound_dispatch", state: "not_started" },
+      error: { code: "imessage.chat_not_found" },
+    });
+    const none = await ready();
+    await none.open(1);
+    const unreadable = await none.call(1, "imessage_send", { chat_id: 1, text: "hello" });
+    expect(unreadable.structuredContent).toMatchObject({
+      status: "failed",
+      error: { code: "imessage.store_unreadable" },
+    });
+    expect([...app.log, ...none.log].filter(isConfirm)).toEqual([]);
+  });
+
+  test("closing the connection withdraws its request and the core keeps running", async () => {
+    const app = await ready(undefined, [family]);
     await Promise.all([app.open(1), app.open(2)]);
     app.confirm = () => null;
     app.send(1, "tools/call", {
@@ -201,7 +298,8 @@ describe("confirmation (§9)", () => {
     expect(confirm.body).toMatchObject({
       tool: "imessage_send",
       lines: [
-        { label: "Chat", value: "1" },
+        { label: "Chat", value: "Family" },
+        { label: "Participants", value: "+15555550100, b@example.com" },
         { label: "Message", value: "a private message" },
       ],
     });
@@ -304,9 +402,28 @@ describe("process (§7.8)", () => {
   });
 
   test("logs carry no message bodies or tool arguments", async () => {
-    const app = await ready({ LOG_LEVEL: "debug" });
+    const secretChat: FixtureChat = {
+      id: 864_209,
+      guid: "iMessage;+;secret-guid",
+      identifier: "secret-identifier",
+      displayName: "Secret Family",
+      handles: ["+15555550123", "secret-handle@example.com"],
+    };
+    const app = await ready({ LOG_LEVEL: "debug" }, [secretChat]);
     await app.open(1);
     app.confirm = () => "declined";
+    const history = await app.call(1, "imessage_history", {
+      chat_id: secretChat.id,
+      start: range.from,
+      end: range.to,
+      limit: 5,
+    });
+    expect(history.structuredContent?.status).toBe("succeeded");
+    await app.call(1, "imessage_send", { chat_id: secretChat.id, text: "Secret iMessage" });
+    // The window shows the chat; the logs below must not.
+    expect(app.log.find(isConfirm)?.body).toMatchObject({
+      lines: expect.arrayContaining([{ label: "Chat", value: "Secret Family" }]),
+    });
     await app.call(1, "mail_send", {
       to: ["secret-person@example.com"],
       cc: [],
@@ -319,7 +436,20 @@ describe("process (§7.8)", () => {
     await app.exited;
     const logs = app.stderr.join("");
     expect(logs).toContain("[core:mcp:tool-call]");
-    for (const secret of ["secret-person", "Secret subject", "Secret body", "secret-locator"])
+    for (const secret of [
+      "secret-person",
+      "Secret subject",
+      "Secret body",
+      "secret-locator",
+      "Secret Family",
+      "Secret iMessage",
+      "secret-guid",
+      "secret-identifier",
+      "secret-handle",
+      "+15555550123",
+    ])
       expect(logs).not.toContain(secret);
+    // The chat id is not logged either (it may not appear inside another value).
+    expect(logs).not.toMatch(/(?<![0-9a-f])864209(?![0-9a-f])/);
   });
 });

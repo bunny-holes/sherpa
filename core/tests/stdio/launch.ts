@@ -8,11 +8,24 @@ export const BINARY = join(import.meta.dirname, "../../dist/sherpa");
 
 const homes: string[] = [];
 
-/** Starts `sherpa app serve` with a scratch HOME so no journal or store of this Mac is touched. */
-export function launch(env: Record<string, string> = {}): FakeApp {
-  if (!existsSync(BINARY)) throw new Error("core/dist/sherpa is missing: run bun run build first");
+/** A scratch HOME, removed by `cleanHomes`. */
+export function scratchHome(): string {
   const home = mkdtempSync(join(tmpdir(), "sherpa-stdio-"));
   homes.push(home);
+  return home;
+}
+
+/**
+ * Starts `sherpa app serve` with a scratch HOME so no journal or store of this
+ * Mac is touched; `prepare` may put fixture stores into it first.
+ */
+export function launch(
+  env: Record<string, string> = {},
+  prepare?: (home: string) => void,
+): FakeApp {
+  if (!existsSync(BINARY)) throw new Error("core/dist/sherpa is missing: run bun run build first");
+  const home = scratchHome();
+  prepare?.(home);
   return FakeApp.launch(BINARY, { HOME: home, LOG_LEVEL: "info", ...env });
 }
 

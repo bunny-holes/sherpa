@@ -27,27 +27,44 @@ export interface CoreEntry extends RegistryEntry {
   /** `lines` for commands that print one JSON object per line. */
   output: "json" | "lines";
   run(commands: CoreCommands, args: unknown, operationID: string): Promise<CoreRun>;
-  /** Validates a send's arguments and builds its preview before the app is asked (§9). */
-  preview?(args: unknown): CorePreview;
+  /**
+   * Validates a send's arguments and reads what its window shows before the
+   * app is asked (§9). Every entry confirmed in the app has one; a failure
+   * ends the call before anyone is asked.
+   */
+  preview?: (commands: CoreCommands, args: unknown) => Promise<CorePreview>;
 }
 
-interface Definition<S extends z.ZodObject> {
+interface BaseDefinition<S extends z.ZodObject> {
   capability: string;
   effectClass: "read" | "send" | "local";
   inputSchema: S;
   description: string;
   output?: "json" | "lines";
-  confirmation?: "app" | "argument";
   run: (commands: CoreCommands, args: z.infer<S>, operationID: string) => Promise<CoreRun>;
-  preview?: (args: z.infer<S>) => CorePreview;
 }
 
-function coreTool<S extends z.ZodObject>(definition: Definition<S>): CoreEntry {
+type Definition<S extends z.ZodObject> = BaseDefinition<S> &
+  (
+    | {
+        confirmation: "app";
+        preview: (commands: CoreCommands, args: z.infer<S>) => Promise<CorePreview>;
+      }
+    | { confirmation?: "argument"; preview?: never }
+  );
+
+/** Builds one core entry; an entry confirmed in the app without a preview is refused here. */
+export function defineCoreTool<S extends z.ZodObject>(definition: Definition<S>): CoreEntry {
   const { preview } = definition;
+  const name = toolName(definition.capability);
+  // The type already demands it; this holds for definitions the type cannot see.
+  if (definition.confirmation === "app" && !preview) {
+    throw new Error(`${name} is confirmed in the app but has no preview`);
+  }
   return {
     capability: definition.capability,
     source: "core",
-    name: toolName(definition.capability),
+    name,
     description: definition.description,
     inputSchema: definition.inputSchema,
     effectClass: definition.effectClass,
@@ -55,7 +72,11 @@ function coreTool<S extends z.ZodObject>(definition: Definition<S>): CoreEntry {
     deadlineMs: null,
     output: definition.output ?? "json",
     run: (commands, args, operationID) => definition.run(commands, args as z.infer<S>, operationID),
-    ...(preview ? { preview: (args: unknown) => preview(args as z.infer<S>) } : {}),
+    ...(preview
+      ? {
+          preview: (commands: CoreCommands, args: unknown) => preview(commands, args as z.infer<S>),
+        }
+      : {}),
   };
 }
 
@@ -79,7 +100,7 @@ const SEND_CONFIRM =
   "Each call waits up to 30 seconds for the person to allow it in the Sherpa app window.";
 
 export const coreEntries: readonly CoreEntry[] = [
-  coreTool({
+  defineCoreTool({
     capability: "imessage.chats",
     effectClass: "read",
     output: "lines",
@@ -88,7 +109,7 @@ export const coreEntries: readonly CoreEntry[] = [
       "List the most recent Messages chats (limit 1–1000), read from the local Messages database.",
     run: (commands, args) => output(commands.imessageChats(args.limit)),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "imessage.history",
     effectClass: "read",
     output: "lines",
@@ -104,19 +125,24 @@ export const coreEntries: readonly CoreEntry[] = [
         }),
       ),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "imessage.send",
     effectClass: "send",
     confirmation: "app",
     inputSchema: z.strictObject({ chat_id: z.int(), text: z.string() }),
     description: `Send one iMessage to an existing chat through Messages.app. ${SEND_CONFIRM}`,
-    preview: (args) => {
-      chatID(args.chat_id);
+    preview: async (commands, args) => {
+      const id = chatID(args.chat_id);
+      const message = messageBody(bytes(args.text));
+      const chat = await commands.imessageChat(id);
       return {
         title: "Send this iMessage?",
         lines: [
-          { label: "Chat", value: String(args.chat_id) },
-          { label: "Message", value: messageBody(bytes(args.text)) },
+          { label: "Chat", value: chat.name },
+          ...(chat.participants.length
+            ? [{ label: "Participants", value: chat.participants.join(", ") }]
+            : []),
+          { label: "Message", value: message },
         ],
       };
     },
@@ -129,21 +155,21 @@ export const coreEntries: readonly CoreEntry[] = [
       }),
     }),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "kakaotalk.status",
     effectClass: "read",
     inputSchema: z.strictObject({}),
     description: "Report whether the local KakaoTalk database can be read on this Mac.",
     run: (commands) => output(commands.kakaotalkStatus()),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "kakaotalk.search",
     effectClass: "read",
     inputSchema: z.strictObject({ query: z.string(), limit }),
     description: "Search local KakaoTalk messages for a one-line query (limit 1–100).",
     run: (commands, args) => output(commands.kakaotalkSearch(bytes(args.query), args.limit)),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "kakaotalk.history",
     effectClass: "read",
     inputSchema: z.strictObject({ display_name: z.string(), limit }),
@@ -152,7 +178,7 @@ export const coreEntries: readonly CoreEntry[] = [
     run: (commands, args) =>
       output(commands.kakaotalkHistory(bytes(args.display_name), args.limit)),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "kakaotalk.archive",
     effectClass: "read",
     inputSchema: z.strictObject({
@@ -171,7 +197,7 @@ export const coreEntries: readonly CoreEntry[] = [
         }),
       ),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "kakaotalk.checkpoint",
     effectClass: "local",
     confirmation: "argument",
@@ -182,14 +208,14 @@ export const coreEntries: readonly CoreEntry[] = [
     description: "Commit a pending KakaoTalk checkpoint after its archive was analysed.",
     run: (commands, args) => output(commands.kakaotalkCheckpoint(args.confirm, bytes(args.token))),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "mail.authorization-status",
     effectClass: "read",
     inputSchema: z.strictObject({}),
     description: "Report whether Sherpa may automate Mail.app.",
     run: (commands) => output(commands.mailAuthorizationStatus()),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "mail.list",
     effectClass: "read",
     inputSchema: z.strictObject({
@@ -212,7 +238,7 @@ export const coreEntries: readonly CoreEntry[] = [
         }),
       ),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "mail.read",
     effectClass: "read",
     inputSchema: z.strictObject({ message_id: z.string(), max_body_bytes: z.int() }),
@@ -220,7 +246,7 @@ export const coreEntries: readonly CoreEntry[] = [
     run: (commands, args) =>
       output(commands.mailRead({ messageID: args.message_id, maxBodyBytes: args.max_body_bytes })),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "mail.send",
     effectClass: "send",
     confirmation: "app",
@@ -233,7 +259,7 @@ export const coreEntries: readonly CoreEntry[] = [
       body: z.string(),
     }),
     description: `Send one plain-text mail through Mail.app. ${SEND_CONFIRM}`,
-    preview: (args) => {
+    preview: async (_commands, args) => {
       const message = validateMailMessage(args);
       return {
         title: "Send this mail?",
@@ -252,7 +278,7 @@ export const coreEntries: readonly CoreEntry[] = [
       result: await commands.mailSend({ message: validateMailMessage(args), operationID }),
     }),
   }),
-  coreTool({
+  defineCoreTool({
     capability: "operations.list",
     effectClass: "read",
     output: "json",

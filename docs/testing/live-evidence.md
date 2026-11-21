@@ -9,6 +9,47 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-21 — Confirmation under a reused request id, a cut connection and the 30 s budget (core 0.8.5 branch build)
+
+This Mac (Mac16,8, Apple M4 Pro, macOS 27.3 26C5035r). The coordinator's
+review of bunny-holes/sherpa#44 on `feat/core-mcp-server`, then the branch's tests
+(`bun run test`, and `bun run test:stdio` against the local `bun run build`
+with a scratch `HOME`).
+
+- Reproduced: two `tools/call` of `reminder_delete` under JSON-RPC id 5 on
+  one connection, then the connection cut. `@modelcontextprotocol/server`
+  2.4.0 keeps one abort controller per request id
+  (`_requestHandlerAbortControllers.set(request.id, …)`), so the close aborted
+  only the newer call: `withdraw` went out for one window and approving the
+  other ran the delete with no connection left. With the session signal taken
+  out of the server, the regression test "closing a session ends every waiting
+  call, even two the SDK holds under one request id" read `[false, true]` for
+  the two calls' signals.
+- Corrected path: every call also listens to its connection's signal
+  (`AbortSignal.any`), and the channel transport answers a request whose id is
+  still in flight with -32600 "Request id already in use" before the SDK sees
+  it. With that refusal taken out, the in-process test of it found no answer
+  within 2 s. Both tests pass with the fix.
+- Corrected path: the 30 s wait began after the preview read, which could take
+  20 s + 5 s itself. The clock now starts before the read, the read has
+  `deadline_ms` 5000, and `timeout_ms` is what is left. In the stdio tests an
+  approved delete's `timeout_ms` was above 25,000 and at most 30,000, an
+  unanswered window was withdrawn 29–31 s after the call, and an approval sent
+  after the withdrawal ran nothing.
+- Corrected path: `imessage_send` showed only the chat number. It now reads the
+  chat's display name and participant handles from chat.db (a fixture in the
+  scratch `HOME`); an unknown chat or an unreadable store ends the call without
+  a `confirm` frame. `[adapter:imessage:history|send]` logged `chat_id`; a
+  `LOG_LEVEL=debug` run now shows no chat id, name, handle or text.
+- Corrected path: `mail list` and `mail read` looked up the Mail store in the
+  `EnvelopeIndex` constructor, before their argument checks, and
+  `operations list --limit 0` created the journal before rejecting the limit.
+  The built CLI on a scratch `HOME` now answers `invalidRequest` without a Mail
+  store or journal being touched, and `mail.store_unreadable` only for a valid
+  request. `mail_list` ignored `max_body_bytes`; summaries are now cut to it on
+  a whole UTF-8 character.
+- Not covered: the real `Sherpa.app` and relay (#28), and real agents.
+
 ## 2026-11-21 — `sherpa app serve` memory and planner schema names (core 0.8.5 branch build)
 
 This Mac (Mac16,8, Apple M4 Pro, macOS 27.3 26C5035r). A local `bun run build`

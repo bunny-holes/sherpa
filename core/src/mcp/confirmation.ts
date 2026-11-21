@@ -27,10 +27,22 @@ export interface ConfirmationPrompt {
 }
 
 export interface ConfirmationPort {
-  confirm(prompt: ConfirmationPrompt, signal: AbortSignal): Promise<ConfirmationDecision>;
+  /** Asks the app and waits at most `timeoutMs`, the part of the §9 budget the preview left. */
+  confirm(
+    prompt: ConfirmationPrompt,
+    signal: AbortSignal,
+    timeoutMs: number,
+  ): Promise<ConfirmationDecision>;
 }
 
+/**
+ * The §9 budget of one delete or send: the preview read and the wait for the
+ * person together. With the 20 s work deadline and the 5 s grace it stays
+ * inside Codex's 60 s tool timeout.
+ */
 export const CONFIRMATION_TIMEOUT_MS = 30_000;
+/** `deadline_ms` of the planner read that builds a delete's preview (§9). */
+export const PREVIEW_DEADLINE_MS = 5_000;
 
 const TITLE_MAX = 100;
 const LINES_MAX = 12;

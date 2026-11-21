@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 test(
-  "an unanswered confirmation is withdrawn after 30 s and the call fails",
+  "an unanswered confirmation is withdrawn after 30 s, the call fails and a later approval runs nothing",
   { timeout: 60_000 },
   async () => {
     const app = launch();
@@ -29,10 +29,13 @@ test(
       (frame) => frame.channel === 0 && frame.type === "withdraw",
       40_000,
     );
-    expect(withdraw.body).toEqual({ id: (confirm.body as { id: number }).id });
+    const confirmID = (confirm.body as { id: number }).id;
+    expect(withdraw.body).toEqual({ id: confirmID });
+    // The 30 s count from before the preview read (§9).
     const elapsed = Date.now() - started;
     expect(elapsed).toBeGreaterThanOrEqual(29_000);
-    expect(elapsed).toBeLessThan(35_000);
+    expect(elapsed).toBeLessThan(31_000);
+    app.frame(0, "confirmation", { id: confirmID, decision: "approved" });
     const reply = await app.reply(1, id);
     expect(reply.result).toMatchObject({
       isError: true,
@@ -41,6 +44,7 @@ test(
         error: { code: "confirmation.timed_out", retry: "after_user_action" },
       },
     });
+    await Bun.sleep(1_000);
     expect(app.requested()).toEqual(["capabilities", "event.source.list"]);
   },
 );

@@ -85,6 +85,15 @@ test("a violation ends every open session before fatal", async () => {
   expect(sink.lines.at(-1)).toBe('0\tfatal\t{"code":"mux.unexpected_frame"}');
 });
 
+test("an open numbered below an earlier one is a violation (§7.2)", async () => {
+  const { input, sink, events, exit } = connect();
+  input.push(APP_HELLO);
+  input.push("2\topen\n1\topen\n");
+  expect(await exit).toBe(65);
+  expect(events).toEqual(["2:closed"]);
+  expect(sink.lines.at(-1)).toBe('0\tfatal\t{"code":"mux.unexpected_frame"}');
+});
+
 test("EOF inside a frame drops the partial frame and exits 0", async () => {
   const { input, events, exit } = connect();
   input.push(APP_HELLO);

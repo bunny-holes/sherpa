@@ -1,12 +1,14 @@
 import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
+import { z } from "zod";
 import { ToolBasis } from "../src/app/serve.ts";
 import type { CoreCommands } from "../src/commands.ts";
-import { coreEntries } from "../src/mcp/core-tools.ts";
+import { coreEntries, defineCoreTool } from "../src/mcp/core-tools.ts";
 import {
   annotationTable,
   type CapabilityDescriptor,
   plannerEntries,
+  plannerEntry,
   reconcile,
   TOOL_NAME,
 } from "../src/mcp/registry.ts";
@@ -64,6 +66,41 @@ describe("tool names (§10.3)", () => {
       })),
     ).toEqual(expect.arrayContaining(listed));
     expect(all).toHaveLength(listed.length);
+  });
+});
+
+describe("confirmation previews (§9)", () => {
+  test("every tool confirmed in the app has its preview", () => {
+    const confirmed = all.filter((entry) => entry.confirmation === "app");
+    expect(confirmed.map((entry) => entry.name).sort()).toEqual([
+      "event_collection_delete",
+      "event_delete",
+      "imessage_send",
+      "mail_send",
+      "reminder_collection_delete",
+      "reminder_delete",
+    ]);
+    for (const entry of coreEntries.filter((item) => item.confirmation === "app"))
+      expect(entry.preview).toBeTypeOf("function");
+    for (const entry of plannerEntries.filter((item) => item.confirmation === "app"))
+      expect(entry.previewCapability).toMatch(/\.(get|source\.list)$/);
+  });
+
+  test("building an entry confirmed in the app without a preview fails", () => {
+    expect(() =>
+      // @ts-expect-error the type already requires the preview of a confirmed entry
+      defineCoreTool({
+        capability: "example.send",
+        effectClass: "send",
+        confirmation: "app",
+        inputSchema: z.strictObject({}),
+        description: "x",
+        run: async () => ({ kind: "output", output: "" }),
+      }),
+    ).toThrow("example_send is confirmed in the app but has no preview");
+    expect(() => plannerEntry("example.delete", "delete", z.strictObject({}), "x")).toThrow(
+      "example.delete is confirmed in the app but has no preview read",
+    );
   });
 });
 

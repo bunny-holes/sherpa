@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
@@ -34,7 +34,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-const range = { from: "2025-12-31T00:00:00Z", to: "2026-01-02T00:00:00Z" };
+const range = { from: "2025-12-31T00:00:00Z", to: "2026-01-02T00:00:00Z", maxBodyBytes: 1024 };
 
 describe("mail list", () => {
   test("pages through every message with the cursor and stops on the last page", () => {
@@ -80,20 +80,46 @@ describe("mail list", () => {
     const index = new EnvelopeIndex(root);
     const { next_cursor } = index.list({ ...range, limit: 2 });
     expect(() =>
-      index.list({ from: range.from, to: "2026-01-03T00:00:00Z", limit: 2, cursor: next_cursor! }),
+      index.list({ ...range, to: "2026-01-03T00:00:00Z", limit: 2, cursor: next_cursor! }),
     ).toThrow(SherpaError);
   });
 
   test("rejects invalid ranges and limits before opening the store", () => {
     const index = new EnvelopeIndex(root);
-    expect(() => index.list({ from: range.to, to: range.from, limit: 1 })).toThrow(
-      "invalidRequest",
-    );
+    expect(() =>
+      index.list({ from: range.to, to: range.from, limit: 1, maxBodyBytes: 1024 }),
+    ).toThrow("invalidRequest");
     expect(() => index.list({ ...range, limit: 0 })).toThrow("invalidRequest");
     expect(() => index.list({ ...range, limit: 50_001 })).toThrow("invalidRequest");
-    expect(() => index.list({ from: "2026-01-01", to: range.to, limit: 1 })).toThrow(
-      "invalidRequest",
-    );
+    expect(() =>
+      index.list({ from: "2026-01-01", to: range.to, limit: 1, maxBodyBytes: 1024 }),
+    ).toThrow("invalidRequest");
+    for (const maxBodyBytes of [-1, 1024 * 1024 + 1, 1.5])
+      expect(() => index.list({ ...range, limit: 1, maxBodyBytes })).toThrow("invalidRequest");
+  });
+
+  test("cuts each summary to max_body_bytes on a whole character", () => {
+    seed(2);
+    const db = new Database(join(root, "MailData/Envelope Index"));
+    db.run("UPDATE summaries SET summary = '가나다' WHERE ROWID = 1");
+    db.close();
+    const index = new EnvelopeIndex(root);
+    const bodies = (maxBodyBytes: number) =>
+      index
+        .list({ ...range, limit: 1, maxBodyBytes })
+        .messages.map((m) => [m.body, m.body_truncated]);
+    expect(bodies(1024)).toEqual([["가나다", true]]);
+    expect(bodies(4)).toEqual([["가", true]]);
+    expect(bodies(6)).toEqual([["가나", true]]);
+    expect(bodies(2)).toEqual([["", true]]);
+    expect(bodies(0)).toEqual([["", true]]);
+  });
+
+  test("a rejected argument is reported before the store is opened", () => {
+    // No store exists under root: only a valid request reaches it.
+    const index = new EnvelopeIndex(root);
+    expect(() => index.list({ ...range, limit: 1, maxBodyBytes: -1 })).toThrow("invalidRequest");
+    expect(() => index.list({ ...range, limit: 1 })).toThrow("mail.store_unreadable");
   });
 
   test("a missing store names the permission remedy", () => {
@@ -108,18 +134,19 @@ describe("mail list", () => {
 });
 
 describe("mail read", () => {
-  test("reads and bounds the body of the indexed message", () => {
+  test("reads and bounds the body of the indexed message", async () => {
     const dir = join(root, "ACCOUNT/INBOX.mbox/Data/Messages");
     mkdirSync(dir, { recursive: true });
     const message = "Subject: x\r\n\r\nhello body";
-    writeFileSync(join(dir, "42.emlx"), `${Buffer.byteLength(message)}\n${message}<plist/>`);
+    await Bun.write(join(dir, "42.emlx"), `${Buffer.byteLength(message)}\n${message}<plist/>`);
     const index = new EnvelopeIndex(root);
-    expect(index.read("mail-index:42", 1024).message?.body).toBe("hello body");
-    const cut = index.read("mail-index:42", 5).message!;
+    expect((await index.read("mail-index:42", 1024)).message?.body).toBe("hello body");
+    const cut = (await index.read("mail-index:42", 5)).message!;
     expect(cut.body).toBe("hello");
     expect(cut.body_truncated).toBe(true);
-    expect(index.read("mail-index:43", 5).message).toBeNull();
-    expect(() => index.read("43", 5)).toThrow("invalidRequest");
+    expect((await index.read("mail-index:43", 5)).message).toBeNull();
+    await expect(index.read("43", 5)).rejects.toThrow("invalidRequest");
+    await expect(index.read("mail-index:42", 0)).rejects.toThrow("invalidRequest");
   });
 });
 
