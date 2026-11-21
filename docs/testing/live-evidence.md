@@ -14,8 +14,7 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 This Mac (macOS 27.3, Xcode 27.2 27B52), branch `build/xcode-app`.
 `apple/sherpa-app/Sherpa.xcodeproj` now builds the bundle, and
 `apple/sherpa-app/scripts/build-app.sh` is deleted. Signing used the owner's
-Developer ID Application certificate (team `FN2KZ2J47B`). The exported app was
-not launched.
+Developer ID Application certificate (team `FN2KZ2J47B`).
 
 - Clean builds with `-derivedDataPath apple/sherpa-app/.build/xcode` took 12 s
   (Debug) and 15 s (Release), with the three local packages. `xcodebuild archive`
@@ -94,8 +93,12 @@ not launched.
     `Sherpa.debug.dylib` and `__preview.dylib`. `SHERPA_TEST_CORE_BIN` was then
     in the dylib, not in `Contents/MacOS/Sherpa`, so the app target sets it to
     `NO`.
-- Not observed yet: the exported app running, and `initialize` and
-  `tools/list` through its bundled relay.
+- The app exported from `e2730af` ran. The earlier dev bundle was stopped with
+  SIGTERM, and the exported app was opened with `open`. It started
+  `sherpa-core app serve` and listened on the default socket. Through the bundled
+  `sherpa-relay`, `initialize` answered protocol `2025-11-25` and server
+  `sherpa` 0.8.5. `tools/list` listed 35 tools, and the relay exited 0 at the
+  end of its input.
 
 ## 2026-11-21 — The app bundle carried a core from before the MCP server (bunny-holes/sherpa#28)
 

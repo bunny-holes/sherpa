@@ -19,14 +19,14 @@ Swift 중계로 연다(소유자 결정 2026-11-21, `docs/adr/0010-menu-bar-app-
 - 계약 정정: 1판은 같은 사용자를 믿는 범위로 둔다(ADR-0010 정정, 후속 #39).
 - 낡은 `core/dist/sherpa` 가 번들에 들어가던 결함(PR #48): 번들 빌드가 코어의 Mux 1 인사와 버전을 확인한다.
   이 확인은 #49 에서 Xcode 프로젝트의 Embed Core 단계로 옮겼다(게이트 회귀).
+- #49 `Sherpa.app` 을 `apple/sherpa-app/Sherpa.xcodeproj` 로 빌드한다. `build-app.sh` 는 지웠다. 아카이브 →
+  Developer ID 내보내기, 세 실행 파일의 식별자·팀·runtime·타임스탬프, 게이트의 Xcode Release·Debug 빌드와 낡은
+  코어 거부를 확인했다. 내보낸 앱을 띄워 번들 중계로 `initialize`(2025-11-25)·`tools/list` 35개 성공
+  (live-evidence 2026-11-21 "Sherpa.app built by an Xcode project").
 
 ## 진행 중
 
-- #49 `Sherpa.app` 을 `apple/sherpa-app/Sherpa.xcodeproj` 로 빌드(브랜치 `build/xcode-app`, 병합 전).
-  `build-app.sh` 는 지웠다. 아카이브 → Developer ID 내보내기, 세 실행 파일의 식별자·팀·runtime·타임스탬프,
-  게이트의 Xcode Release·Debug 빌드와 낡은 코어 거부는 확인했다(live-evidence 2026-11-21 "Sherpa.app built by
-  an Xcode project"). 미확인: 내보낸 앱을 띄워 번들 중계로 `initialize`(2025-11-25)·`tools/list` 35개.
-- #29 통합 실기(소유자 손)는 #49 의 내보낸 앱으로 한다. 명령은 계약 §2 "번들 빌드"(`bun run build` 뒤
+- #29 통합 실기(소유자 손)는 main 에서 내보낸 앱으로 한다. 명령은 계약 §2 "번들 빌드"(`bun run build` 뒤
   `xcodebuild archive`·`-exportArchive`, 결과 `apple/sherpa-app/.build/export/Sherpa.app`, 미공증).
 
 ## 하지 말 것 (실패한 시도, 되돌린 것)
@@ -62,17 +62,15 @@ Swift 중계로 연다(소유자 결정 2026-11-21, `docs/adr/0010-menu-bar-app-
 
 ## 다음 행동
 
-1. #49: PR 을 열고 게이트 결과를 본문에 적어 병합한다. 내보낸 앱으로 번들 중계 `initialize`·`tools/list` 를
-   확인한다.
-2. #29 소유자 실기를 한 번에 받는다. 결과를 `live-evidence.md`, 계약 §16, ADR-0010 에 반영한다.
-3. #46 할당기 캐시: 상한을 재고 `mmap` 버퍼나 번들 `LSEnvironment` 를 실측해 고친다.
-4. #31 3단계: 공증·스테이플, Homebrew cask, formula 이전, 헬퍼 제거와 CLI 의 앱 소켓 연결, 플러그인 MCP 등록.
-5. 정리 이슈: #32 plist 파서 중복, #33 문서 부채, #34·#43 계약 결정, #39 중계 실행자 허용.
+1. #29 소유자 실기를 한 번에 받는다. 결과를 `live-evidence.md`, 계약 §16, ADR-0010 에 반영한다.
+2. #46 할당기 캐시: 상한을 재고 `mmap` 버퍼나 번들 `LSEnvironment` 를 실측해 고친다.
+3. #31 3단계: 공증·스테이플, Homebrew cask, formula 이전, 헬퍼 제거와 CLI 의 앱 소켓 연결, 플러그인 MCP 등록.
+4. 정리 이슈: #32 plist 파서 중복, #33 문서 부채, #34·#43 계약 결정, #39 중계 실행자 허용.
 
 ## 저장소·세션 상태 (브랜치, 미커밋, 미푸시, pane)
 
 - `main` 이 원격과 같다(이 파일을 담은 PR 병합 뒤). 원격은 `bunny-holes/sherpa`(공개), Formula 는
-  `XIYO/homebrew-tap`. #49 작업은 워크트리 `.claude/worktrees/xcode-app`, 브랜치 `build/xcode-app` 이다.
+  `XIYO/homebrew-tap`. 로컬 브랜치와 워크트리는 `main` 하나다.
 - 2단계 Orca 워커 둘(core-mcp, app-relay)은 끝나 터미널을 닫았고 워크트리와 브랜치를 지웠다.
 - 개발 실행: `cd core && bun run build`, `swift build --package-path apple/eventkit-service`, 앱 번들은
   `xcodebuild`(계약 §2 "번들 빌드").
