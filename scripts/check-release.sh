@@ -58,7 +58,9 @@ trap cleanup EXIT
 # 있으므로 스모크 동안만 임시 위치를 써서 소유자의 신뢰 목록을 건드리지 않는다.
 export XDG_CONFIG_HOME="$SMOKE_DIST/config"
 mkdir -p "$XDG_CONFIG_HOME"
-SHERPA_DIST="$SMOKE_DIST" bash "$REPO_ROOT/scripts/package.sh" >/dev/null \
+# 패키징은 `_` 를 글자 앞에 두는 로캘(en_US.UTF-8)에서 돌린다. 호출한 셸이 C 로캘이어도 파일 목록
+# 비교가 로캘 정렬에 기대는 회귀를 잡는다(2026-11-21, en_US.UTF-8 셸에서 unexpected_archive_contents 재현).
+LC_ALL=en_US.UTF-8 SHERPA_DIST="$SMOKE_DIST" bash "$REPO_ROOT/scripts/package.sh" >/dev/null \
   || fail failure "reason=packaging_failed"
 
 rendered="$SMOKE_DIST/local-tap/Formula/sherpa.rb"
