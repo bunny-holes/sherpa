@@ -62,6 +62,14 @@ It starts the worker as `<worker> planner request` and replaces the worker's
 environment with only `TZ` for some calls, so a development core that needs
 `SHERPA_APPLE_BIN` must be wrapped in a script that sets it.
 
+`scripts/live/oversized-response.py` checks an applied change whose response
+is too large: with `SHERPA_LIVE_CONFIRM=CREATE_DISPOSABLE_REMINDER_LIST_ON_THIS_MAC`
+it creates one disposable Reminder list, adds one Reminder with the response
+limit lowered to 1 KiB, expects `partial` with `protocol.result_too_large`, the
+same row in `sherpa operations list`, and the Reminder on read-back, then
+deletes the list. Run it against a Developer ID signed build so the existing
+grant applies.
+
 Grants belong to the helper (`dev.xiyo.sherpa`), not to the terminal or agent
 app, and an unsigned rebuild or upgrade asks again. Run the
 `*.authorization.request` calls with `deadline_ms` at most 300000; a larger

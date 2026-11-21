@@ -72,6 +72,26 @@ grep -q 'relaunched with responsibility disclaimed' "$relaunch_log" \
 rm -f "$relaunch_log"
 printf '%s' "$relaunch" | grep -q '"protocol.invalid_envelope"' \
   || fail "reason=helper_relaunch_lost_output output=$relaunch"
+
+# 응답이 한도를 넘는 경로를 명령으로 지난다. 8 MiB 짜리 캘린더 없이 닿도록
+# SHERPA_APPLE_RESPONSE_LIMIT_BYTES 로 한도만 낮춘다(올릴 수는 없다). 권한이 필요 없는
+# capabilities 읽기는 10 KB 쯤이라 1 KiB 한도를 넘는다. 읽기는 효과 없이 failed 이고,
+# 종료 코드 0 의 프로토콜 응답이어야 한다. 받아들일 수 없는 값은 무시되어 그대로 성공한다.
+capabilities='{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"gate-1","operation_id":"gate-1","capability":"capabilities","payload":{"schema":"sherpa.planner.capabilities.request.v2"},"deadline_ms":30000,"idempotency_key":"gate-1","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}'
+oversized="$(printf '%s' "$capabilities" | SHERPA_APPLE_RESPONSE_LIMIT_BYTES=1024 "$binary" planner request 2>/dev/null)" \
+  || fail "reason=oversized_read_exit_nonzero"
+python3 -c '
+import json, sys
+d = json.loads(sys.argv[1])
+assert len(sys.argv[1].encode()) <= 1024
+assert d["status"] == "failed" and d.get("result") is None and d["operation_id"] == "gate-1"
+assert d["error"] == {"code": "protocol.result_too_large", "retry": "never"}
+assert d["effect"] == {"kind": "none", "state": "not_applicable"}
+' "$oversized" || fail "reason=oversized_read_misreported output=$oversized"
+ignored="$(printf '%s' "$capabilities" | SHERPA_APPLE_RESPONSE_LIMIT_BYTES=1 "$binary" planner request 2>/dev/null)" \
+  || fail "reason=rejected_limit_override_failed"
+python3 -c 'import json, sys; assert json.loads(sys.argv[1])["status"] == "succeeded"' "$ignored" \
+  || fail "reason=rejected_limit_override_applied"
 log info "check:core:success" "cli_version=$cli_version"
 
 # 3. 에이전트 플러그인. 방금 빌드한 바이너리를 넘겨 스킬이 부르는 명령이 실제로

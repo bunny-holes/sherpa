@@ -189,6 +189,16 @@ public struct WorkerResponse: Codable, Sendable {
         return (bounded, try bounded.encoded(maximumBytes: maximumBytes))
     }
 
+    /// The response limit after an override that can only lower it: a decimal byte
+    /// count from 512 (room for the bounded envelope) up to `maximumBytes`. Anything
+    /// else keeps `maximumBytes`. Command-level tests use it to reach the oversized
+    /// path without an 8 MiB calendar.
+    public static func limit(override: String?, maximumBytes: Int) -> Int {
+        guard let override, override.allSatisfy(\.isASCII), let value = Int(override),
+              (512...maximumBytes).contains(value) else { return maximumBytes }
+        return value
+    }
+
     private func sortedJSON() throws -> Data { let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]; return try encoder.encode(self) }
 }
 
