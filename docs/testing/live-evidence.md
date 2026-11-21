@@ -9,6 +9,45 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-21 — Sherpa.app socket server and relay (bunny-holes/sherpa#28, before the menu app ran)
+
+Builds of the `apple/sherpa-app` package on this Mac. The Sherpa menu app itself
+was built but not launched; the server ran inside the DEBUG test host, which is
+the same server library without the menu.
+
+- Signed with the owner's Developer ID and hardened runtime, three programs passed
+  the production requirements (`anchor apple generic`, leaf OU `FN2KZ2J47B`,
+  identifier). They were the release `sherpa-relay` (`dev.xiyo.sherpa.relay`),
+  the test host as `dev.xiyo.sherpa` and the fake core as `dev.xiyo.sherpa.core`.
+  On the default socket `~/Library/Application Support/Sherpa/run/app.sock`, the
+  relay accepted the host and the host accepted the relay. The core's static
+  check passed in 5 ms, `echo` answered on channel 1, and the relay exited 0. The
+  same release relay, given `SHERPA_APP_SOCKET` for another path, logged
+  `socket=default`.
+- The static check of the Developer ID signed 89 MB core (`core/dist/sherpa`,
+  hardened runtime) took 290–550 ms over repeated runs. It used
+  `kSecCSCheckAllArchitectures | kSecCSStrictValidate`.
+- The core on main has no `app serve` yet. Started by the host, it wrote a line
+  that is not a frame, and the host logged `mux.frame_invalid`. The core exited
+  1, and the host restarted it after 0 s and 1 s.
+- The core's environment held HOME, LOG_LEVEL, PATH and TMPDIR, plus
+  `__CF_USER_TEXT_ENCODING`. That last variable appears even under `env -i`: the
+  child's own CoreFoundation sets it.
+- `apple/sherpa-app/scripts/build-app.sh` signed the dev bundle with the
+  Developer ID without a keychain prompt. `spctl` assessed it as
+  `Unnotarized Developer ID`; notarization is bunny-holes/sherpa#31.
+- Corrected on the way: posix_spawn reset only SIGPIPE in the core, so the core
+  inherited the SIGTERM that the app ignores for its own signal source. After a
+  frame violation the core ignored SIGTERM, and SIGKILL ended it 5 s later. The
+  host now resets every signal. The fake core records which signals it inherited
+  as ignored, and the process tests require none and a SIGTERM end. Status changes
+  also reached the observer from concurrent queues, so a stale `ready` could follow
+  `stopped`. They now pass through one serial queue.
+- Not observed: the menu app launched under the Developer ID, its menu bar icon,
+  the first-run status window, the Calendar, Reminders and Automation prompts,
+  the Full Disk Access pane, and the front-most confirmation panel. A signed run
+  with the real core waits for `app serve` (bunny-holes/sherpa#27).
+
 ## 2026-11-21 — Menu bar app and MCP spike (throwaway build, ADR-0010)
 
 Throwaway Swift and Bun programs in the session scratch area, signed with the
