@@ -86,3 +86,4 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 - [ADR-0008: Bun + TypeScript 코어](0008-bun-typescript-core.md)
 - [ADR-0009: Developer ID 로 서명한 헬퍼 번들](0009-developer-id-signed-helper-bundle.md)
 - [실측 기록](../testing/live-evidence.md)
+- [앱 연결 계약](../contracts/app-connection-v1.md)
