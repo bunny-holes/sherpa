@@ -25,7 +25,7 @@ import type { ConfirmedPlannerEntry, EffectClass, RegistryEntry } from "./regist
 /** What a tool call knows about its MCP request. */
 export interface ToolCall {
   signal: AbortSignal;
-  /** `clientInfo` of the session's `initialize`, self-reported (§9). */
+  /** `clientInfo` of the request's 2026-07-28 `_meta` envelope, self-reported (§9). */
   client: { name: string; version: string };
 }
 

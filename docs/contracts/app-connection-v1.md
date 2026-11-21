@@ -9,7 +9,8 @@ manner: "경계마다 규칙을 먼저 쓰고 근거를 괄호로 붙인다. 시
 
 # 앱 연결 계약 V1
 
-상태: 계약(2026-11-21). 코어 쪽(bunny-holes/sherpa#27)과 앱·중계(#28)가 모두 구현됐고, 배포(#31)와 소유자 실기(#29)가 남았다. ADR-0010 2단계의
+상태: 계약(2026-11-21). 코어 쪽(bunny-holes/sherpa#27)과 앱·중계(#28)가 모두 구현됐고, 배포(#31)와 소유자 실기(#29)가 남았다.
+MCP 는 2026-07-28 만 받는다(소유자 결정 2026-11-22, [ADR-0011](../adr/0011-mcp-2026-07-28-only.md), §10.1). ADR-0010 2단계의
 두 작업, 코어 MCP 서버(bunny-holes/sherpa#27)와 `Sherpa.app`·`sherpa-relay`(bunny-holes/sherpa#28)는 이 문서만 보고
 동시에 만들고, 상대 쪽 없이 자기 쪽을 시험한다.
 
@@ -33,10 +34,15 @@ manner: "경계마다 규칙을 먼저 쓰고 근거를 괄호로 붙인다. 시
    │  stdio: MCP JSON-RPC, 한 줄에 메시지 하나
    ▼
 sherpa-relay ──Unix 소켓──▶ Sherpa.app ──stdin/stdout 프레임──▶ sherpa app serve
-(세션마다 하나)              (권한 주체, 하나만)                   (Bun 코어, 하나만, MCP 세션 여럿)
+(세션마다 하나)              (권한 주체, 하나만)                   (Bun 코어, 하나만, MCP 연결 여럿)
                               ▲                                     │
                               └── 작업 요청(Worker Protocol V2)·확인 요청 ┘
 ```
+
+용어: 이 문서의 "세션" 은 중계 연결 하나, 곧 앱이 매긴 채널 하나다. MCP 2026-07-28 에는 프로토콜 세션이 없고, 서버는
+같은 연결의 앞선 요청으로 능력·규격·클라이언트 신원을 세우지 않는다. [문서: MCP 2026-07-28
+[Overview](https://modelcontextprotocol.io/specification/2026-07-28/basic), "Statelessness"] 머리말 `too_many_sessions` 와 로그 `session-open`·`session-close` 의
+"session" 도 이 뜻이다. [계약]
 
 이 계약이 정하는 것: 번들 배치와 서명 식별자, 소켓과 단일 인스턴스, 양방향 서명 확인, 앱이 중계에 먼저 보내는
 머리말, 중계의 동작과 종료 코드, 앱과 코어 사이 프레임(MCP 다중화, 작업 요청, 확인 요청), MCP 도구 규칙,
@@ -136,7 +142,12 @@ xcodebuild -exportArchive -archivePath apple/sherpa-app/.build/Sherpa.xcarchive 
 ```toml
 [mcp_servers.sherpa]
 command = "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay"
+env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 ```
+
+- Codex 는 위 env 와 기능 `mcp_2026_07_28`(`codex features enable mcp_2026_07_28`)이 둘 다 있어야 2026-07-28 로 연다.
+  하나라도 없으면 `initialize`(2025-06-18)로 열어 거부된다(§10.1). Claude Code 의 설정은 그대로다. [소유자 결정
+  2026-11-22; 문서와 실측은 ADR-0011]
 
 - 릴리스 빌드는 실행 경로, 소켓 경로, 서명 요건을 바꾸는 환경 변수나 인자를 읽지 않는다. 그런 변수가 있으면
   같은 사용자의 아무 프로세스나 `launchctl setenv` 로 앱이 다른 코드를 앱의 권한으로 실행하게 만들 수 있다.
@@ -255,8 +266,8 @@ command = "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay"
 | `unavailable` | `core_starting`, `core_failed`, `core_incompatible`, `too_many_sessions`, `shutting_down` | 앱이 닫는다 |
 
 - 중계는 머리말을 표준 출력에 쓰지 않는다. MCP 서버의 표준 출력에는 MCP 메시지만 써야 한다. [문서: MCP
-  2025-11-25 [Transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports), "The
-  server MUST NOT write anything to its stdout that is not a valid MCP message"]
+  2026-07-28 [stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio), "The server MUST NOT write anything to its stdout that is
+  not a valid MCP message"]
 - 중계는 머리말을 15초까지 기다린다. 앱이 코어 준비를 기다리는 10초보다 길다. [계약]
 - `ready` 뒤 앱은 중계에서 읽은 바이트를 LF 로 잘라 한 줄을 `data` 프레임 하나로 코어에 보내고, 코어가 보낸
   `data` 본문 끝에 LF 를 붙여 중계에 쓴다. 빈 줄은 보내지 않는다. [실측: 시험 빌드의 줄 단위 전달; 빈 줄
@@ -330,7 +341,7 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
   메시지 하나였다. [실측] 바꾼 점과 이유: 형식 칸을 따로 둬 본문이 낱말인지 JSON 인지 짐작하지 않는다. 작업
   요청과 확인 요청을 실을 제어 채널이 필요하다. 번호를 숫자로 해 해석을 단순하게 한다. MCP 메시지 하나가 한
   줄이라는 성질은 그대로 쓴다. MCP stdio 메시지는 줄바꿈으로 구분되고 안에 줄바꿈을 담지 않는다. [계약; 문서:
-  MCP 2025-11-25 Transports, "Messages are delimited by newlines, and MUST NOT contain embedded newlines"]
+  MCP 2026-07-28 stdio, "Messages are delimited by newlines, and MUST NOT contain embedded newlines"]
 
 ### 7.3 형식
 
@@ -396,8 +407,8 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 
 - 앱은 중계를 확인하고 머리말 `ready` 를 쓴 뒤 `N\topen` 을 보낸다. 어느 채널이든 `open` 이 그 채널의 첫
   `data` 보다 앞선다. [계약]
-- 코어는 `open` 마다 그 채널의 전송 객체를 만들어 `serveStdio(factory, { transport })` 로 MCP 세션 하나를
-  돌린다. [실측: 시험 빌드; 문서: SDK 2.4.0 `dist/stdio.d.mts` 의 `ServeStdioOptions.transport`]
+- 코어는 `open` 마다 그 채널의 전송 객체를 만들어 `serveStdio(factory, { transport, legacy: "reject" })` 로 MCP
+  연결 하나를 돌린다(§10.1). [실측: 시험 빌드; 문서: SDK 2.4.0 `dist/stdio.d.mts` 의 `ServeStdioOptions`]
 - 중계 소켓이 EOF 나 오류로 끝나면 앱은 `N\tclose` 를 보낸다. 코어는 그 세션을 닫는다. 그 뒤 코어가 그 채널에
   쓴 프레임은 앱이 버린다. [계약]
 - 코어가 세션을 끝내면 `N\tclose` 를 보낸다. 앱은 그 채널에 쌓인 바이트를 중계에 다 쓴 뒤 소켓을 닫는다.
@@ -417,7 +428,8 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 ### 7.8 코어가 끝나거나 다시 뜰 때
 
 - 코어가 예상 밖으로 끝나면 앱은 종료 코드나 신호를 error 로그로 남기고 모든 중계 소켓을 닫는다. 중계는 75 로
-  끝난다. MCP 세션은 코어 안에 있으므로 다시 뜬 코어로 옮겨지지 않고, 에이전트가 다시 연결해야 한다. [계약]
+  끝난다. 연결과 진행 중 호출은 코어 안에 있으므로 다시 뜬 코어로 옮겨지지 않고, 에이전트가 다시 연결해야 한다.
+  [계약]
   Claude Code 는 대화형 세션에서 stdio 서버 프로세스가 끝나면 그 서버를 실패로 표시하고, 사람이 `/mcp` 에서
   Reconnect 를 골라야 다시 띄운다. `claude -p` 와 Agent SDK 세션은 다음 도구 호출 때 다시 띄운다. [문서:
   Claude Code MCP, "Stdio servers that exit or fail to start"] 그래서 코어 재시작은 대화형 Claude Code
@@ -487,12 +499,16 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   2. 에이전트의 설정에 기대지 않는다. Codex 는 서버마다 `default_tools_approval_mode`, 도구마다
      `tools.<도구>.approval_mode` 로 승인 방식(`auto`, `prompt`, `writes`, `approve`)을 사용자가 고른다.
      [문서: [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)]
-  3. MCP elicitation 에 기대지 않는다. Claude Code 는 2.1.287 부터 사용자 MCP 설정에 있는 stdio 서버와의
-     2025-11-25 이하 연결에 `elicitation: {form, url}` 을 선언한다고 적었다. 플러그인이 등록하는 서버(3단계의
-     등록 방식)는 그 목록에 없고, 비대화형 세션은 입력을 요청하는 작업을 취소한다. [문서: [Claude Code
-     MCP](https://code.claude.com/docs/en/mcp), "Elicitation modes Claude Code declares"] Codex 의 MCP 문서는
-     elicitation 을 적지 않는다. [문서: Codex MCP] 두 에이전트 모두 이 Mac 에서 재지 않았다. [미확인] 그래서
-     1판은 elicitation 을 쓰지 않는다. [계약]
+  3. MCP elicitation 에 기대지 않는다. 2026-07-28 에서 elicitation 은 서버가 보내는 요청이 아니라 도구 결과로
+     입력을 되묻는 방식(Multi Round-Trip Requests)이다. [문서: MCP 2026-07-28 [changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog)]
+     Claude Code 는 2026-07-28 연결마다 `elicitation: {form: {}, url: {}}` 를 선언한다. [문서: [Claude Code
+     MCP](https://code.claude.com/docs/en/mcp), "Elicitation modes Claude Code declares"] Codex 0.171.0 도 form 과
+     url 을 선언한다. 그러나 승인 정책이 `never` 면 샌드박스에서는 거절하고, 전체 접근이면 필드 없는 폼을 사람 없이
+     `{}` 로 수락하며, 검토자가 `auto_review` 면 사람 대신 검토 모델이 정한다. [문서: openai/codex `rust-v0.171.0`
+     의 `codex-rs/codex-mcp/src/elicitation.rs`, 줄 번호는 ADR-0011] 폼의 답은 에이전트가 만들어 에이전트 설정에
+     따라 사람 없이 나올 수 있고, 앱 창의 답은 모델과 에이전트를 거치지 않는다(이유 1). 그래서 1판은 elicitation
+     을 쓰지 않는다. [소유자 결정 2026-11-22, ADR-0011] 두 에이전트가 이 Mac 의 선 위에서 무엇을 선언하는지는
+     재지 않았다. [미확인]
 - 흐름:
   1. 코어는 30초 시계를 시작하고, 인자를 검증하고 대상을 읽어 미리보기를 만든다. 삭제는 `*.get` 이나
      `*.source.list` 를 `deadline_ms` 5초로 읽는다. 메일 보내기는 인자 자체를 쓰고, iMessage 보내기는 인자에
@@ -521,12 +537,20 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   0\twithdraw\t{"id":3}
   ```
 
-  `decision` 은 `approved`, `declined`, `unavailable` 중 하나다. `client` 는 MCP `initialize` 의 `clientInfo`
-  를 옮긴 자기 신고 값이다. `title` 은 100자, `lines` 는 12줄, `label` 은 40자, `value` 는 2,000자까지다.
-  이름표는 코어가 도구마다 정한 Sherpa 고정 문구이고, 값은 대상의 실제 내용이다. [계약]
+  `decision` 은 `approved`, `declined`, `unavailable` 중 하나다. `client` 는 그 호출의 요청 봉투
+  `_meta["io.modelcontextprotocol/clientInfo"]` 의 `name`·`version` 을 옮긴 자기 신고 값이고, 봉투에 없으면 둘 다
+  `unknown` 이다. 같은 연결의 다른 요청 값을 옮기지 않는다. `client` 의 두 값은 128자, `title` 은 100자, `lines` 는
+  12줄, `label` 은 40자, `value` 는 2,000자까지다(자는 코드 포인트). 이름표는 코어가 도구마다 정한 Sherpa 고정
+  문구이고, 값은 대상의 실제 내용이다. [계약; 규격은 `clientInfo` 를 요청마다 싣기를 권하고(SHOULD) 서버가 앞선
+  요청에 기대지 않게 한다: 문서: MCP 2026-07-28 Overview, `_meta` "Per-request protocol fields", "Statelessness"]
 - 앱은 확인 창을 맨 앞 창으로 띄우고 남은 시간을 보여 준다. 메뉴에만 두지 않는다. 소유자가 미리보기 앱의 메뉴
   막대 아이콘을 보지 못한 일이 있었다(원인 미확인). 창은 한 번에 하나만 띄우고 나머지는 차례를 기다린다.
-  기다리는 동안에도 각자의 30초는 흐른다. [계약]
+  기다리는 동안에도 각자의 30초는 흐른다. 버튼은 창이 뜬 뒤 1초가 지나야 눌린다. [계약; 값은
+  `apple/sherpa-app/App/ConfirmationWindows.swift` 의 `armingDelay`]
+- 내보낸 앱(0.8.5, main `d2f9ad9`)에서 중계로 부른 `reminder_delete` 의 창은 호출 0.29초 안에 맞는 내용으로 떴고,
+  버튼은 약 1초 뒤 눌렸다. 거부는 `confirmation.declined`(효과 `not_started`), 허용은 성공과
+  `native_absence_readback` `matched`, 아무것도 누르지 않으면 30.01초 뒤 `confirmation.timed_out` 이었다. [실측:
+  live-evidence 2026-11-21 "Delete confirmation through the exported app's relay"]
 - 미리보기 내용은 사용자 데이터다. 앱 화면에만 보이고 로그와 기록부에 남지 않는다. [계약]
 - Claude Code 의 `_meta["anthropic/requiresUserInteraction"]: true` 는 그 도구의 권한 창을 `bypassPermissions`
   에서도 호출마다 띄우고 "다시 묻지 않기" 를 내지 않으며, `dontAsk` 모드와 답할 사람이 없는 `-p` 실행에서는
@@ -540,21 +564,43 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
 - 공식 TypeScript SDK `@modelcontextprotocol/server` 2.4.0 과 `zod` 4 를 `core/bun.lock` 으로 고정한다. 시험
   빌드가 쓴 판이다. [실측; SDK 를 고른 것은 소유자, ADR-0010 결정 2]
 - 서버 정보는 이름 `sherpa` 와 코어 버전이다. 능력은 `{"tools":{"listChanged":false}}` 하나만 낸다. 자원,
-  프롬프트, 로그 알림, 서버가 에이전트에게 보내는 요청(elicitation, sampling, roots)은 쓰지 않는다. [계약]
-- 규격: Claude Code 2.1.326 과 Codex 0.170.0 은 시험 빌드와 2025-11-25 로 협상했다. [실측] SDK 2.4.0 의
-  `LATEST_PROTOCOL_VERSION` 은 2025-11-25 이고, `serveStdio` 는 `initialize` 로 여는 2025 계열과 요청마다
-  봉투를 다는 2026-07-28 열기를 모두 받는다(`legacy` 기본값 `serve`). [문서: SDK 2.4.0
-  `@modelcontextprotocol/core` 의 `dist/schemas-*.mjs`, `@modelcontextprotocol/server` 의 `dist/stdio.mjs`;
-  [typescript-sdk](https://github.com/modelcontextprotocol/typescript-sdk)] 이 계약이 보증하는 것은 2025-11-25
-  다. SDK 기본값은 그대로 두지만, 2026-07-28 로 붙는 에이전트는 재지 않았다. [미확인, ADR-0010 과 같다]
+  프롬프트, 로그 알림, 에이전트에게 입력을 되묻는 일(elicitation, sampling, roots)은 쓰지 않는다. [계약] 2026-07-28
+  에서 서버 정보는 `server/discover` 와 모든 결과의 `_meta["io.modelcontextprotocol/serverInfo"]` 에 실린다. [문서: SDK
+  2.4.0 `Server._outboundServerInfo`; 실측: `core/tests/stdio/serve.test.ts`] sampling, roots, logging 은 그 판에서
+  폐기 예정이다. [문서: MCP 2026-07-28 changelog, "Deprecated"]
+- 규격: MCP 2026-07-28 만 받는다. 코어는 채널마다 `serveStdio(factory, { transport, legacy: "reject" })` 를
+  돌린다. [소유자 결정 2026-11-22, ADR-0011] 연결은 `server/discover` 나 봉투를 단 첫 요청으로 열리고, 요청마다
+  `_meta` 에 `io.modelcontextprotocol/protocolVersion` 2026-07-28 과 `clientCapabilities` 가 있어야 한다. [문서: MCP
+  2026-07-28 [Overview](https://modelcontextprotocol.io/specification/2026-07-28/basic), `_meta` "Per-request protocol fields"]
+- 2025 계열은 이렇게 거부한다. 연결은 닫지 않고, 같은 연결의 `server/discover` 나 봉투 요청이 2026-07-28 로 연다.
+  [문서: SDK 2.4.0 `dist/stdio.mjs` 의 `serveStdio`, `dist/src-*.mjs` 의 `modernOnlyStrictRejection`; 실측:
+  `core/tests/app-serve.test.ts`, `core/tests/stdio/serve.test.ts`]
+  - 봉투 없는 `initialize`: `-32022`, message `Unsupported protocol version: <요청한 판>`, data
+    `{"supported":["2026-07-28"],"requested":"<요청한 판>"}`. 연결이 2026-07-28 로 열린 뒤에도 같다.
+  - 연결이 열리기 전 봉투 없는 다른 요청: `-32022`, message `Unsupported protocol version: the request did not name a
+    protocol version`, data `{"supported":["2026-07-28"]}`.
+  - 봉투 없는 알림(`notifications/initialized` 등): 답 없이 버린다.
+  - 연결이 열린 뒤 봉투 없는 요청: `-32602`. 규격은 필수 봉투 키가 없는 요청을 -32602 로 거부하게 한다. [문서: 같은
+    절]
+- 규격은 지원하지 않는 판에 지원 목록을 단 `UnsupportedProtocolVersionError`(-32022)로 답하게 한다. [문서: MCP
+  2026-07-28 [Versioning](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning), "Protocol Version Negotiation"] 코어는 -32022 로 답할 때마다
+  `warn [core:mcp-transport:send] refused channel=N reason=unsupported_protocol_version` 을 남긴다. [계약]
+- 에이전트: Claude Code 는 stdio 서버에 기본으로 2026-07-28 을 묻는다. [문서: Claude Code MCP, "Push messages with
+  channels"] 2.1.326 은 이 판의 코어를 담은 내보낸 앱의 중계에 `server/discover` 로 붙어 2026-07-28 로 열고
+  `tools/list` 를 받았다. [실측: live-evidence 2026-11-22 "The exported app with the 2026-07-28-only core"] Codex 0.171.0 은 기능 `mcp_2026_07_28` 과 서버 항목 env
+  `CODEX_MCP_PROTOCOL_VERSION=2026-07-28` 이 둘 다 있을 때만 2026-07-28 로 연다(§2). [실측: 같은 기록; 문서: ADR-0011]
+  기본 설정의 Codex 는 `initialize`(2025-06-18) 하나만 보내고, -32022 를 받으면 더 새 판으로 다시 묻지 않는다. 서버를
+  `failed` 로 두고 `toolsError` 에 `MCP startup failed: handshaking with MCP server failed: JSON-RPC error: -32022: …`
+  를 보이며, 그 서버의 도구 호출은 -32603 이다. [실측: 같은 기록] 1판 처음의 "Claude Code 2.1.326 과 Codex 0.170.0 이 2025-11-25 로 협상" 은 손으로 보낸 `initialize` 로
+  잰 값이었다. [실측: live-evidence 2026-11-22 정정]
 - SDK 의 공장 함수는 비동기일 수 있다. [문서: SDK `McpServerFactory`] 코어는 세션을 만들 때 시작 때 얻은 도구
   목록의 근거(§10.2)를 5초까지 기다린다. 그 안에 발견 응답이 없으면 그 순간 발견을 코어 프로세스 전체에서
   실패로 확정한다. planner 도구를 모두 빼고 error 로그를 남기며, 늦게 온 `response` 는 버린다. 목록은 코어가
   사는 동안 바뀌지 않는다(§10.2). [계약]
 - 같은 연결에서 아직 끝나지 않은 요청과 같은 id 의 요청은 SDK 에 넘기지 않고 JSON-RPC -32600(Invalid Request)으로
-  답한다. 규격은 한 세션 안에서 요청자가 이미 쓴 id 를 다시 쓰지 않게 한다. [문서: [MCP 2025-11-25
-  Basic](https://modelcontextprotocol.io/specification/2025-11-25/basic), Requests, "The request ID MUST NOT have been
-  previously used by the requestor within the same session."] SDK 2.4.0 은 요청 id 마다 abort controller 하나만 두어
+  답한다. 규격은 요청자가 아직 답을 받지 않은 다른 요청의 id 를 다시 쓰지 않게 한다. [문서: MCP 2026-07-28
+  [Overview](https://modelcontextprotocol.io/specification/2026-07-28/basic), Requests, "The request ID MUST NOT match the ID of any other request the sender has
+  issued and not yet received a response for."] SDK 2.4.0 은 요청 id 마다 abort controller 하나만 두어
   둘째 호출이 첫째의 것을 덮어쓰므로, 연결이 끊기거나 `notifications/cancelled` 가 와도 둘 다 거둘 수 없다(§7.9, §9).
   [계약]
 
@@ -600,8 +646,8 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
 - 도구 이름은 capability 의 `.` 과 `-` 를 `_` 로 바꾼 것이다. core 항목은 CLI 의 `<영역> <명령>` 에서
   만든다(`mail authorization-status` → `mail_authorization_status`). 이름은 `^[a-z][a-z0-9_]{0,47}$` 를
   만족하고 서버 안에서 겹치지 않으며, 게이트가 이를 확인한다. [계약]
-- 근거: MCP 는 도구 이름에 점을 허용한다. [문서: MCP 2025-11-25
-  [Tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools), "Tool Names"] 그러나 Claude
+- 근거: MCP 는 도구 이름에 점을 허용한다. [문서: MCP 2026-07-28
+  [Tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools), "Tool Names"] 그러나 Claude
   API 의 도구 이름은 `^[a-zA-Z0-9_-]{1,128}$` 이고 [문서: [Define
   tools](https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools)], Claude Code 는
   `mcp__<서버>__<도구>` 전체가 128자를 넘는 도구를 Claude 에 보내지 않고, 플러그인이 낸 서버의 도구는
@@ -618,7 +664,7 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   여기서 없어진다.
 - 스키마는 코어가 Swift 요청 타입(`SherpaPlannerContract`)을 옮겨 쓴 zod 엄격
   객체(`additionalProperties: false`)다. V2 가 정확한 키만 받기 때문이다. 인자 없는 도구는
-  `{"type":"object","additionalProperties":false}` 다. [계약; 빈 객체 모양은 문서: MCP 2025-11-25 Tools]
+  `{"type":"object","additionalProperties":false}` 다. [계약; 빈 객체 모양은 문서: MCP 2026-07-28 Tools]
 - core 도구의 인자는 그 CLI 명령이 플래그와 표준 입력으로 받는 값과 같고, 이름은 snake_case 다. 삭제와 보내기는
   §9 의 앱 창이 확인하므로 CLI 의 `--confirm` 값은 인자가 아니다. 예외로 `kakaotalk_checkpoint` 는 앱 창 없이
   CLI 와 같은 확인 값을 `confirm` 인자(상수 `"COMMIT_LOCAL_CHECKPOINT"`)로 받는다. [소유자 결정 2026-11-21]
@@ -647,7 +693,7 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   코드(`invalidRequest`, `protocol.invalid_payload` 등)로 거부한다. 모르는 키, 형식, 필수 키 누락 같은 구조
   오류는 SDK 입력 검증 오류다. [계약]
 - 입력 검증 실패는 SDK 가 `isError: true` 결과로 돌려준다. [문서: SDK 2.4.0 의 `tools/call` 처리기가 검증
-  오류를 잡아 `createToolError` 로 바꾼다; MCP 2025-11-25 Tools 는 입력 검증 오류를 도구 실행 오류로 분류한다]
+  오류를 잡아 `createToolError` 로 바꾼다; MCP 2026-07-28 Tools 는 입력 검증 오류를 도구 실행 오류로 분류한다]
 
 ### 10.5 결과
 
@@ -669,10 +715,10 @@ result         object | null
 ```
 
 - `structuredContent` 는 이 객체이고, `content` 는 같은 객체를 위 순서대로 직렬화한 text 블록 하나다. `result`
-  를 맨 뒤에 둬, 에이전트가 긴 결과를 잘라도 상태와 오류가 남게 한다. [계약; text 블록은 문서: MCP 2025-11-25
+  를 맨 뒤에 둬, 에이전트가 긴 결과를 잘라도 상태와 오류가 남게 한다. [계약; text 블록은 문서: MCP 2026-07-28
   Tools, "a tool that returns structured content SHOULD also return the serialized JSON in a TextContent
   block"]
-- `outputSchema` 를 내면 서버는 그에 맞는 구조화 결과를 내야 한다. [문서: MCP 2025-11-25 Tools] SDK 는
+- `outputSchema` 를 내면 서버는 그에 맞는 구조화 결과를 내야 한다. [문서: MCP 2026-07-28 Tools] SDK 는
   `isError` 가 아닌 결과를 `outputSchema` 로 검증하고 어긋나면 오류 결과로 바꾼다. [문서: SDK 2.4.0
   `validateToolOutput`] 그래서 1판의 `result` 는 열린 객체(`type: object`)다. 도구별 결과 스키마는 Swift
   인코더가 null 키를 빼고 ObjC 셈은 `null` 을 쓰는 차이(HANDOFF 의 미확인)가 정리된 뒤 붙인다. [계약]
@@ -680,7 +726,7 @@ result         object | null
 | 결과 | `isError` | 이유 |
 | --- | --- | --- |
 | `succeeded` | `false` | |
-| `failed` (효과가 시작되지 않았다) | `true` | 도구 실행 오류는 `isError` 로 알린다 [문서: MCP 2025-11-25 Tools, "Error Handling"] |
+| `failed` (효과가 시작되지 않았다) | `true` | 도구 실행 오류는 `isError` 로 알린다 [문서: MCP 2026-07-28 Tools, "Error Handling"] |
 | `partial`, `uncertain` | `false` | 효과가 이미 일어났거나 일어났을 수 있다. 규격은 `isError` 결과를 모델이 고쳐서 다시 부르라는 신호로 설명한다 [문서: 같은 절]. 적용된 변경이 일어나지 않은 것처럼 읽히면 안 된다는 worker-protocol 규칙을 따른다 [계약] |
 
 - `summary` 의 고정 문장. [계약]
@@ -723,12 +769,12 @@ result         object | null
 | local | false | false | true | false |
 
 - 네 힌트를 언제나 모두 적고 기본값에 기대지 않는다. 기본값은 `readOnlyHint` false, `destructiveHint` true,
-  `idempotentHint` false, `openWorldHint` true 다. [문서: MCP 2025-11-25 schema 의 `ToolAnnotations`; 모두
+  `idempotentHint` false, `openWorldHint` true 다. [문서: MCP 2026-07-28 schema 의 `ToolAnnotations`; 모두
   적는 것은 계약]
 - 로컬 기록(Calendar, Reminders, 메시지 DB, Mail 색인)은 닫힌 세계로 본다. 보내기만 바깥 사람에게 닿는다.
   update 는 기존 값을 덮으므로 파괴적이고, 같은 인자로 두 번 해도 더 바뀌지 않으므로 멱등이다. [추론]
 - 힌트는 에이전트의 동작만 바꾸고, 에이전트는 믿을 수 있는 서버가 아니면 힌트를 믿지 말아야 한다. [문서: MCP
-  2025-11-25 Tools] Sherpa 의 확인(§9)은 힌트에 기대지 않는다. [계약] Codex 의 `writes` 승인 방식은 읽기
+  2026-07-28 Tools] Sherpa 의 확인(§9)은 힌트에 기대지 않는다. [계약] Codex 의 `writes` 승인 방식은 읽기
   전용으로 표시되지 않은 도구에 묻는다. [문서: Codex MCP] Claude Code 는 읽기 전용 호출을 다른 읽기 전용
   호출과 병렬로 돌린다. 연결이 끊길 때 걸려 있던 멱등·읽기 전용 호출은 HTTP 서버와 claude.ai 커넥터에서만 새
   연결로 한 번 다시 보내므로, stdio 서버인 Sherpa 에는 다시 보내지 않는다. [문서: Claude Code MCP, "Mark tools
@@ -778,9 +824,9 @@ result         object | null
 - 코어와 중계는 표준 오류에 쓴다. 앱은 통합 로그(subsystem `dev.xiyo.sherpa`)에 같은 줄을 쓰고, 코어 표준
   오류의 줄을 category `core` 로 옮긴다(한 줄은 4 KiB 에서 자른다). 읽을 때는
   `/usr/bin/log show --predicate 'subsystem == "dev.xiyo.sherpa"'` 를 쓴다. [계약] MCP 클라이언트는 서버 표준
-  오류를 잡거나 버릴 수 있고, 그것을 오류로 여기지 않아야 한다. [문서: MCP 2025-11-25 Transports]
+  오류를 잡거나 버릴 수 있고, 그것을 오류로 여기지 않아야 한다. [문서: MCP 2026-07-28 stdio]
 - 남겨도 되는 값: 채널 번호, 도구와 capability 이름, `operation_id`, 작업 요청 `id`, 상태, 오류 코드, `retry`,
-  걸린 시간, 바이트 수, 종료 코드와 신호, 상대의 pid 와 서명 식별자, mux·앱·코어 버전, 확인 결과 낱말, MCP
+  걸린 시간, 바이트 수, 종료 코드와 신호, 상대의 pid 와 서명 식별자, mux·앱·코어 버전, 확인 결과 낱말, 요청 봉투
   `clientInfo` 의 이름과 버전. [계약]
 - 남기면 안 되는 값: MCP 메시지 본문, 도구 인자와 결과, 확인 미리보기, 제목·이름·전화번호·메일 주소·대화
   id·`native_locator`, 메시지와 메일 본문, 홈 경로와 사용자 이름이 든 경로(소켓 절대 경로 포함). [계약;
@@ -805,6 +851,9 @@ result         object | null
   발견 실패에서 core 도구만 남음.
 - 결과: 상태와 효과의 조합마다 `isError`, `structuredContent`, text 의 키 순서, 1 MiB 맞춤, 모든 결과가
   `outputSchema` 를 통과함.
+- 규격(ADR-0011): 2025-11-25·2025-06-18 `initialize` 와 봉투 없는 요청은 -32022 이고 아무 도구도 돌지 않음, 봉투
+  없는 알림은 답이 없음, 거부 뒤 같은 채널의 `server/discover` 와 도구 호출, 열린 뒤 봉투 없는 요청은 -32602, 확인
+  기록의 `client` 는 요청마다 그 봉투에서 옴(없으면 `unknown`).
 - planner 입력 스키마: 도구마다 예시 인자로 만든 V2 요청의 키가 Swift 요청 타입이 받는 키와 같음. 권한이 필요
   없는 경로(`*.authorization.status`, `*.command.validate`)는 게이트가 빌드하는 `sherpa-apple planner request`
   에 실제로 넣어 `protocol.invalid_payload` 가 아님을 확인한다. 변경 capability 는 헬퍼에 넣지 않는다.
@@ -812,8 +861,10 @@ result         object | null
 
 MCP stdio 명령 시험(빌드한 `core/dist/sherpa app serve` 를 가짜 앱 시험기가 프레임으로 몬다):
 
-- 인사 → 채널 셋 열기 → 채널마다 `initialize`(2025-11-25), `tools/list`, 읽기 `tools/call`(가짜 `response`).
-  시험 빌드의 동시 세 세션 시험과 같은 모양이다.
+- 인사 → 채널 셋 열기 → 채널마다 `server/discover`(2026-07-28), 봉투를 단 `tools/list`, 읽기 `tools/call`(가짜
+  `response`). 시험 빌드의 동시 세 세션 시험과 같은 모양이다.
+- 2025-11-25·2025-06-18 `initialize` → -32022, 봉투 없는 `tools/list` → -32022, 같은 채널의 `server/discover` 뒤 도구
+  35개와 읽기 호출, 표준 오류의 `reason=unsupported_protocol_version`.
 - 삭제 도구 → `confirm` → `approved` 면 `request` 가 나가고, `declined` 면 나가지 않음.
 - 호출 중 `close` → 답이 없고 코어는 계속 돈다.
 - 한도를 넘는 줄 → `fatal` 과 65. 표준 입력 EOF → 5초 안에 0.
@@ -864,16 +915,20 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 
 ### 13.3 두 작업이 합쳐진 뒤
 
-- DEBUG 앱, 빌드한 코어, 중계(시험 요건)로 세 세션이 동시에 `initialize`, `tools/list`, 읽기 호출을 한다.
-  나중에 병합되는 쪽이 게이트에 더한다. [계약]
+- DEBUG 앱, 빌드한 코어, 중계(시험 요건)로 세 세션이 동시에 `server/discover`, `tools/list`, 읽기 호출을 한다.
+  나중에 병합되는 쪽이 게이트에 더한다. [계약] 2026-11-22 에 이 시험이 게이트에 없음을 확인했다. 앱의 프로세스 시험은
+  가짜 코어(`sherpa-fake-core`)만 띄운다. [실측: `apple/sherpa-app/Tests/SherpaAppProcessTests/Support.swift`]
 
 ### 13.4 소유자 실기
 
-- Developer ID 로 서명하고 공증한 번들: Claude Code 와 Codex 설정으로 `tools/list` 와 읽기 호출, 앱을 끈
-  상태의 69, 코어를 `kill -9` 했을 때 중계 75 와 재시작 뒤 에이전트의 재연결.
-- 삭제와 보내기: 확인 창이 맨 앞에 뜨는지, 허용·거부·30초 초과, 호출이 Codex 기본 60초 안에 끝나는지.
-- Codex 가 띄운 중계가 `~/Library/Application Support/Sherpa/run/app.sock` 에 붙는지. 시험 빌드는 임시 폴더의
-  소켓으로 붙었다.
+- Developer ID 로 서명하고 공증한 번들: Claude Code 와 Codex(기능과 env 를 켠, §2) 설정으로 `tools/list` 와 읽기
+  호출, 기본 설정 Codex 의 거부, 앱을 끈 상태의 69, 코어를 `kill -9` 했을 때 중계 75 와 재시작 뒤 에이전트의 재연결.
+  2026-11-22 공증 전 내보낸 앱(이 판의 코어)으로 Codex 의 `tools/list`·읽기 호출, 기본 설정 Codex 의 거부, Claude
+  Code 의 `server/discover`·`tools/list` 를 쟀다. Claude Code 의 도구 호출은 남았다. [실측: live-evidence 2026-11-22 "The exported app with the 2026-07-28-only core"]
+- 삭제와 보내기: 확인 창이 맨 앞에 뜨는지, 허용·거부·30초 초과, 호출이 Codex 기본 60초 안에 끝나는지. 삭제의
+  창·허용·거부·30초는 2026-11-21 내보낸 앱으로 쟀다(§9). 보내기와 Codex 를 거친 호출은 남았다.
+- Codex 가 띄운 중계가 `~/Library/Application Support/Sherpa/run/app.sock` 에 붙는지. 2026-11-22 Codex 0.171.0
+  `app-server` 가 띄운 중계(앞에 tee)가 내보낸 앱의 기본 소켓에 붙었다. [실측: live-evidence 2026-11-22]
 - 앱이 띄운 코어의 `osascript` 보내기가 앱의 Apple Events 권한으로 판정되는지.
 - 오래 켜 둔 앱과 코어의 메모리. 시험 빌드는 8분 동안 코어 13.6 MB, 호스트 5.2 MB 로 고정됐다.
 
@@ -900,6 +955,8 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 ← 2\tclose\t{"reason":"server_closed"}\n
 ← 0\tfatal\t{"code":"mux.frame_invalid"}\n
 ```
+
+`data` 본문은 프레임 층이 해석하지 않는 보기다. 2026-07-28 의 실제 요청은 `params._meta` 에 봉투를 단다(§10.1).
 
 위반(코어가 받으면 `fatal` 과 65, 앱이 코어 출력에서 보면 코어를 끝낸다):
 
@@ -936,7 +993,7 @@ not json\n                                                                      
 15초 동안 아무것도 오지 않음                                                          75
 ```
 
-## 15. 소유자 결정 (2026-11-21)
+## 15. 소유자 결정 (2026-11-21, 2026-11-22)
 
 두 작업이 시작되기 전에 소유자가 이 계약의 선택을 정했다.
 
@@ -949,29 +1006,42 @@ not json\n                                                                      
    `sherpa-core` 다(§2).
 6. 소켓 경로는 `~/Library/Application Support/Sherpa/run/app.sock` 이다(§3).
 7. 2단계 동안 CLI 는 헬퍼 경로를 쓰고, 헬퍼 제거와 CLI 의 앱 소켓 연결은 3단계에서 정한다(§11).
-8. 코어가 다시 뜨면 모든 MCP 세션이 끊기는 것을 1판은 받아들인다(§7.8).
+8. 코어가 다시 뜨면 모든 MCP 연결이 끊기는 것을 1판은 받아들인다(§7.8).
 9. 1판은 같은 사용자를 믿는 범위로 둔다(§4 "믿는 범위"). 중계를 띄운 프로그램의 허용은
    bunny-holes/sherpa#39 이다.
+10. (2026-11-22) MCP 는 2026-07-28 만 받는다. 기본 설정 Codex 0.171.0 이 붙지 못하는 것을 받아들이고, 삭제·보내기
+    확인은 elicitation 이 아니라 앱 창 그대로다(§9, §10.1, ADR-0011).
 
 ## 16. 미확인
 
 - 중계가 앱을 띄우는 동작과 로그인 항목(ADR-0010).
-- 2026-07-28 규격으로 붙는 에이전트(ADR-0010).
-- 이 Mac 의 Claude Code 2.1.326 과 Codex 0.170.0 의 elicitation(Claude Code 는 문서에 있고 Codex 는 문서에
-  없다).
+- 내보낸 앱 경로로 Claude Code 가 도구를 부르는지. 2026-11-22 실측은 모델을 부르지 않아 연결과 `tools/list` 까지만
+  쟀다(ADR-0011).
+- Claude Code 가 기능 플래그나 7일 생략으로 2025-11-25 `initialize` 로 붙어 거부되는 일, Codex 의 2026 모드가
+  2025-06-18 로 내려가는 조건(ADR-0011 의 위험).
+- 이 Mac 의 선 위에서 Claude Code 와 Codex 가 2026-07-28 봉투의 `clientCapabilities` 에 선언하는 elicitation(Claude
+  Code 는 문서에, Codex 는 소스에 있다).
 - Claude Code 2.1.326 의 `anthropic/requiresUserInteraction` 지원.
 - Codex 의 모델 기본 도구 출력 예산 값.
-- Codex 가 띄운 중계가 새 소켓 경로에 닿는지.
 - 앱이 띄운 코어의 `osascript` 보내기가 앱의 Apple Events 권한으로 판정되는지.
 - 중계가 끝났을 때 Codex 가 서버를 다시 띄우는지, 그리고 이 Mac 에서 Claude Code 가 문서대로 동작하는지.
 - Developer ID 로 양방향 서명이 통과하는 경로. 인증서가 소유자 키체인에만 있어 게이트는 거부 쪽과 시험 요건만
   돈다.
-- 미리보기 앱의 메뉴 막대 아이콘이 보이지 않은 원인.
+- DEBUG 앱·빌드한 코어·중계의 통합 시험(§13.3). 게이트에 없다.
+- 내보낸 앱의 메뉴 막대 아이콘이 보이는지와 미리보기 앱에서 보이지 않은 원인, 메뉴의 Quit, 오래 켜 둔 앱과 코어의
+  메모리. 2026-11-21 의 #29 실기에서 재지 않았다.
 - 도구별 결과 스키마. Swift 와 ObjC 응답의 null 키 차이가 정리된 뒤 정한다.
+
+닫힌 것: 2026-11-21 #29 실기는 내보낸 앱에서 삭제 확인 창의 내용·허용·거부·30초와 1초 무장, 상태 창의 권한
+표시를 쟀다(§9). 같은 실기에서 상태 창이 중계 경로를 "…" 로 자른 결함은 bunny-holes/sherpa#52 다. 2026-11-22 Codex
+실측은 Codex 가 띄운 중계의 기본 소켓 연결과, 기능과 env 를 켠 Codex 의 2026-07-28 연결을 쟀다. 같은 날 이 판의
+코어를 담은 내보낸 앱으로 Claude Code 의 2026-07-28 연결과 기본 설정 Codex 의 거부(서버 `failed`, 도구 호출 -32603,
+다시 묻지 않음)를 쟀다(§10.1).
 
 ## Related
 
 - [ADR-0010: 메뉴 막대 앱과 MCP](../adr/0010-menu-bar-app-and-mcp.md)
+- [ADR-0011: MCP 는 2026-07-28 만 받는다](../adr/0011-mcp-2026-07-28-only.md)
 - [ADR-0009: Developer ID 로 서명한 헬퍼 번들](../adr/0009-developer-id-signed-helper-bundle.md)
 - [ADR-0008: Bun + TypeScript 코어](../adr/0008-bun-typescript-core.md)
 - [Worker protocol](worker-protocol.md)

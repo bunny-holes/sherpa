@@ -1,10 +1,11 @@
 /**
  * A fake Sherpa.app for driving the built `sherpa app serve` through its pipes,
- * written from app-connection-v1 alone (§7–§9, §14). It reads the core's frames,
+ * written from app-connection-v1 alone (§7–§10, §14). It reads the core's frames,
  * answers `request` and `confirm` through replaceable handlers, and speaks
- * MCP JSON-RPC on numbered channels.
+ * MCP 2026-07-28 JSON-RPC on numbered channels.
  */
 import type { Subprocess } from "bun";
+import { type AgentInfo, withEnvelope } from "../support/mcp.ts";
 import { defaultPlanner, type PlannerHandler } from "../support/planner.ts";
 
 export interface CoreFrame {
@@ -31,6 +32,8 @@ export class FakeApp {
   private waiters: { match: (frame: CoreFrame) => boolean; resolve: (frame: CoreFrame) => void }[] =
     [];
   private nextRPC = 1000;
+  /** The client each channel's requests name in their envelope. */
+  private readonly clients = new Map<number, AgentInfo>();
 
   private constructor(readonly child: Subprocess<"pipe", "pipe", "pipe">) {
     this.exited = child.exited;
@@ -104,26 +107,29 @@ export class FakeApp {
     );
   }
 
-  /** Opens a channel and runs `initialize` (2025-11-25) and `notifications/initialized`. */
+  /** Opens a channel and asks `server/discover` (2026-07-28 has no `initialize`). */
   async open(
     channel: number,
-    client = { name: "fake-agent", version: "1.0.0" },
+    client: AgentInfo = { name: "fake-agent", version: "1.0.0" },
   ): Promise<Record<string, unknown>> {
     this.frame(channel, "open");
-    const result = await this.rpc(channel, "initialize", {
-      protocolVersion: "2025-11-25",
-      capabilities: {},
-      clientInfo: client,
-    });
-    this.frame(channel, "data", { jsonrpc: "2.0", method: "notifications/initialized" });
-    return result;
+    return this.discover(channel, client);
+  }
+
+  /** `server/discover` on an open channel; later requests there name `client`. */
+  async discover(
+    channel: number,
+    client: AgentInfo = { name: "fake-agent", version: "1.0.0" },
+  ): Promise<Record<string, unknown>> {
+    this.clients.set(channel, client);
+    return this.rpc(channel, "server/discover", {});
   }
 
   /** Sends one request and returns its `result` (throws on a JSON-RPC error). */
   async rpc(
     channel: number,
     method: string,
-    params: unknown,
+    params: Record<string, unknown>,
     timeoutMs = 10_000,
   ): Promise<Record<string, unknown>> {
     const response = await this.request(channel, method, params, timeoutMs);
@@ -135,14 +141,28 @@ export class FakeApp {
   async request(
     channel: number,
     method: string,
-    params: unknown,
+    params: Record<string, unknown>,
     timeoutMs = 10_000,
   ): Promise<Record<string, unknown>> {
     const id = this.send(channel, method, params);
     return this.reply(channel, id, timeoutMs);
   }
 
-  send(channel: number, method: string, params: unknown): number {
+  /** Sends one request with the 2026-07-28 envelope naming the channel's client. */
+  send(channel: number, method: string, params: Record<string, unknown>): number {
+    return this.post(channel, method, withEnvelope(params, this.clients.get(channel) ?? null));
+  }
+
+  /** Sends one request without an envelope, as a 2025-era client does, and returns the response. */
+  async requestBare(
+    channel: number,
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return this.reply(channel, this.post(channel, method, params));
+  }
+
+  private post(channel: number, method: string, params: Record<string, unknown>): number {
     const id = this.nextRPC++;
     this.frame(channel, "data", { jsonrpc: "2.0", id, method, params });
     return id;

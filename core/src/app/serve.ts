@@ -112,7 +112,7 @@ export interface ServeOptions {
   discoveryWaitMs?: number;
 }
 
-/** Runs one app connection with MCP sessions until EOF (0) or a violation (65). */
+/** Runs one app connection, one MCP connection per channel, until EOF (0) or a violation (65). */
 export async function serveConnection(options: ServeOptions): Promise<number> {
   let connection: AppConnection;
   const planner: PlannerPort = {
@@ -148,6 +148,9 @@ export async function serveConnection(options: ServeOptions): Promise<number> {
             }),
           {
             transport,
+            // Protocol revision 2026-07-28 only (ADR-0011, §10.1): a 2025-era `initialize` or
+            // envelope-less request gets -32022 naming 2026-07-28, and the connection stays open.
+            legacy: "reject",
             onerror: (error) =>
               log.warn(`[core:mcp:session] error channel=${channel.id} error_type=${error.name}`),
           },
