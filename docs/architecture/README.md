@@ -71,6 +71,12 @@ Calendar, Reminders, and Automation on behalf of the helper — bundle identifie
 hosts the shell. Without it a host lacking the usage description (the Claude
 desktop app has none for Calendar) gets `not_determined` and no prompt.
 
+ADR-0010 (adopted 2026-11-21, not yet implemented) replaces this shape:
+`Sherpa.app` becomes the permission subject and runs the core as one MCP server
+that agents reach through `sherpa-relay`. The
+[app connection contract](../contracts/app-connection-v1.md) fixes the
+boundaries between the relay, the app and the core before either side is built.
+
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of
 truth for Calendar and Reminders; Messages, KakaoTalk, and Mail.app remain the
 source of truth for communication content. Sherpa reads their local stores
@@ -303,6 +309,7 @@ stays ad-hoc signed.
 - [Worker protocol](../contracts/worker-protocol.md)
 - [Fresh Context contract](../contracts/fresh-context-v1.md)
 - [Context analysis contract](../contracts/context-analysis-v1.md)
+- [App connection contract](../contracts/app-connection-v1.md)
 - [Test strategy](../testing/README.md)
 - [Homebrew release runbook](../testing/local-homebrew-release.md)
 - [Roadmap](../roadmap/README.md)
