@@ -80,14 +80,15 @@ hardened runtime, listening on the default socket.
   Messages and Mail. AppleEvents.h says a target that is not running gives
   `procNotFound` and no prompt, so the request now starts the target without
   activating it, then asks.
-- Not observed yet:
+- Not observed yet. The first four wait for the owner's integrated live check in
+  bunny-holes/sherpa#29:
   - the menu bar icon;
-  - a Calendar, Reminders or Automation prompt, since all but Messages were
-    already allowed for this identifier;
-  - the Messages request path;
-  - the Full Disk Access pane;
+  - the Messages Automation prompt from the Request button;
+  - quitting from the menu;
   - the front-most confirmation panel with the real core;
-  - quitting from the menu.
+  - a Calendar, Reminders or Mail prompt, since all of them were already allowed
+    for this identifier;
+  - the Full Disk Access pane.
 
 ## 2026-11-21 — Confirmation under a reused request id, a cut connection and the 30 s budget (core 0.8.5 branch build)
 
