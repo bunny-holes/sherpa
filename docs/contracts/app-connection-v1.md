@@ -586,7 +586,7 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
   닫는다. 중계는 75 로 끝난다. 앱은 MCP 를 해석하지 않으므로 JSON-RPC 오류로 답할 수 없다. [계약]
 - 코어는 4 MiB 를 넘는 `data` 를 만들지 않는다. `mcp` 채널은 §10.5 의 1 MiB 결과 한도가, `chat` 채널은 §7.11 의
   한도(모델 id 1,000개와 하나에 256 바이트, 대화 2 MiB)가 이를 보장한다. 그래도 4 MiB 를 넘을 대화 상태(`state`)는
-  코어의 결함이고, 코어는 그것을 쓰지 않고 그 차례를 `internal` 로 끝낸다(§7.11 "대화 상태"). [계약]
+  코어의 결함이고, 코어는 그것을 쓰지 않고 그 `turn` 에 `internal` 로 답한다(§7.11 "대화 상태"). [계약]
 
 ### 7.5 인사
 
@@ -677,7 +677,7 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 
 앱이 `N\topen\t{"kind":"chat"}` 로 연 채널 하나가 앱 안 채팅 하나다. [계약; ADR-0012 "앱과 코어 사이 채널"] 이
 판의 코어는 모델 목록과 글 차례(`turn`·`cancel` 과 `delta`·`tool`·`done`)를 받고, 차례의 모델은 코어의 도구를
-부른다("도구"). `text` 없는 `turn` 은 대화를 그대로 다시 보낸다("다시 보내기"). 코어는 대화가 바뀔 때마다 그
+부른다("도구"). `text` 없는 `turn` 은 대화를 그대로 다시 보낸다("다시 보내기"). 코어는 대화가 바뀌거나 채팅이 찰 때 그
 상태를 `state` 로 앱에 넘기고("대화 상태"), 앱은 저장한 상태를 새 채널의 `resume` 으로 돌려주어 그 채팅을
 잇는다("이어 쓰기"). 진행 중인 변경(`pending`)과 그 기록부 줄은 구현 단계 4(bunny-holes/sherpa#66)의 다음 작업이 이
 절에 더한다. 메시지를 더하는 것이라 이 문서의 판은 그대로다. [계약]
@@ -702,7 +702,7 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 | 앱 → 코어 | `cancel` | 없음 | 도는 차례를 멈춘다 |
 | 코어 → 앱 | `delta` | `text` | 모델 답의 글 조각 |
 | 코어 → 앱 | `tool` | `call_id`, `name`, `status`, `code`, `operation_id` | 모델이 부른 도구 호출 하나가 시작했거나 끝났다("도구") |
-| 코어 → 앱 | `state` | `state` | 대화가 바뀌었다. 앱은 그 채팅의 저장한 상태를 이것으로 바꾼다("대화 상태") |
+| 코어 → 앱 | `state` | `state` | 대화가 바뀌었거나 채팅이 찼다. 앱은 그 채팅의 저장한 상태를 이것으로 바꾼다("대화 상태") |
 | 코어 → 앱 | `done` | `reason`, `input_tokens`, `output_tokens`, `resend` | 차례가 끝났다. `resend` 는 바로 뒤의 `text` 없는 `turn` 을 코어가 받는지다("다시 보내기") |
 | 코어 → 앱 | `error` | `in_reply_to`, `code`, `retryable`, `status`, `resend`(`in_reply_to` 가 `"turn"` 일 때만) | 앞의 메시지가 답 없이 끝났다. `in_reply_to` 가 `"turn"` 이면 그 `turn` 이 요청 전에 거절됐거나 그 차례가 오류로 끝났다. `"resume"` 이면 이 채널은 그 대화를 잇지 않았다 |
 
@@ -834,7 +834,7 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 | --- | --- | --- |
 | `model` | 1~256 바이트, 제어 문자 없음 | `invalid_message` |
 | `text`(있을 때) | 1 바이트~64 KiB | `invalid_message` |
-| 대화 | 모델 메시지 전체(지시문은 빼고)를 JSON 으로 적어 2 MiB. 차례를 시작할 때, 답이 흐르는 동안, 호출마다 그 앞에서, 단계가 끝날 때 잰다("대화 한도") | `conversation_limit`. 시작할 때 넘으면 요청하지 않는다. 그 채팅은 뒤의 차례도 받지 않는다 |
+| 대화 | 모델 메시지 전체(지시문은 빼고)를 JSON 으로 적어 2 MiB. 차례를 시작할 때, 답이 흐르는 동안, 호출마다 그 앞에서, 단계가 끝날 때 잰다("대화 한도") | `conversation_limit`. 시작할 때 넘으면 요청하지 않는다. 그 채팅은 뒤의 차례도 받지 않고, 코어는 그 끝 앞에 `full` 이 참인 `state` 를 쓴다("대화 한도") |
 | 모델 요청의 첫 출력 | 보낸 때부터 600초 | 차례를 멈추고 `timeout` |
 | 출력 사이 | 600초 | 차례를 멈추고 `timeout` |
 | 연결에 바이트가 오가지 않는 사이 | Bun 의 유휴 한도(문서의 기본 5분, 이 Mac 에서 잰 값 360초) | 차례를 멈추고 `timeout` |
@@ -843,7 +843,7 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 | 모델 요청 | 한 차례에 20번 | 더 보내지 않고 `done` `step-limit` |
 | 도구 결과 하나 | 모델이 읽는 결과 봉투의 JSON 으로 64 KiB | §10.5 의 맞춤 규칙 |
 | 스키마가 거절한 호출의 까닭 | 코어가 적는 글이 대화의 JSON 으로 2 KiB | 들지 않는 첫 줄은 잘라 표시하고, 그 뒤의 issue 는 수만 적는다("도구") |
-| `state` 하나 | `data` 의 본문(`{"type":"state","state":"…"}`)으로 4 MiB(§7.4) | 쓰지 않는다. 차례는 `internal` 로 끝나고 그 채팅은 뒤의 차례를 받지 않는다("대화 상태") |
+| `state` 하나 | `data` 의 본문(`{"type":"state","state":"…"}`)으로 4 MiB(§7.4) | 쓰지 않는다. 그 `turn` 은 `internal` 로 끝나고 그 채팅은 뒤의 차례를 받지 않는다("대화 상태") |
 
 - [설계] 대화 한도 2 MiB 는 ADR-0012 "메모리와 크기" 가 구현 이슈에 맡긴 값이다. 대화 상태(`state`)가 4 MiB
   `data`(§7.4)에 들어가게 한다("대화 상태"). 코어가 차례 안에서도 재고 답의 셈이 단계가 남길 것의 위를 잡으므로, 한
@@ -1012,6 +1012,14 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 - 2·3·4 에서 넘은 차례는 다음 모델 요청을 보내지 않고 `error` `conversation_limit`(`retryable` 거짓, `resend` 거짓)로
   끝난다. 그 채팅은 뒤의 차례를 `text` 가 있든 없든 받지 않고, 앱은 새 채팅을 권한다. 그 앞에 보낸 `delta` 와 `tool` 은
   그대로다. [계약; 실측: `core/tests/chat-turn.test.ts`, `core/tests/chat-tools.test.ts`]
+- 채팅이 차는 때, 곧 차례 안에서 2·3·4 가 넘은 때와 1 에서 넘어 거절한 때, 코어는 `full` 이 참인 `state`("대화 상태")를
+  한 번, 그 `turn` 을 끝내는 메시지(대개 `error` `conversation_limit`) 앞에 쓴다. 그 `state` 의 대화는 그때 대화에 남은
+  그대로다. 넘은 단계가 남으면(3 과 4) 그 단계의 `state` 가 `full` 을 참으로 싣고, 남지 않으면(2 에서 끊긴 답, 단계가
+  끝나기 전에 끝난 차례) 코어가 그 끝 앞에 `state` 를 하나 더 쓴다. 1 의 거절은 `state` 하나와 `error` 이고, 그 `state`
+  에는 거절한 글이 없다. 이미 찬 채팅이 다시 거절할 때와, 그 채널이 `state` 를 쓴 적도 `resume` 으로 시작한 적도 없어
+  앱에 그 채팅의 상태가 없을 때는 쓰지 않는다. 앱은 그 `state` 를 저장하므로, 그것으로 이어 쓴 채팅도 차례를 받지
+  않는다("이어 쓰기"). [계약; 실측: `core/tests/chat-state.test.ts`, `core/tests/chat-turn.test.ts`,
+  `core/tests/chat-tools.test.ts`]
 - 답의 몫은 AI SDK 7.0.179 가 단계의 메시지에 남기는 모양으로 센다. 글과 reasoning 의 덩이마다 부분 하나와 JSON 이 적는
   글자, 그 덩이가 실은 가장 큰 제공자 메타데이터(SDK 는 마지막 것을 남긴다), 호출의 id·이름·입력과 제공자 메타데이터,
   base64 로 적은 파일, 메시지와 부분의 키다. 호출의 메타데이터는 그 호출이 돌면 결과에도 남으므로 두 번 센다. 호출의
@@ -1109,7 +1117,7 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 | 코어가 쓴 것 | 대화의 마지막 메시지 | `resend` |
 | --- | --- | --- |
 | 첫 차례나 `resumed` 전에 거절한 `turn` 의 `error`(상태를 보는 동안의 `busy` 포함) | 없다 | 거짓 |
-| `resumed`("이어 쓰기") | 이어 쓴 대화의 마지막 메시지 | 그것이 사람의 글이나 도구 결과이고 대화가 2 MiB 안이면 참 |
+| `resumed`("이어 쓰기") | 이어 쓴 대화의 마지막 메시지 | 상태의 `full` 이 거짓이고, 그것이 사람의 글이나 도구 결과이며, 대화가 2 MiB 안이면 참 |
 | `done` `stop` | 모델의 답 | 거짓 |
 | `done` `length`·`other`, 마지막 단계에 호출이 없다 | 모델의 답 | 거짓 |
 | `done` `length`·`other`, 마지막 단계에 호출이 있다. 앱은 그 호출마다 `tool` 둘을 `chat.not_run` 이나 `chat.invalid_call` 로 받았다 | 그 호출들의 결과(`chat.not_run` 봉투나 AI SDK 의 오류) | 참 |
@@ -1123,8 +1131,8 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 | 첫 차례가 시작했거나 `resumed` 를 쓴 뒤에 요청 전에 거절한 `turn` 의 `error`: `invalid_message`, `busy`, 나가는 길이 막은 `base_url` 의 `egress_denied`, `chat_state_mismatch`, `conversation_limit` | 그대로 | 그 앞의 끝, 곧 바로 앞에 `turn` 에 답한 `done`·`error` 나 `resumed` 와 같다. `busy` 와 `conversation_limit` 는 거짓이다. 도는 차례가 있을 때 온 모양이 틀린 `turn` 의 `invalid_message` 도 `busy` 처럼 거짓이고, 도는 차례는 그 끝에서 자기 `resend` 를 싣는다 |
 
 - 대화 한도에 닿은 채팅은 차례를 시작할 때 넘었든 차례 안에서 넘었든 그 뒤의 끝마다 `resend` 가 거짓이고, 다음
-  `turn` 은 `text` 가 없어도 `conversation_limit` 다("대화 한도"). [계약; 실측: `core/tests/chat-turn.test.ts`,
-  `core/tests/chat-tools.test.ts`]
+  `turn` 은 `text` 가 없어도 `conversation_limit` 다("대화 한도"). `full` 이 참인 상태로 이어 쓴 채팅도 같다("이어
+  쓰기"). [계약; 실측: `core/tests/chat-turn.test.ts`, `core/tests/chat-tools.test.ts`, `core/tests/chat-state.test.ts`]
 - `cancel` 이 답의 끝과 겹치면 차례는 코어가 먼저 본 쪽으로 끝나고, `resend` 가 어느 쪽인지 알린다. AI SDK 가 그
   단계를 끝내기 전에 닿은 `cancel` 은 차례를 `done` `aborted` 로 끝내고 그 단계를 남기지 않아 `resend` 가 참이다.
   단계가 끝나 그 글과 `state` 를 보낸 뒤, 코어가 응답의 끝을 읽기 전에 닿은 것도 `done` `aborted`(토큰 수 `null`)로
@@ -1156,9 +1164,10 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 #### 대화 상태
 
 - 코어는 채팅의 대화가 바뀔 때마다 그 전체를 `{"type":"state","state":"<S 의 base64>"}` 로 앱에 넘긴다. 바뀌는 때는
-  둘이다. 글을 실은 `turn` 이 사람의 글을 대화에 더한 뒤 첫 모델 요청을 보내기 전과, 대화가 끝난 단계 하나를 남긴
-  뒤다. 남기지 않는 단계(오류·끊김·거절로 끝난 것, "글 차례"), `text` 없는 `turn` 의 시작, 요청 전에 거절한
-  `turn` 은 `state` 를 쓰지 않는다. [계약; ADR-0012 "상태를 넘기는 때"; 실측: `core/tests/chat-state.test.ts`]
+  둘이다. 글을 실은 `turn` 이 사람의 글을 대화에 더한 뒤 첫 모델 요청을 보내기 전과, 대화가 끝난 단계 하나를 남긴 뒤다.
+  채팅이 찰 때도 한 번 넘긴다("대화 한도"). 그 밖에, 남기지 않는 단계(오류·끊김·거절로 끝난 것, "글 차례"), `text` 없는
+  `turn` 의 시작, 요청 전에 거절한 `turn` 은 `state` 를 쓰지 않는다. [계약; ADR-0012 "상태를 넘기는 때"; 실측:
+  `core/tests/chat-state.test.ts`]
 - 단계의 `state` 는 그 단계의 `delta`·`tool` 뒤, 다음 단계의 것 앞에 온다. AI SDK 가 돌리지 않은 호출의 `tool` 둘도
   그 결과를 담은 `state` 앞에 온다. 코어는 `state` 를 쓰기 전에 모은 글을 먼저 보내고, 차례의 `done` 이나 `error` 는
   그 차례의 마지막 `state` 뒤에 온다. 채널이 닫힌 뒤에는 쓰지 않는다. [계약; 실측: `core/tests/chat-state.test.ts`,
@@ -1170,6 +1179,8 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
     이름이 출처를 정한다.
   - `model`: 채팅의 모델 id.
   - `fingerprint`: 지시문과 도구 정의의 지문("이어 쓰기"). 소문자 16진수 64자다.
+  - `full`: 채팅이 찼는지의 불리언("대화 한도"). 코어는 늘 싣는다. 참이면 그 상태로 이어 쓴 채팅도 차례를 받지
+    않는다("이어 쓰기").
   - `pending`: 진행 중인 변경. 이 판의 코어는 늘 빈 배열을 적고, 구현 단계 4 의 다음 작업이 채운다.
   - `messages`: 대화. AI SDK 7.0.179 의 모델 메시지(`ModelMessage`)를 SDK 가 남긴 그대로 적는다. 제공자가 다음
     요청에서 되돌려 받는 값(Anthropic thinking 의 서명, OpenAI reasoning 항목의 암호문, Google `thought` 의 서명
@@ -1188,8 +1199,11 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   2.67 MiB 남짓이고, 4 MiB 에는 봉투 밖의 대화가 3 MiB 가까이까지 든다. 그 사이는 단계가 끝날 때 한도를 넘겨 남은
   단계 하나의 몫이다. [설계] 그래도 넘을 `state` 는 코어의 결함이다. 코어는 그것을 쓰지 않고 error 로그를
   남기며(§12), 차례를 다음 모델 요청 없이 `error` `internal`(`resend` 거짓)로 끝내고, 그 채팅은 뒤의 차례를 `text`
-  가 있든 없든 `conversation_limit` 로 거절한다. 차례를 시작할 때의 `state` 가 넘으면 요청하지 않는다. 앱이 가진
-  것은 그 앞의 `state` 다. [계약; 실측: `core/tests/chat-state.test.ts` 가 코어가 쓰는 `data` 의 한도를 낮춰 본다]
+  가 있든 없든 `conversation_limit` 로 거절한다. 차례를 시작할 때의 `state` 가 넘으면 요청하지 않는다. 앱이 가진 것은 그
+  앞의 `state` 다. 채팅이 찬 것을 알리는 `state`("대화 한도")가 넘을 때도 결함이고 같다. 차례 안의 것이면 그 차례가,
+  차례를 시작할 때의 거절이 쓰려던 것이면 그 `turn` 이 `conversation_limit` 대신 `error` `internal` 로 끝난다. 앱에 남는
+  것은 `full` 이 거짓인 앞의 `state` 이므로, 그것으로 이어 쓴 채팅은 다시 차례를 받는다. [계약; 실측:
+  `core/tests/chat-state.test.ts` 가 코어가 쓰는 `data` 의 한도를 낮춰 본다]
 
 #### 이어 쓰기
 
@@ -1208,7 +1222,7 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 | --- | --- |
 | `base64` | 코어가 적는 base64 가 아닌 값. 풀어 다시 적은 것이 같지 않으면 거절하므로, 채움이 없는 값, 줄바꿈이 든 값, 끝의 남는 비트가 0 이 아닌 값, URL-safe 글자(`-`·`_`)를 쓴 값도 이것이다 |
 | `not_json` | 풀어 낸 바이트가 온전한 UTF-8 이 아니거나 JSON 이 아니다. 빈 값도 이것이다 |
-| `envelope` | S 가 "대화 상태" 의 봉투가 아니다. 다른 `format`, 모르는 키나 빠진 키, 모르는 제공자, 앞의 세 제공자의 `base_url`, `base_url` 없는 OpenAI 호환, 채팅이 두는 꼴이 아닌 `base_url`(끝의 `/` 등), `turn` 의 한도를 넘는 `model`·`base_url`, 소문자 16진수 64자가 아닌 `fingerprint`, 비지 않은 `pending`, 빈 `messages` |
+| `envelope` | S 가 "대화 상태" 의 봉투가 아니다. 다른 `format`, 모르는 키나 빠진 키, 모르는 제공자, 앞의 세 제공자의 `base_url`, `base_url` 없는 OpenAI 호환, 채팅이 두는 꼴이 아닌 `base_url`(끝의 `/` 등), `turn` 의 한도를 넘는 `model`·`base_url`, 소문자 16진수 64자가 아닌 `fingerprint`, 없거나 불리언이 아닌 `full`, 비지 않은 `pending`, 빈 `messages` |
 | `messages` | 메시지 하나가 AI SDK 7.0.179 의 `modelMessageSchema` 를 지나지 못한다 |
 | `system` | system 메시지가 있다. 지시문은 대화에 없고 코어가 차례마다 넣는다 |
 | `file_data` | 파일 part(`image`·`file`·`reasoning-file`)의 데이터가 base64 글자(표준이나 URL-safe)만의 문자열이 아니거나, `content` 꼴의 도구 결과가 있다 |
@@ -1232,12 +1246,13 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   제공자의 대화는 그대로 둔다. 뺀 것은 다시 넣지 않는다. [계약; ADR-0012 "이어 쓰기" 의 표; 실측: 같은 시험]
 - 이어 쓴 채팅은 그 상태의 제공자·base URL·모델로 정해진다. 다른 것을 실은 `turn` 은 요청 없이
   `chat_state_mismatch` 다("글 차례"). 키는 상태에 없으므로 무엇이든 된다. [계약; 실측: 같은 시험]
-- `resumed` 의 `resend` 는 `done` 의 것과 같다("다시 보내기"). 대화가 사람의 글이나 도구 결과로 끝나고 2 MiB
-  안이면 참이다. [계약; 실측: 같은 시험]
-- 이어 쓰기는 대화의 크기로 거절하지 않는다. 2 MiB 를 넘는 대화는 이어 쓴 뒤 차례를 시작할 때 `conversation_limit`
-  이고(`resumed` 의 `resend` 도 거짓) 그 채팅은 가득 찬다. [계약; 실측: 같은 시험] 상태는 가득 참을 싣지 않으므로,
-  차례 안에서 한도에 닿은 채팅이라도 마지막 `state` 의 대화가 2 MiB 안이면(답이 흐르다 끊겼거나 코어가 호출을
-  돌리지 않았을 때) 이어 쓴 채팅은 다시 차례를 받는다. [계약]
+- `resumed` 의 `resend` 는 `done` 의 것과 같다("다시 보내기"). 상태의 `full` 이 거짓이고 대화가 사람의 글이나 도구
+  결과로 끝나며 2 MiB 안이면 참이다. [계약; 실측: 같은 시험]
+- `full` 이 참인 상태로 이어 쓴 채팅은 찬 채팅이다. `resumed` 의 `resend` 가 거짓이고, 뒤의 `turn` 은 `text` 가 있든
+  없든 요청 없이 `conversation_limit` 이며, 코어는 새 `state` 를 쓰지 않는다("대화 한도"). [계약; 실측: 같은 시험]
+- 이어 쓰기는 대화의 크기로 거절하지 않는다. `full` 이 거짓이라도 2 MiB 를 넘는 대화는 `resumed` 의 `resend` 가
+  거짓이고, 그 뒤 차례를 시작할 때 넘어 거절되면 채팅이 차므로 코어는 그 `error` 앞에 `full` 이 참인 `state` 를
+  쓴다("대화 한도"). [계약; 실측: 같은 시험]
 - `tool` 의 `call_id` 는 채널마다 1부터 세므로 이어 쓴 채널도 1부터 센다. [계약; 실측: `core/tests/chat-tools.test.ts`]
 - 메시지 검사와 지문이 AI SDK 의 것이므로, 코어는 SDK 를 그 프로세스의 첫 차례나 처음으로 메시지를 보는 `resume`
   때 싣는다(§12 의 `[core:chat:load]`). [계약]
@@ -1258,7 +1273,7 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 | `provider_unavailable` | 참 | 408·409·5xx | 제공자가 지금 답하지 못한다 |
 | `provider_rejected` | 거짓 | 그 밖의 4xx | 제공자가 요청을 거절했다. 목록 끝점이 없는 OpenAI 호환 서버의 404 도 이것이다 |
 | `provider_invalid_response` | 거짓 | 그 응답의 상태. 차례에서는 `null` | 2xx 인데 몸이 한도를 넘거나, UTF-8 JSON 이 아니거나, 모양이 다르다. 차례에서는 흐름이 패키지가 읽지 못하는 모양이거나 끝난 까닭 없이 끝났다 |
-| `conversation_limit` | 거짓 | `null` | 대화가 한도를 넘는다. 차례를 시작할 때이거나, 차례 안에서 답·호출의 결과·끝난 단계가 넘길 때다("대화 한도"). 그 채팅은 뒤의 차례도 받지 않는다 |
+| `conversation_limit` | 거짓 | `null` | 대화가 한도를 넘는다. 차례를 시작할 때이거나, 차례 안에서 답·호출의 결과·끝난 단계가 넘길 때다("대화 한도"). 그 채팅은 뒤의 차례도 받지 않는다. `full` 이 참인 상태로 이어 쓴 채팅의 `turn` 도 이것이다("이어 쓰기") |
 | `chat_state_invalid` | 거짓 | `null` | `resume` 의 상태가 코어가 적는 꼴이 아니다. base64, UTF-8 JSON, 봉투, 메시지 가운데 하나가 어긋났다("이어 쓰기") |
 | `chat_state_mismatch` | 거짓 | `null` | 이어 쓴 채팅에 그 상태와 다른 제공자·base URL·모델의 `turn` 이 왔다("이어 쓰기") |
 | `internal` | 거짓 | `null` | 코어의 결함. 코어가 만든 대화를 AI SDK 가 요청 전에 거절한 것(결과 없는 도구 호출 등), `data` 에 들지 않는 `state`("대화 상태"), `resume` 을 보다 난 실패도 이것이다 |
@@ -1800,12 +1815,16 @@ result         object | null
   - `warn [core:chat:turn] refused channel=N reason=<busy|egress_denied|other_chat|state_mismatch|nothing_to_retry|conversation_limit>`:
     요청 전에 거절한 차례. `other_chat` 은 이 채팅의 것이 아닌 `turn`, `nothing_to_retry` 는 다시 보낼 것이 없는
     `text` 없는 `turn` 이고("다시 보내기"), 둘은 `invalid_message` 로 답한다. `state_mismatch` 는 이어 쓴 채팅의 것이
-    아닌 `turn` 이고 `chat_state_mismatch` 로 답한다("이어 쓰기").
-  - `debug [core:chat:state] sent channel=N bytes=<본문 바이트 수> messages=<메시지 수> pending=0`: 쓴 `state`(§7.11
-    "대화 상태"). 바이트는 `data` 의 본문 `{"type":"state","state":"…"}` 의 것이다.
+    아닌 `turn` 이고 `chat_state_mismatch` 로 답한다("이어 쓰기"). 채팅을 채운 `conversation_limit` 의 거절은 그 앞에
+    `debug [core:chat:state] sent … full=true …` 를 남긴다.
+  - `debug [core:chat:state] sent channel=N bytes=<본문 바이트 수> messages=<메시지 수> full=<true|false> pending=0`: 쓴
+    `state`(§7.11 "대화 상태"). 바이트는 `data` 의 본문 `{"type":"state","state":"…"}` 의 것이다. `full=true` 는 채팅이
+    찬 것을 알리는 `state` 다("대화 한도").
   - `error [core:chat:state] failure channel=N bytes=<본문 바이트 수> reason=too_large`: `data` 에 들지 않아 쓰지 않은
-    `state`. 그 차례는 `error [core:chat:turn] failure … code=internal error_type=StateTooLarge …` 로 끝난다.
-  - `info [core:chat:resume] success channel=N provider=<제공자> messages=<메시지 수> bytes=<state 의 바이트 수> fingerprint=<same|changed> pruned=<뺀 reasoning part 수> ms=<걸린 시간>`:
+    `state`. 그 차례는 `error [core:chat:turn] failure … code=internal error_type=StateTooLarge …` 로 끝난다. 차례를
+    시작할 때 채팅을 채운 거절이 쓰려던 것이면 그 뒤는 `warn [core:chat:turn] refused … reason=conversation_limit` 이고,
+    그 `turn` 에는 `internal` 로 답한다.
+  - `info [core:chat:resume] success channel=N provider=<제공자> messages=<메시지 수> bytes=<state 의 바이트 수> fingerprint=<same|changed> pruned=<뺀 reasoning part 수> full=<true|false> ms=<걸린 시간>`:
     이은 대화(§7.11 "이어 쓰기").
   - `warn [core:chat:resume] refused channel=N reason=<base64|not_json|envelope|messages|system|file_data|unanswered> bytes=<state 의 바이트 수>`:
     `chat_state_invalid` 로 답한 `resume`. 채널의 첫 것이 아닌 `resume` 은
@@ -1877,12 +1896,12 @@ result         object | null
   출력 사이의 한도(첫 출력 한도는 한 번 보내고 끝남, 상태로 실패한 뒤의 기다림은 한도에 들지 않음), 가짜 시계 위의
   600초 한도(한도 1초 전에 첫 출력 전 오류를 보낸 OpenAI 응답 뒤에 다시 보낸 요청은 한도를 새로 켜, 첫 요청의 마감
   뒤에 답해도 `timeout` 이 아님), 가짜 시계 위에서 출력마다 새로 켜지는 출력 사이의 600초, Bun 의 유휴 한도가 머리말 전·몸 도중·출력 뒤에 던지는
-  `TimeoutError` 가 한 번 보내고 `timeout` 으로 끝남, 2 MiB 대화 한도(글이 넘길 차례는 요청 없이 거절, 네 제공자에서
-  넘길 답은 그 앞까지 보내고 끊으며 요청은 한 번, 첫 조각이 이미 넘으면 `delta` 없이, 그 뒤의 차례는 `text` 가 있든
-  없든 거절), 다시 보내기("다시 보내기" 의 표에서 도구가
-  없는 줄마다 시험이 있고, 거절을 포함해 `turn` 에 답한 것마다 그 `resend` 와 바로 뒤의 `text` 없는 `turn` 을 받는지가
-  같음: 빈 대화에서 거절한 `text` 없는 `turn` 과 막은 `base_url` 뒤, `stop`·`length`·`other` 의 답 뒤에는
-  `nothing_to_retry` 이고 대화가 그대로임, 글·reasoning·호출이 없는 답과
+  `TimeoutError` 가 한 번 보내고 `timeout` 으로 끝남, 2 MiB 대화 한도(글이 넘길 차례는 요청 없이 거절하고 그 앞에 `full`
+  이 참인 `state` 하나를 씀, 네 제공자에서 넘길 답은 그 앞까지 보내고 끊으며 요청은 한 번이고 끝 앞의 `state` 가 `full`
+  참, 첫 조각이 이미 넘으면 `delta` 없이, 그 뒤의 차례는 `text` 가 있든 없든 `state` 없이 거절), 다시 보내기("다시
+  보내기" 의 표에서 도구가 없는 줄마다 시험이 있고, 거절을 포함해 `turn` 에 답한 것마다 그 `resend` 와 바로 뒤의 `text`
+  없는 `turn` 을 받는지가 같음: 빈 대화에서 거절한 `text` 없는 `turn` 과 막은 `base_url` 뒤, `stop`·`length`·`other` 의
+  답 뒤에는 `nothing_to_retry` 이고 대화가 그대로임, 글·reasoning·호출이 없는 답과
   `content-filter`·`aborted`·시작한 차례의 `error` 뒤에는 사람의 글을 시각 줄 하나와 함께 한 번만 실음, reasoning
   만 있는 답 뒤는 거절, 답의 끝과 겹친 `cancel` 의 네 때, `provider_auth` 뒤 바뀐 키, 도는 차례 중의 `busy` 와 모양이
   틀린 `turn` 은 `resend` 가 거짓, 그 밖의 모양이 틀린 `turn`·다른 채팅·막은 `base_url` 은 앞의 끝이 참이든 거짓이든
@@ -1911,37 +1930,43 @@ result         object | null
   20번을 더 보냄, 도구 단계 뒤 reasoning 만 내고 `length` 로 끝난 단계 뒤는 거절, 잘못 만든 호출 뒤에 글이 온
   Anthropic 과 OpenAI 호환의 단계는 `tool` 과 `delta` 의 차례가 달라도 받음), 차례 안의
   대화 한도(결과가 한도를 넘길 수 있는 호출은 돌지 않고 `chat.conversation_limit` 과 warn 줄을 남기며 차례가
-  `conversation_limit` 로 끝나고, 그 끝의 `resend` 가 거짓이며 뒤의 차례를 `text` 가 없든 있든 받지 않음("다시
-  보내기" 의 표에서 `conversation_limit` 의 줄), 앞서 돈 호출의 결과도 세어 그 단계의 뒤 호출이 돌지 않음, 뒤 단계에서
-  끊긴 답은 앞 단계와 그 호출의 결과를 남김, 답을 세지 않는 방에서 단계가 끝날 때만 넘음을 찾은 단계는 그 호출의
-  결과와 남고 다음 요청이 없음), Anthropic 의 맨 위 `cache_control` 과 표시 없는 도구, 로그에 인자·결과·지어낸 이름이
+  `conversation_limit` 로 끝나고, 그 단계의 `state` 가 `full` 참이고 더 쓰지 않으며, 그 끝의 `resend` 가 거짓이며 뒤의
+  차례를 `text` 가 없든 있든 받지 않음("다시 보내기" 의 표에서 `conversation_limit` 의 줄), 앞서 돈 호출의 결과도 세어
+  그 단계의 뒤 호출이 돌지 않음, 뒤 단계에서 끊긴 답은 앞 단계와 그 호출의 결과를 남김, 답을 세지 않는 방에서 단계가
+  끝날 때만 넘음을 찾은 단계는 그 호출의 결과와 남고 그 단계의 `state` 하나만 `full` 이 참이며 다음 요청이 없음),
+  Anthropic 의 맨 위 `cache_control` 과 표시 없는 도구, 로그에 인자·결과·지어낸 이름이
   없음. 기대하지 않은 AI SDK 경고가 하나라도 나오면 실패한다.
 - 대화 한도(§7.11 "대화 한도", `chat-limit.test.ts`): 차례의 방이 끝난 단계의 메시지를 차례를 시작할 때의 잼과 바이트까지
-  같게 더함, 한도를 넘는 첫 바이트에서 한 번 넘고 채팅을 가득 참으로 두며 넘은 채로 남음, 가장 큰 결과의 자리를 답과
-  앞의 결과 곁에서 봄, 답의 셈이 AI SDK 7.0.179 가 단계에 남긴 JSON 보다 작지 않음(이스케이프하는 글자와 반으로 나뉜
-  이모지, 마지막에 온 reasoning 의 서명과 바뀌는 메타데이터, 파일, 돈 호출·메타데이터를 실은 돈 호출·없는 도구·풀리지
-  않는 입력·스키마가 거절한 입력·`9e20` 2,000 개처럼 수를 길게 다시 적는 입력·객체가 아닌 입력, issue 2,000 개를 낸 두
-  호출, 2 KiB 가 이모지나 따옴표와 제어 문자 안에 떨어지는 키를 실은 두 호출), 스키마가 거절한 호출의 셈은 남긴 것보다
-  512 바이트 넘게 크지 않음(까닭 셋 가운데 하나만 더함), 스키마가 거절한 까닭(AI SDK 의 앞글 뒤 2 KiB 안에, `alarms` 의
-  숫자 2,000 개는 앞의 issue 를 차례대로 적고 첫 줄이 그 경로와 message 이며 남은 수가 맞음, 모르는 키 2,000 개는 zod 가
-  낸 issue 하나를 자름, 이모지의 키는 그 2 KiB 가 떨어지는 글자 앞에서, 따옴표와 제어 문자의 키는 JSON 이 적는 바이트로
-  자름, 풀리지 않는 입력은 AI SDK 의 글 그대로이고 JSC 가 자른 식별자를 적는 글은 260 바이트, 없는 도구의 글은 35개 도구의
-  이름 658 바이트, zod 의 차례와 표기와 같은 입력의 같은 글, 2 KiB 가 4 바이트 글자 안에 떨어지는 자름, 남은 수 곁의
-  자름, 한 글자도 들지 않는 줄의 셈, JSON 이 적는 바이트), 미들웨어는 맞는 데까지 넘긴 뒤 오류 조각 하나(`ChatFailure`
-  `conversation_limit`)로 끊고 응답을 취소하며 첫 조각이 넘으면 곧바로 끊음, AI SDK 는 `maxRetries: 2` 에서도 그 요청을
-  한 번만 보내고 그 단계를 `error` 로 끝냄. 모델은 AI SDK 의 mock 이라 요청이 없다.
+  같게 더함, 한도를 넘는 첫 바이트에서 한 번 넘고 채팅을 가득 참으로 두며 넘은 채로 남음, 글이 넘길 차례의 거절은 글을
+  더하지 않고 채팅을 한 번만 채움, `full` 이 참인 상태로 이은 채팅은 차례를 받지 않고 다시 채우지 않음, 가장 큰 결과의
+  자리를 답과 앞의 결과 곁에서 봄, 답의 셈이 AI SDK 7.0.179 가 단계에 남긴 JSON 보다 작지 않음(이스케이프하는 글자와
+  반으로 나뉜 이모지, 마지막에 온 reasoning 의 서명과 바뀌는 메타데이터, 파일, 돈 호출·메타데이터를 실은 돈 호출·없는
+  도구·풀리지 않는 입력·스키마가 거절한 입력·`9e20` 2,000 개처럼 수를 길게 다시 적는 입력·객체가 아닌 입력, issue 2,000
+  개를 낸 두 호출, 2 KiB 가 이모지나 따옴표와 제어 문자 안에 떨어지는 키를 실은 두 호출), 스키마가 거절한 호출의 셈은
+  남긴 것보다 512 바이트 넘게 크지 않음(까닭 셋 가운데 하나만 더함), 스키마가 거절한 까닭(AI SDK 의 앞글 뒤 2 KiB 안에,
+  `alarms` 의 숫자 2,000 개는 앞의 issue 를 차례대로 적고 첫 줄이 그 경로와 message 이며 남은 수가 맞음, 모르는 키 2,000
+  개는 zod 가 낸 issue 하나를 자름, 이모지의 키는 그 2 KiB 가 떨어지는 글자 앞에서, 따옴표와 제어 문자의 키는 JSON 이
+  적는 바이트로 자름, 풀리지 않는 입력은 AI SDK 의 글 그대로이고 JSC 가 자른 식별자를 적는 글은 260 바이트, 없는 도구의
+  글은 35개 도구의 이름 658 바이트, zod 의 차례와 표기와 같은 입력의 같은 글, 2 KiB 가 4 바이트 글자 안에 떨어지는 자름,
+  남은 수 곁의 자름, 한 글자도 들지 않는 줄의 셈, JSON 이 적는 바이트), 미들웨어는 맞는 데까지 넘긴 뒤 오류 조각
+  하나(`ChatFailure` `conversation_limit`)로 끊고 응답을 취소하며 첫 조각이 넘으면 곧바로 끊음, AI SDK 는
+  `maxRetries: 2` 에서도 그 요청을 한 번만 보내고 그 단계를 `error` 로 끝냄. 모델은 AI SDK 의 mock 이라 요청이 없다.
 - 대화 상태(§7.11 "대화 상태"·"이어 쓰기", `chat-state.test.ts`): `state` 가 사람의 글을 더한 뒤 요청 전과 남긴
   단계마다 그 단계의 글 뒤에 오고 `done` 이 마지막 `state` 뒤에 옴, 실패한 단계와 `text` 없는 `turn` 의 시작과
   요청 전에 거절한 `turn` 은 쓰지 않음, 봉투의 키와 그 차례, OpenAI 호환의 base URL 은 채팅이 두는 꼴이고 앞의 세
   제공자는 적지 않음, 어느 `state` 에도 키가 없음, 코어의 `data` 한도가 §7.4 의 4 MiB 와 같음, 한도를 낮춘 코어에서
   시작의 `state` 가 넘으면 요청 없이 `internal` 이고 단계의 `state` 가 넘으면 그 단계에서 `internal` 로 끝나며(한도에
-  딱 맞는 앞의 `state` 는 씀) 그 채팅은 뒤의 차례를 받지 않음, 네 제공자의 대화가 다른 채널에서 이어져 다음 요청이
-  같은 채널의 것과 같고 제공자가 되돌려 받는 값(Anthropic thinking 의 서명, OpenAI reasoning 의 암호문, Google 의 서명,
-  OpenAI 호환의 reasoning)을 실음, 앞서 코어가 쓴 상태의 시험 자료(`tests/fixtures/chat-state/v1.json`, 지문만 지금
-  것으로 바꿈)가 같게 읽힘, `list_models` 뒤의 `resume`, 첫 것이 아닌 `resume`, 보는 동안의 `busy` 와 닫힌 채널,
-  모양이 틀린 `resume`, 거절 표의 까닭마다의 `chat_state_invalid` 와 그 뒤의 빈 채팅, base64 파일 데이터, 제공자·base
-  URL·모델마다의 `chat_state_mismatch`, 다른 키, `resumed` 의 `resend` 와 바로 뒤의 `text` 없는 `turn`(모델의 답,
-  사람의 글, 도구 결과, 2 MiB 를 넘는 대화), 지문이 바뀐 Anthropic 대화의 reasoning 빼기와 다른 제공자의 그대로
+  딱 맞는 앞의 `state` 는 씀) 그 채팅은 뒤의 차례를 받지 않음, 채팅이 찬 것을 알릴 `state` 가 넘으면 차례를 시작할 때의
+  거절도 차례 안의 끊긴 답도 `internal` 이고 `state` 를 쓰지 않음, `full` 이 참인 `state`(끊긴 답의 차례는 그 앞의 글
+  뒤와 `error` 앞에 사람의 글만 든 것 하나, 글이 넘길 차례의 거절은 그 글 없는 것 하나와 `error` 이고 다시 거절할 때는
+  쓰지 않음, 앱에 상태가 없는 채팅은 쓰지 않음)와 그것으로 이은 채팅의 거짓 `resend` 와 요청 없는 `conversation_limit`,
+  네 제공자의 대화가 다른 채널에서 이어져 다음 요청이 같은 채널의 것과 같고 제공자가 되돌려 받는 값(Anthropic thinking
+  의 서명, OpenAI reasoning 의 암호문, Google 의 서명, OpenAI 호환의 reasoning)을 실음, 앞서 코어가 쓴 상태의 시험
+  자료(`tests/fixtures/chat-state/v1.json`, 지문만 지금 것으로 바꿈)가 같게 읽힘, `list_models` 뒤의 `resume`, 첫 것이
+  아닌 `resume`, 보는 동안의 `busy` 와 닫힌 채널, 모양이 틀린 `resume`, 거절 표의 까닭마다의 `chat_state_invalid` 와 그
+  뒤의 빈 채팅, base64 파일 데이터, 제공자·base URL·모델마다의 `chat_state_mismatch`, 다른 키, `resumed` 의 `resend` 와
+  바로 뒤의 `text` 없는 `turn`(모델의 답, 사람의 글, 도구 결과, 2 MiB 를 넘는 대화)과 그 뒤에 쓴 `state` 의 `full`(2 MiB
+  를 넘는 대화는 그 거절 앞에 참), 지문이 바뀐 Anthropic 대화의 reasoning 빼기와 다른 제공자의 그대로
   보내기, 코어의 실패의 `internal` 과 error 줄, 지문이 지시문과 정의 지문의 SHA-256 이고 도구의 설명·스키마·차례로만
   바뀜.
 - 호출의 되돌릴 수 없는 때(`mcp-tools.test.ts`): planner 변경은 요청을 보내는 같은 차례에, 삭제와 보내기는 허용 뒤 그
