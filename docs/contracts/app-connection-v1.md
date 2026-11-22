@@ -257,7 +257,7 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   모드만 다르면 0700 으로 고친다. 소유자가 다르거나 링크면 듣지 않고 `socket_failed` 로 둔다. [계약]
 - 소켓 파일은 bind 직후 0600 으로 바꾼다. listen 대기열은 16 이다. [실측: 시험 빌드 값] 다른 사용자는 0700
   폴더를 지나지 못하므로 bind 와 chmod 사이의 틈으로 들어올 수 없다. [추론]
-- 단일 인스턴스: 앱은 시작하자마자 `app.lock` 을 열어(`O_CREAT|O_RDWR|O_CLOEXEC`, 0600)
+- 단일 인스턴스: 앱은 시작하자마자 `app.lock` 을 열어(`O_CREAT|O_RDWR|O_CLOEXEC|O_NOFOLLOW`, 0600)
   `flock(LOCK_EX|LOCK_NB)` 을 잡고 끝날 때까지 쥔다. 이미 잡혀 있으면 다른 앱이 떠 있는 것이므로 info 로그를
   남기고 0 으로 끝난다. Launch Services 의 단일 실행만으로는 부족하다. `open -n` 이나 실행 파일을 직접
   실행하면 둘째 프로세스가 뜬다. 시험 빌드는 `open -n` 으로 앱을 여러 번 띄웠다. [계약; `open -n` 은 실측]
