@@ -326,8 +326,8 @@ describe("an answer's count", () => {
     {
       name: "a call its schema refuses, whose error writes its numbers longer than the input did",
       tool: "event_create",
-      // JSON writes 1e20 as its 21 digits.
-      input: `{"title":"Lunch","start":"2026-11-23T12:00:00+09:00","end":"2026-11-23T13:00:00+09:00","alarms":[${Array(1000).fill("1e20").join(",")}]}`,
+      // JSON writes 9e20 in its 21 digits: 10,012 bytes as the model sent them, 44,012 again.
+      input: `{"alarms":[${Array(2000).fill("9e20").join(",")}]}`,
       runs: false,
     },
   ])(
@@ -412,6 +412,8 @@ describe("an answer's count", () => {
       }
     }
     expect(count).toBeGreaterThanOrEqual(exact);
+    // One reason of the three the count leaves room for, not all of them: not far above the step.
+    expect(count - exact).toBeLessThan(512);
   });
 
   test("bounds why a schema refused 2,000 keys it does not know: one issue, cut", async () => {
@@ -427,6 +429,31 @@ describe("an answer's count", () => {
     expect(message.startsWith(words.slice(0, -CUT.length))).toBe(true);
     expect(words).not.toContain("\n");
     expect(count).toBeGreaterThanOrEqual(exact);
+    expect(count - exact).toBeLessThan(512);
+  });
+
+  test("bounds why a schema refused a key of characters of four bytes, cut before the one 2 KiB falls in", async () => {
+    const input = { ...WEEK, ["😀".repeat(1000)]: 0 };
+    const { error, exact, count } = await refused("event_list", JSON.stringify(input));
+    const words = error.slice(frame("event_list", input).length);
+    // "Unrecognized key: \"" and 503 emoji are 2,031 bytes; the 504th would pass the room the
+    // mark leaves.
+    expect(words).toBe(`Unrecognized key: "${"😀".repeat(503)}${CUT}`);
+    expect(textBytes(words)).toBeLessThanOrEqual(chatLimits.toolIssueBytes);
+    expect(count).toBeGreaterThanOrEqual(exact);
+    expect(count - exact).toBeLessThan(512);
+  });
+
+  test("bounds why a schema refused a key of quotes and control characters, in the bytes JSON writes them", async () => {
+    // The model makes up its keys: JSON writes a quote in two bytes and a control character in six.
+    const input = { ...WEEK, ['"\u0001'.repeat(1000)]: 0 };
+    const { error, exact, count } = await refused("event_list", JSON.stringify(input));
+    const words = error.slice(frame("event_list", input).length);
+    expect(words).toBe(`Unrecognized key: "${'"\u0001'.repeat(251)}"${CUT}`);
+    expect(textBytes(words)).toBeLessThanOrEqual(chatLimits.toolIssueBytes);
+    expect(Buffer.byteLength(words)).toBeLessThan(600);
+    expect(count).toBeGreaterThanOrEqual(exact);
+    expect(count - exact).toBeLessThan(512);
   });
 
   test("keeps the AI SDK's words for input that does not parse, which it writes again as given", async () => {
@@ -435,6 +462,30 @@ describe("an answer's count", () => {
     expect(error).toBe(
       `AI_InvalidToolInputError: Invalid input for tool event_list: AI_JSONParseError: JSON parsing failed: Text: ${input}.\nError message: SyntaxError: JSON Parse error: Unterminated string`,
     );
+    expect(count).toBeGreaterThanOrEqual(exact);
+  });
+
+  test("keeps Bun's words on input that does not parse, which cut the identifier they quote", async () => {
+    const input = `{"from":${"x".repeat(10_000)}}`;
+    const { error, exact, count } = await refused("event_list", input);
+    const words = error.slice(error.lastIndexOf("Error message: ") + "Error message: ".length);
+    expect(words).toMatch(/^SyntaxError: JSON Parse error: Unexpected identifier "x+\.\.\."$/);
+    // The longest words Bun 1.4.5 writes, which the answer's count leaves room for
+    // (src/chat/sdk/answer.ts).
+    expect(words).toHaveLength(258);
+    expect(textBytes(words)).toBe(260);
+    expect(count).toBeGreaterThanOrEqual(exact);
+  });
+
+  test("keeps the AI SDK's words for a tool the core does not have, the names of its 35 tools", async () => {
+    const { error, exact, count } = await refused("event_lists", JSON.stringify(WEEK));
+    const names = Object.keys(tools).join(", ");
+    expect(error).toBe(
+      `AI_NoSuchToolError: Model tried to call unavailable tool 'event_lists'. Available tools: ${names}.`,
+    );
+    // What the answer's count leaves room for (src/chat/sdk/answer.ts).
+    expect(Object.keys(tools)).toHaveLength(35);
+    expect(textBytes(names)).toBe(658);
     expect(count).toBeGreaterThanOrEqual(exact);
   });
 });
