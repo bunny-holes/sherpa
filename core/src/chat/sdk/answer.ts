@@ -39,21 +39,23 @@ const jsonBytes = (value: unknown) =>
 /** A string as JSON writes it, without its quotes. */
 const stringBytes = (value: string) => jsonBytes(value) - 2;
 
-/**
- * A call's input as the AI SDK keeps it: the parsed JSON, or `{}` for one that is blank or does
- * not parse, or that is no object (ai 7.0.179 parse-tool-call.ts, to-response-messages.ts).
- */
-function inputBytes(input: string): number {
-  if (input.trim() === "") return 2;
-  let value: unknown;
+/** A call's input as the AI SDK parses it: blank input is `{}`, and input that does not parse none. */
+function parsed(input: string): { value: unknown } | undefined {
+  if (input.trim() === "") return { value: {} };
   try {
-    value = JSON.parse(input);
+    return { value: JSON.parse(input) };
   } catch {
-    // The SDK refuses the call, and its message keeps `{}` for the input.
-    return 2;
+    // The SDK refuses the call: its message keeps `{}` for the input, and its error the text.
+    return undefined;
   }
-  return typeof value === "object" ? jsonBytes(value) : 2;
 }
+
+/**
+ * A call's input as the assistant's message keeps it: the parsed JSON, or `{}` for input that does
+ * not parse or that is no object (ai 7.0.179 parse-tool-call.ts, to-response-messages.ts).
+ */
+const keptBytes = (input: { value: unknown } | undefined) =>
+  input !== undefined && typeof input.value === "object" ? jsonBytes(input.value) : 2;
 
 /** A file's data as the AI SDK keeps it, in base64. */
 function dataBytes(data: FileData): number {
@@ -104,18 +106,21 @@ export class AnswerCount {
         this.inputs.delete(part.toolCallId);
         // The id and the name are in the call and in its result, and the name in an error.
         const names = 3 * (stringBytes(part.toolCallId) + stringBytes(part.toolName));
-        // An error for input that does not parse or that its schema refuses writes the input again
-        // (ai 7.0.179 parse-tool-call.ts, @ai-sdk/provider type-validation-error.ts), and why the
-        // schema refused it in the core's words, which are at most `toolIssueBytes` (./tools.ts).
-        const again = stringBytes(part.input) + chatLimits.toolIssueBytes;
-        return (
-          CALL +
-          names +
-          inputBytes(part.input) +
-          again +
-          jsonBytes(part.providerMetadata) -
-          streamed
-        );
+        const input = parsed(part.input);
+        // An error for input that does not parse writes it again as given, and one for input its
+        // schema refuses as JSON writes the parsed value, which may be longer: `1e20` takes 21
+        // digits (ai 7.0.179 parse-tool-call.ts, @ai-sdk/provider json-parse-error.ts,
+        // type-validation-error.ts). Then why the schema refused it in the core's words, at most
+        // `toolIssueBytes` (./tools.ts).
+        const again =
+          Math.max(
+            stringBytes(part.input),
+            input === undefined ? 0 : stringBytes(JSON.stringify(input.value)),
+          ) + chatLimits.toolIssueBytes;
+        // The provider's metadata is in the call and, once the call ran, in its result as well
+        // (ai 7.0.179 execute-tool-call.ts, to-response-messages.ts).
+        const metadata = 2 * jsonBytes(part.providerMetadata);
+        return CALL + names + keptBytes(input) + again + metadata - streamed;
       }
       case "tool-result":
         // A result the provider ran the tool for: the core sends no such tool, so none is expected.

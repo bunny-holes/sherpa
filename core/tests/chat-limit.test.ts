@@ -316,16 +316,36 @@ describe("an answer's count", () => {
       input: JSON.stringify("hello"),
       runs: false,
     },
+    {
+      name: "a call that runs with the provider's metadata, which its result carries again",
+      tool: "event_list",
+      input: JSON.stringify(WEEK),
+      runs: true,
+      metadata: { google: { thoughtSignature: "s".repeat(10_000) } },
+    },
+    {
+      name: "a call its schema refuses, whose error writes its numbers longer than the input did",
+      tool: "event_create",
+      // JSON writes 1e20 as its 21 digits.
+      input: `{"title":"Lunch","start":"2026-11-23T12:00:00+09:00","end":"2026-11-23T13:00:00+09:00","alarms":[${Array(1000).fill("1e20").join(",")}]}`,
+      runs: false,
+    },
   ])(
     "bounds what the AI SDK keeps of $name, the result of one that runs besides",
-    async ({ tool, input, runs }) => {
+    async ({ tool, input, runs, metadata }) => {
       const parts: ModelPart[] = [
         { type: "stream-start", warnings: [] },
         { type: "tool-input-start", id: "call_1", toolName: tool },
         { type: "tool-input-delta", id: "call_1", delta: input.slice(0, 7) },
         { type: "tool-input-delta", id: "call_1", delta: input.slice(7) },
         { type: "tool-input-end", id: "call_1" },
-        { type: "tool-call", toolCallId: "call_1", toolName: tool, input },
+        {
+          type: "tool-call",
+          toolCallId: "call_1",
+          toolName: tool,
+          input,
+          ...(metadata ? { providerMetadata: metadata } : {}),
+        },
         finish("tool-calls"),
       ];
       const messages = await kept(parts, tools);
