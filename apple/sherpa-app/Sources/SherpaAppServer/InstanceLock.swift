@@ -39,7 +39,11 @@ public final class InstanceLock: Sendable {
         return .acquired(InstanceLock(descriptor: descriptor))
     }
 
+    /// Unlocks, then closes. A close frees the lock only when it is the last reference to the
+    /// open file, and a child that `posix_spawn` or `fork` is making in another thread holds a
+    /// copy of every descriptor, `O_CLOEXEC` ones too, until its exec closes them (§3).
     public func release() {
+        flock(descriptor, LOCK_UN)
         close(descriptor)
     }
 }

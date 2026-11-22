@@ -324,8 +324,33 @@ private func temporaryFolder() throws -> String {
     let lockMode = try FileManager.default.attributesOfItem(atPath: location.lockPath)[.posixPermissions] as? Int
     #expect(lockMode == 0o600)
     lock.release()
-    guard case let .acquired(again) = InstanceLock.acquire(location: location) else {
-        Issue.record("lock not released")
+    let next = InstanceLock.acquire(location: location)
+    guard case let .acquired(again) = next else {
+        Issue.record("lock not released: \(next)")
+        return
+    }
+    again.release()
+}
+
+@Test func releasesTheLockWhileACopyOfItsDescriptorIsStillOpen() throws {
+    let root = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(atPath: root) }
+    let location = SocketLocation(socketPath: root + "/run/app.sock", isOverride: true)
+    guard case let .acquired(lock) = InstanceLock.acquire(location: location) else {
+        Issue.record("lock not acquired")
+        return
+    }
+    // A child that posix_spawn or fork is making holds a copy of every descriptor, O_CLOEXEC
+    // ones too, until its exec closes them. With close alone the lock stayed held while
+    // quotedPathsReachTheShellAsOneUnchangedWord started its shells (bunny-holes/sherpa#78).
+    // F_DUPFD_CLOEXEC makes such a copy here, close-on-exec like the lock's own descriptor.
+    let copy = fcntl(lock.descriptor, F_DUPFD_CLOEXEC, 0)
+    try #require(copy >= 0)
+    defer { close(copy) }
+    lock.release()
+    let next = InstanceLock.acquire(location: location)
+    guard case let .acquired(again) = next else {
+        Issue.record("lock not released while a copy of its descriptor was open: \(next)")
         return
     }
     again.release()
