@@ -103,14 +103,14 @@ never writes an agent's configuration (contract §2 "MCP 켜기와 연결 안내
 bunny-holes/sherpa#31), and the CLI keeps the helper path above until then.
 
 Today no Sherpa process makes a network connection. The core reads only the
-pipes the app opened for it (contract §7.1); its source calls no `fetch` and
-opens no socket. Every core command starts with `globalThis.fetch` refusing
-every call; the runtime's `fetch` stays in `core/src/chat/egress.ts` with no
-caller yet, lint rules keep `fetch` out of every other module and every
-socket, HTTP, WebSocket, and name-lookup API out of `core/src`, and a stdio
-test checks with `lsof` that the built core holds no internet or listening
-socket while it serves MCP. The app listens only on its Unix socket for
-relays, and the relay connects only to that socket. [ADR-0012](../adr/0012-in-app-chat.md)
+pipes the app opened for it (contract §7.1), opens no socket, and has no path
+to `fetch`: the turn fetch in `core/src/chat/egress.ts` holds the runtime's
+`fetch` but has no caller yet. Every core command starts with
+`globalThis.fetch` refusing every call, lint rules keep `fetch` out of every
+other module and every socket, HTTP, WebSocket, and name-lookup API out of
+`core/src`, and a stdio test checks with `lsof` that the built core holds no
+internet or listening socket while it serves MCP. The app listens only on its
+Unix socket for relays, and the relay connects only to that socket. [ADR-0012](../adr/0012-in-app-chat.md)
 (owner decision 2026-11-22, bunny-holes/sherpa#59) amends ADR-0010 decision 2
 for an in-app chat that is not built yet. When it lands, `sherpa app serve` runs
 the chat loop in a new `core/src/chat/` module on the Vercel AI SDK v7. The chat
