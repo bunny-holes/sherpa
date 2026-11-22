@@ -112,15 +112,20 @@ The one network connection a Sherpa process makes is the core's HTTPS request
 to the provider origin the person chose, and today only a chat channel's model
 list (`list_models`, contract §7.11) sends one. The core reads only the pipes
 the app opened for it (contract §7.1) and listens on no socket. Every core
-command starts with `globalThis.fetch` refusing every call and
-`globalThis.WebSocket` refusing every connection, so a bundled package that
-falls back to either global reaches nothing; a model list leaves only through
-the turn fetch in `core/src/chat/egress.ts`, as HTTPS to that one origin
-without following a redirect. Lint rules keep `fetch` out of every other
-module and every socket, HTTP, WebSocket, and name-lookup API out of
-`core/src`, and stdio tests check with `lsof` that the built core holds no
-internet or listening socket while it serves MCP or refuses a model list for a
-plain-HTTP origin. The app listens only on its
+command starts with `globalThis.fetch` refusing every call,
+`globalThis.WebSocket` refusing every connection, and the AI SDK's default
+provider (`globalThis.AI_SDK_DEFAULT_PROVIDER`) refusing every model, so a
+bundled package that falls back to one of them reaches nothing and a model id
+given as a string never reaches the Vercel AI Gateway; a model list leaves
+only through the turn fetch in `core/src/chat/egress.ts`, as HTTPS to that one
+origin without following a redirect. Lint rules keep `fetch` out of every
+other module, every socket, HTTP, WebSocket, and name-lookup API out of
+`core/src`, and the AI SDK's values inside `core/src/chat/sdk/`; a unit test
+reads the bundled packages for the same modules and Bun's own network API, as
+patterns. Stdio tests check with `lsof` that the built core holds no internet
+or listening socket while it serves MCP or refuses a model list for a
+plain-HTTP origin, and no socket but its connection to the origin whose
+certificate a test made it trust. The app listens only on its
 Unix socket for relays, and the relay connects only to that socket. [ADR-0012](../adr/0012-in-app-chat.md)
 (owner decision 2026-11-22, bunny-holes/sherpa#59) amends ADR-0010 decision 2
 for an in-app chat whose turns are not built yet. When they land,

@@ -22,6 +22,17 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > 덧붙였다. [아키텍처](../architecture/README.md) 의 "long-lived content archive" 금지 규칙에는 이 기록을 예외로
 > 적었다.
 >
+> **정정 (2026-11-22, #66, AI SDK 의 울타리).** 구현 단계 4 의 넷째 몫이 PR #91 로 들어갔다. 코어가 `ai` 7.0.179 와
+> 네 제공자 패키지를 정확한 판으로 고정했고, 아직 어느 모듈도 그것을 가져오지 않아 빌드한 코어에는 들지 않는다. 코어는
+> 시작 때 `globalThis.AI_SDK_DEFAULT_PROVIDER` 를 모든 모델을 거부하는 제공자로, `globalThis.AI_SDK_LOG_WARNINGS` 를
+> Sherpa 로그에 쓰는 함수로 두고 둘 다 다시 쓰거나 재정의하지 못하게 한다. 문자열 모델 id 는 그 전역이 비었을 때
+> Vercel AI Gateway 로 풀리고, Gateway 는 연결 전에 Vercel CLI 의 로그인 파일을 읽고 덮어쓸 수 있어서다. 린트는 AI SDK
+> 의 값을 `core/src/chat/sdk/` 에, 모델을 받는 함수를 그 안의 `turn.ts` 에만 두고, 단위 시험은 코어가 번들하는 패키지를
+> 패턴으로 읽는다. 빌드한 코어는 시험이 `NODE_EXTRA_CA_CERTS` 로 넘긴 인증 기관을 믿으므로, stdio 시험이 모델 목록의
+> 허용 경로를 끝까지 본다. 그 밖에는 Bun 에 든 인증 기관만 믿고 macOS 의 시스템 저장소는 읽지 않는다.
+> 고친 곳은 상태 줄, "제공자 면", "코드로 지키기" 2·3, "시험으로 지키기", "OpenAI 호환의 base URL", 위험 9,
+> "구현 단계" 4, "아직 확인 전" 이다.
+>
 > **정정 (2026-11-22, #66, 채팅 채널).** 구현 단계 4 의 셋째 몫이 PR #89 로 들어갔다. 코어가 채널 종류 `chat` 을
 > 받고, `sherpa.chat.v1` 의 첫 메시지인 모델 목록(`list_models` 와 답 `models`·`error`)을 계약 §7.11 에 실었다. 종류를
 > 더한 것이라 계약은 3판, 인사는 Mux 3 그대로다. 코어가 처음으로 지킨 `fetch` 로 고른 제공자의 출처에 나간다. 같은 날
@@ -64,9 +75,10 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 상태: 채택(소유자 결정, 2026-11-22, bunny-holes/sherpa#59). 구현 단계 2(코어 나가는 길 경계와 정적 검사, #64)는
 PR #74 로, 단계 1 중 #63 의 몫(mux 2, `open` 의 채널 종류, MCP 스위치가 `mcp` 채널만 닫는 것)은 PR #72 로,
 단계 4(#66) 중 호출 수명 모듈 분리와 전역 `WebSocket` 거부는 PR #86 으로, 확인이 그 호출의 채널을 싣는 계약
-3판(mux 3)은 PR #87 로, 채팅 채널과 모델 목록은 PR #89 로 들어갔다. 나머지는 구현 전이다(정정 2026-11-22, #64:
-처음에는 "구현 전이다" 로 적었다. 정정 2026-11-22, #63: 단계 1 의 몫을 더했다. 정정 2026-11-22, #66: 단계 4 의 첫
-몫을 더했고, 같은 날 확인의 채널과 채팅 채널을 더했다). 이 결정은
+3판(mux 3)은 PR #87 로, 채팅 채널과 모델 목록은 PR #89 로, AI SDK 의 판 고정과 그 울타리는 PR #91 로 들어갔다.
+나머지는 구현 전이다(정정 2026-11-22, #64: 처음에는 "구현 전이다" 로 적었다. 정정 2026-11-22, #63: 단계 1 의 몫을
+더했다. 정정 2026-11-22, #66: 단계 4 의 첫 몫을 더했고, 같은 날 확인의 채널, 채팅 채널, AI SDK 의 울타리를 더했다).
+이 결정은
 [ADR-0010](0010-menu-bar-app-and-mcp.md) 결정 2 의 "Bun 은 소켓을 열지 않고 앱과의 표준 입출력 파이프만 읽는다"
 를 고친다. 앱이 코어 하나를 띄우는 구조, 중계, MCP 는 2026-07-28 만 받는
 것([ADR-0011](0011-mcp-2026-07-28-only.md)), 삭제·보내기의 앱 창 확인([앱 연결
@@ -307,12 +319,27 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   의존으로 설치되지만 가져오지 않는다), 제공자가 실행하는 도구(웹 검색, 코드 실행 등), 원격 측정. 폐기 예정 이름
   `fullStream`, `system`, `stepCountIs`, `needsApproval`, `onFinish`·`onStepFinish`, `experimental_telemetry` 도
   쓰지 않는다. 각각 `stream`, `instructions`, `isStepCount`, `toolApproval`, `onEnd`·`onStepEnd`, `telemetry` 가
-  새 이름이다. [문서: AI SDK 7 이행 안내] [설계]
+  새 이름이다. [문서: AI SDK 7 이행 안내] [설계] (정정 2026-11-22, #66: `@ai-sdk/gateway` 4.0.152 는 `ai` 7.0.179 의
+  `dist` 가 정적으로 가져오므로 `ai` 와 함께 번들되고 실린다. Gateway 로 가는 길은 둘이다. 문자열 모델 id 는
+  `globalThis.AI_SDK_DEFAULT_PROVIDER` 가 비었을 때 Gateway 로 풀리고 [문서: `ai` 7.0.179 `src/model/resolve-model.ts`,
+  `src/batch/batch.ts`], `ai` 는 `gateway`·`createGateway` 를 내보낸다. Gateway 는 `AI_GATEWAY_API_KEY` 가 없으면
+  `@vercel/oidc` 3.2.0 으로 토큰을 구한다. 그 길은 작업 폴더 위쪽에서 `.vercel/project.json` 을 찾고, 있으면 Vercel
+  CLI 의 `~/Library/Application Support/com.vercel.cli/auth.json` 을 읽어 지난 토큰을 `vercel.com` 에 갱신하며,
+  갱신하지 못하면 그 파일을 `{}` 로 덮어쓴다. 그 뒤 `api.vercel.com` 에 묻는다. 둘 다 전역 `fetch` 로 나가므로 시작
+  때의 거부가 연결은 막지만 파일 읽기와 덮어쓰기는 막지 못한다. [문서: `@ai-sdk/gateway` 4.0.152 `dist/index.js` 의
+  `getGatewayAuthToken`, `@vercel/oidc` 3.2.0 `dist/token.js`·`dist/token-util.js`·`dist/auth-config.js`; 실행하지
+  않았다] 그래서 코어는 시작 때 기본 제공자를 모든 모델을 거부하는 제공자로 두고, 린트는 `@ai-sdk/gateway` 와 `ai`
+  의 `gateway`·`createGateway` 를 어디서도 가져오지 않게 한다("코드로 지키기" 3). 처음에는 Gateway 가 `ai` 의
+  의존으로 설치되지만 가져오지 않는다고 적었다.)
 - **원격 측정:** v7 은 통합을 등록할 때만 원격 측정을 내고, OpenTelemetry 는 `@ai-sdk/otel` 로 옮겼다. [문서:
   [Telemetry](https://ai-sdk.dev/docs/ai-sdk-core/telemetry)] 코어는 통합을 등록하지 않는다. [설계]
 - **경고:** AI SDK 의 경고는 `globalThis.AI_SDK_LOG_WARNINGS` 가 `false` 나 함수가 아니면 기본 기록기로 나간다.
   [문서: `ai` 7.0.179 `src/logger/log-warnings.ts`] 코어는 이 값을 Sherpa 로그로 옮기는 함수로 두고, 시험은 폐기
-  예정 경고가 하나라도 나오면 실패한다. [설계]
+  예정 경고가 하나라도 나오면 실패한다. [설계] (정정 2026-11-22, #66: 코어는 시작 때 이 전역을 그 함수로 두고 다시
+  쓰거나 재정의하지 못하게 한다. 함수는 경고마다 `warn [core:chat:sdk-warning] type=… subject=… provider=…` 한 줄을
+  쓰고, 요청에서 온 값을 담을 수 있는 `details` 와 `message` 는 싣지 않는다(계약 §12). `ai` 7.0.179 의
+  `generateText` 는 경고를 이 함수에만 넘기고 `process.emitWarning`·`console.warn` 은 부르지 않았다. [실측:
+  `core/tests/chat-sdk-globals.test.ts`] 폐기 예정 경고로 실패하는 시험은 차례를 넣는 작업이 더한다.)
 - **판 고정:** `ai` 와 `@ai-sdk/*` 는 정확한 판으로 고정하고(`^` 없음), 올릴 때 이행 안내와 이 절을 다시 본다.
   [설계]
 
@@ -395,7 +422,10 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
    가는 307 과 상대 `Location` 의 302 를 모두 `TypeError`(`UnexpectedRedirect`)로 거부했고, 리디렉트 대상은
    요청을 받지 않았다. [실측: #64] 회귀 시험은 `core/tests/stdio/egress.test.ts` 이고 게이트를 돌리는 Bun 에서
    돈다. 게이트가 `core/package.json` 의 Bun 판을 강제하는 것은 #71(PR #77)이 넣는다. (정정 2026-11-22, #64:
-   처음에는 Bun 1.4.4 에서만 재고, 저장소가 고정한 1.4.5 는 구현 때 다시 잰다고 적었다.)
+   처음에는 Bun 1.4.4 에서만 재고, 저장소가 고정한 1.4.5 는 구현 때 다시 잰다고 적었다.) (정정 2026-11-22, #66: 회귀
+   시험은 이제 빌드한 코어에서 돈다. 시험이 믿게 한 인증서의 https 루프백 출처가 다른 출처로 보낸 307 과 같은 출처로
+   보낸 302 를 모델 목록이 따르지 않고 `egress_denied` 로 끝나며, 대상은 요청을 받지 않는다. 처음에는 시험을 돌리는
+   Bun 위에서 `core/src/chat/egress.ts` 를 평문 로컬 서버에 돌렸다.)
 3. 정적 검사(코어 린트 규칙이나 `scripts/checks/` 검사)로 막는다. [설계]
    - `chat/` 밖에서 `ai`·`@ai-sdk/*` 를 가져오지 않는다.
    - 코어 어디서도 `node:net`·`node:tls`·`node:http`·`node:https`·`node:http2`·`node:dgram`,
@@ -412,6 +442,23 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
    코드, `Bun.spawn` 으로 띄운 다른 실행 파일은 보지 못한다. [추론] 다섯째 항목(문자열 모델 id)은 AI SDK 를
    들이는 단계 4(#66)가 넣는다. (정정 2026-11-22, #64)
 
+   (정정 2026-11-22, #66: 다섯째 항목은 린트만으로 지키지 못한다. 문자열 id 는 형식으로 `LanguageModel` 에 들고,
+   이름을 고르는 린트 규칙은 `import()` 를 읽지 못한다(oxlint 1.94.0). 그래서 세 겹이다. 린트는 AI SDK 의 값을
+   `core/src/chat/sdk/` 에만 두고(그 밖의 채팅 모듈은 형식만 가져오고, `sdk/` 는 `core/src/chat/load.ts` 만
+   가져온다), 모델을 받는 함수는 그 안의 `turn.ts` 만 가져오며, Gateway 와 원격 측정 등록은 어디서도 가져오지
+   않는다. 형식 검사는 `turn.ts` 가 모델 자리에 제공자 객체만 받게 하는 것이고, 차례를 넣는 작업이 더한다. 실행
+   때는 코어가 시작할 때 `globalThis.AI_SDK_DEFAULT_PROVIDER` 를 모든 모델을 거부하는 제공자로 두고 다시 쓰지 못하게
+   한다. `ai` 7.0.179 는 문자열 id 를 이 전역에서 풀고 전역이 비었을 때만 Gateway 로 가므로, `generateText`·
+   `streamText`·`embed` 에 준 문자열 id 는 요청 없이 `egress_denied` 로 거부된다. [문서: `src/model/resolve-model.ts`;
+   실측: `core/tests/chat-sdk-globals.test.ts`] 린트는 `core/src` 만 보므로, 번들하는 패키지는 단위 시험
+   `core/tests/dependency-network.test.ts` 가 패턴으로 읽는다. `core/package.json` 의 의존과 그 의존, 선택이 아닌
+   peer 의 JavaScript 에 린트와 같은 네트워크 모듈, 파일·경로·OS·암호·process 밖의 Node 모듈, `bun`, `Bun`·
+   `Worker`·네이티브 바인딩, 이름을 실행 때 짓는 모듈 읽기가 없다. 패턴 검사라 다른 이름으로 부른 `require`·
+   `import`, `eval`·`Function` 으로 만든 코드(MCP 서버의 Ajv 검사기가 그렇다), 문자열로 지은 속성 이름은 보지
+   못한다. 알려진 길은 시작 때의 세 거부가 막는다. 시험을 돌리는 Bun 1.4.5 에는 `fetch`·`WebSocket` 밖의 네트워크
+   전역(`EventSource`, `RTCPeerConnection`, `WebTransport`, `XMLHttpRequest`, `navigator.sendBeacon`)이 없어,
+   `ai` 의 브라우저 실시간 세션이 만드는 `RTCPeerConnection` 은 연결이 아니라 오류가 된다. [실측: 같은 시험])
+
 ### 시험으로 지키기
 
 - 단위 시험은 소켓 없이 지킨 `fetch` 를 본다. 다른 출처, 평문 HTTP, userinfo, 리디렉트, 전역 `fetch` 호출이 모두
@@ -427,7 +474,12 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   같은 파일이 차례 대신 채팅 채널의 모델 목록으로 이 시험을 한다. 평문 http 루프백 출처는 `egress_denied` 이고
   시험이 띄운 서버에 연결이 오지 않으며, 그동안 코어에 인터넷 소켓도 듣는 Unix 소켓도 없다. 자체 서명 인증서의 https
   루프백 출처에는 연결하지만 `provider_certificate` 로 끝나고 그 서버의 처리기에 요청이 닿지 않는다. 믿을 수 있는
-  TLS 로 허용 경로 끝까지 보는 것과 차례로 하는 같은 시험은 차례를 넣는 작업이 더한다.)
+  TLS 로 허용 경로 끝까지 보는 것과 차례로 하는 같은 시험은 차례를 넣는 작업이 더한다.) (정정 2026-11-22, #66: 믿을
+  수 있는 TLS 는 이 층에서도 된다. Bun 1.4.5 로 빌드한 코어는 시작 때 `NODE_EXTRA_CA_CERTS` 가 가리킨 인증 기관을
+  믿는다. 앱은 코어에 `HOME`·`TMPDIR`·`PATH`·`LOG_LEVEL` 만 넘기므로 이 변수는 시험이 띄운 코어에만 닿는다(계약
+  §7.1). 같은 파일이 시험마다 만든 인증 기관으로 모델 목록의 허용 경로를 끝까지 본다. 서버가 답을 잡고 있는 동안
+  코어의 인터넷 소켓은 모두 그 서버로 가는 연결이고 듣는 Unix 소켓은 없으며, 키는 그 요청의 `authorization`
+  머리말에만 있다. 차례로 하는 같은 시험은 차례를 넣는 작업이 더한다.)
 - 게이트는 유료 API 를 부르지 않는다. 실제 제공자 연결은 소유자 실기에서 `lsof -i -a -p <코어 pid>` 로 연결이
   고른 출처 하나뿐인지 본다. [설계]
 
@@ -443,6 +495,7 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   막아도 이름 풀이가 아무 이름이나 루프백으로 풀 수 있고, Bun 의 `fetch` 에는 연결할 주소를 보고 막는 길이 없다.
   [추론] 유효한 인증서는 빌드한 코어의 Bun 이 믿는 인증서다. 자체 서명 인증서는 요청 전에 `provider_certificate` 로
   끝난다. [실측: `core/tests/stdio/egress.test.ts`] 사람이 더한 루트 인증서를 Bun 이 믿는지는 "아직 확인 전" 이다.)
+  (정정 2026-11-22, #66: 빌드한 코어의 저장소에는 키체인에서 신뢰한 루트 인증서가 들지 않는다. 위험 9 를 보라.)
 
 ## 확인 흐름
 
@@ -799,6 +852,13 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
 8. **비용:** 도구 루프는 한 차례에 모델 요청을 여러 번 낸다. 단계 한도와 토큰 수 표시로 드러낸다.
 9. **프록시와 TLS:** Bun 의 `fetch` 가 macOS 시스템 프록시와 사람이 더한 루트 인증서를 따르는지 재지 않았다.
    앱은 코어에 `HTTPS_PROXY` 같은 환경을 넘기지 않는다(계약 §7.1). 회사망에서 실패할 수 있다. [미확인]
+   (정정 2026-11-22, #66: 빌드한 코어는 Bun 에 든 인증 기관(1.4.5 에서 118개)과 `NODE_EXTRA_CA_CERTS` 의 것만
+   믿는다. macOS 의 시스템 저장소는 `--use-system-ca` 나 `NODE_USE_SYSTEM_CA=1` 이 있을 때만 더해지는데, 빌드도 앱도
+   그것을 주지 않는다. [실측: `core/tests/chat-egress.test.ts`, 2026-11-22 빌드한 탐침] 그래서 회사가 TLS 를 가로채는
+   망처럼 키체인에서 신뢰한 루트 뒤의 출처는 `provider_certificate` 로 끝날 것이다. [추론] 빌드에
+   `--compile-exec-argv=--use-system-ca` 를 넣으면 그 저장소가 더해지지만 넣을지는 정하지 않았다. 그 저장소는 이
+   Mac 에서 관리자 신뢰 설정의 인증서 5개였고 사용자 신뢰 설정의 10개는 들지 않았다. [실측: 2026-11-22 탐침] 시스템
+   프록시는 재지 않았다.)
 10. **기록에 남는 남의 내용:** 대화 기록에는 도구가 읽은 메일·메시지 본문이 든다. 이 Mac 의 로그인 세션을 쥔
     사람은 앱 화면으로 그것을 본다. 디스크·백업·로컬 스냅숏의 사본은 암호문이고 키는 이 기기의 Sherpa.app 만
     읽는다. 보관 기한과 지우기로 남는 기간을 줄인다. [추론; 설계]
@@ -874,7 +934,9 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
    로그 규칙을 싣고 §7.1 의 소켓 문장을 고친다(정정 2026-11-22, #63: 단계 1 에서 옮겼다). 호출 수명 모듈 분리와
    전역 `WebSocket` 거부는 PR #86 이 먼저 넣었다(정정 2026-11-22, #66). `confirm` 의 채널과 그 종류로 가리는
    확인(계약 3판, mux 3)도 먼저 들어갔다(정정 2026-11-22, #66). 채팅 채널, 모델 목록, §7.1 의 소켓 문장, §12 의
-   모델 목록 줄은 PR #89 가 넣었다(정정 2026-11-22, #66).
+   모델 목록 줄은 PR #89 가 넣었다(정정 2026-11-22, #66). AI SDK 의 판 고정, 기본 제공자와 경고의 전역, `sdk/` 의
+   린트, 번들하는 패키지의 패턴 검사, 믿는 인증서로 허용 경로를 보는 stdio 시험과 문자열 모델 id 검사의 린트·실행 때
+   겹은 PR #91 이 넣었다(정정 2026-11-22, #66).
 5. **앱 채팅 화면:** 첫 화면의 두 타일, 동의, 제공자·모델 고르기, 원격 자원 없는 마크다운, 한글 입력, 확인
    창과의 포커스. 계약 §2 의 첫 화면도 이 단계가 싣는다(정정 2026-11-22, #63: 단계 1 에서 옮겼다). MCP 를 끈 동안 채팅 호출의
    확인 창이 뜨는지와 스위치를 끌 때 그 창이 남는지를 끝까지 보는 시험도 이 단계가 더한다. 단계 4 의 앱은 채팅
@@ -907,7 +969,10 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
 - hardened runtime 과 Bun 1.4.5 에서의 크기와 메모리, 긴 대화의 메모리.
 - 35개 도구 정의의 실제 토큰 수.
 - 시스템 프록시와 사람이 더한 루트 인증서, 이름 풀이가 시스템 해석기를 거치는지. (정정 2026-11-22, #64: 처음에는
-  Bun 1.4.5 의 `redirect: "error"` 도 적었다. "코드로 지키기" 2 에서 닫았다.)
+  Bun 1.4.5 의 `redirect: "error"` 도 적었다. "코드로 지키기" 2 에서 닫았다.) (정정 2026-11-22, #66: 시험이
+  `NODE_EXTRA_CA_CERTS` 로 넘긴 인증 기관은 빌드한 코어가 믿고, 키체인에서 신뢰한 루트 인증서는 저장소에 들지
+  않는다(위험 9). 빌드에 `--use-system-ca` 를 넣을지와, 넣으면 `fetch` 가 그 루트 뒤의 출처를 받는지가 남았다.
+  끝까지 재려면 키체인을 바꿔야 한다.)
 - 프로필을 더한 빌드의 공증과 기존 권한 허락의 이어짐.
 - 확인 창이 채팅 입력 중에 뜰 때의 키 입력(한글 조합 중 Return, 키보드 탐색의 Space).
 - MCP 가 꺼진 동안 채팅 호출의 확인 창이 뜨는지와 스위치를 끌 때 그 창이 남는지. 계약 3판의 규칙이고, 앱이 채팅

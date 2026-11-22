@@ -5,7 +5,9 @@
  * `globalThis.fetch` refusing every call for the rest of the process, so a library that falls
  * back to the global (the AI SDK reads it on every request) reaches nothing. It leaves
  * `globalThis.WebSocket` refusing every connection the same way, for a library that falls back
- * to that global (the AI SDK's WebSocket helper does), and keeps no WebSocket. A chat turn and a
+ * to that global (the AI SDK's WebSocket helper does), and keeps no WebSocket. It leaves
+ * `globalThis.AI_SDK_DEFAULT_PROVIDER` a provider that refuses every model, so a model id given
+ * to the AI SDK as a string never reaches the AI Gateway, its default. A chat turn and a
  * model list send through `Egress.turnFetch`: HTTPS to the one origin the person chose, without
  * userinfo, never following a redirect, and stopped by the request's signal. Anything else is
  * refused before it leaves, with an `EgressDeniedError` and a `[core:egress:…] refused` line.
@@ -30,6 +32,7 @@ export type AllowedOrigin = string & { readonly [allowedOriginBrand]: true };
 export type EgressRefusal =
   | "global_fetch"
   | "global_websocket"
+  | "string_model_id"
   | "invalid_url"
   | "not_https"
   | "userinfo"
@@ -52,7 +55,7 @@ export class EgressDeniedError extends SherpaError {
 }
 
 function refuse(
-  action: "fetch" | "base-url" | "websocket",
+  action: "fetch" | "base-url" | "websocket" | "default-provider",
   reason: EgressRefusal,
   cause?: unknown,
 ) {
@@ -189,6 +192,42 @@ function refusedWebSocket(): never {
   throw refuse("websocket", "global_websocket");
 }
 
+/**
+ * Every factory `ai` 7.0.179 calls on `globalThis.AI_SDK_DEFAULT_PROVIDER` for a model id given
+ * as a string, the AI Gateway when the global is unset (`src/model/resolve-model.ts`,
+ * `src/batch/batch.ts`): those of `ProviderV4` and the experimental ones it reads off the global.
+ */
+const DEFAULT_PROVIDER_FACTORIES = [
+  "languageModel",
+  "embeddingModel",
+  "imageModel",
+  "transcriptionModel",
+  "speechModel",
+  "rerankingModel",
+  "videoModel",
+  "speechTranslationModel",
+  "decisionModel",
+  "evaluationModel",
+  "extractionModel",
+  "experimental_batch",
+] as const;
+
+/**
+ * What `globalThis.AI_SDK_DEFAULT_PROVIDER` is after `installEgress`: a version 4 provider whose
+ * every factory refuses, frozen. A factory the SDK reads that is not here is undefined, and the SDK
+ * answers that with an error of its own; the AI Gateway stays out either way, since the SDK falls
+ * back to it only when the global is unset.
+ */
+function refusingProvider(): object {
+  const refused = (): never => {
+    throw refuse("default-provider", "string_model_id");
+  };
+  return Object.freeze({
+    specificationVersion: "v4",
+    ...Object.fromEntries(DEFAULT_PROVIDER_FACTORIES.map((name) => [name, refused])),
+  });
+}
+
 /** What a chat turn sends through (ADR-0012 "코드로 지키기" 2). */
 export interface Egress {
   /**
@@ -206,15 +245,20 @@ function sealed(value: unknown): PropertyDescriptor {
 }
 
 /**
- * Takes the runtime's `fetch` from `scope` and leaves `scope.fetch` refusing every call and
- * `scope.WebSocket` refusing every connection, for good: neither property can be assigned or
- * redefined, so a second call throws. The core's entry point calls it once, before any command
- * runs.
+ * Takes the runtime's `fetch` from `scope` and leaves `scope.fetch` refusing every call,
+ * `scope.WebSocket` refusing every connection and `scope.AI_SDK_DEFAULT_PROVIDER` refusing every
+ * model, for good: none of the three can be assigned or redefined, so a second call throws. The
+ * core's entry point calls it once, before any command runs.
  */
-export function installEgress(scope: { fetch: Fetch; WebSocket?: unknown } = globalThis): Egress {
+export function installEgress(
+  scope: { fetch: Fetch; WebSocket?: unknown; AI_SDK_DEFAULT_PROVIDER?: unknown } = globalThis,
+): Egress {
   const real = scope.fetch;
   Object.defineProperty(scope, "fetch", sealed(refusingFetch()));
   Object.defineProperty(scope, "WebSocket", sealed(refusedWebSocket));
-  log.debug("[core:egress:install] success global_fetch=refused global_websocket=refused");
+  Object.defineProperty(scope, "AI_SDK_DEFAULT_PROVIDER", sealed(refusingProvider()));
+  log.debug(
+    "[core:egress:install] success global_fetch=refused global_websocket=refused ai_sdk_default_provider=refused",
+  );
   return { turnFetch: (origin, signal) => turnFetch(real, origin, signal) };
 }

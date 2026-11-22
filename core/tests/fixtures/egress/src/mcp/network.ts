@@ -3,6 +3,7 @@
 import { Agent } from "_http_agent"; // expect: eslint(no-restricted-imports)
 import * as anthropic from "@ai-sdk/anthropic"; // expect: eslint(no-restricted-imports)
 import { streamText } from "ai"; // expect: eslint(no-restricted-imports)
+import type { ModelMessage } from "ai"; // expect: eslint(no-restricted-imports)
 import * as subpath from "ai/subpath"; // expect: eslint(no-restricted-imports)
 import * as bun from "bun"; // expect: eslint(no-restricted-imports)
 import { serve } from "bun"; // expect: eslint(no-restricted-imports)
@@ -19,6 +20,7 @@ import nodeFetch from "node-fetch"; // expect: eslint(no-restricted-imports)
 import * as tls from "tls"; // expect: eslint(no-restricted-imports)
 import { fetch as undiciFetch } from "undici"; // expect: eslint(no-restricted-imports)
 import { WebSocket as Ws } from "ws"; // expect: eslint(no-restricted-imports)
+import { run } from "../chat/sdk/turn.ts"; // expect: eslint(no-restricted-imports)
 import dialer = require("node:net"); // expect: eslint(no-restricted-imports) typescript(no-require-imports)
 export * from "node:tls"; // expect: eslint(no-restricted-imports)
 export { request as relay } from "node:https"; // expect: eslint(no-restricted-imports)
@@ -46,7 +48,7 @@ const events = new EventSource("https://example.com/events"); // expect: eslint(
 const shell = $`true`;
 const joined = join("a", "b");
 
-export type { Socket };
+export type { Socket, ModelMessage };
 export {
   Agent,
   anthropic,
@@ -64,6 +66,7 @@ export {
   tls,
   undiciFetch,
   Ws,
+  run,
   dialer,
   later,
   provider,

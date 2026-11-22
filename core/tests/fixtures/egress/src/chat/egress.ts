@@ -1,5 +1,5 @@
 // The egress module may hold and call fetch; the rest of the network stays closed to it too.
-import { streamText } from "ai";
+import type { LanguageModel } from "ai";
 import * as net from "node:net"; // expect: eslint(no-restricted-imports)
 
 type Fetch = typeof fetch;
@@ -10,5 +10,5 @@ const bound = await Bun.fetch("https://api.anthropic.com/v1/models"); // expect:
 const socket = new WebSocket("wss://api.anthropic.com/"); // expect: eslint(no-restricted-globals)
 const loaded = require("node:tls"); // expect: typescript(no-require-imports)
 
-export type { Fetch };
-export { streamText, net, real, models, again, bound, socket, loaded };
+export type { Fetch, LanguageModel };
+export { net, real, models, again, bound, socket, loaded };
