@@ -1,11 +1,11 @@
-# sherpa HANDOFF — 2026-11-22 11:00 KST
+# sherpa HANDOFF — 2026-11-22 11:40 KST
 
 ## 목표
 
 Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 에이전트에는 앱 안의 TS MCP 서버를 Swift
 중계로 연다(ADR-0010). MCP 는 2026-07-28 규격만 받는다(ADR-0011). 앱의 MCP 스위치는 기본 꺼짐이고, 연결 방법은
 스위치 옆 "?" 에서 본다(#54). 플러그인 0.9.0 은 MCP 서버를 등록하고 `plug-hole` 로 배포됐다(#55). 다음은 공증 +
-Homebrew cask 배포(#31)와 앱 안 채팅 "AI 연결하기"(#59, ADR-0012)다. CLI 배포본은 아직 0.8.5(Bun 코어 +
+Homebrew cask 배포(#31)와 앱 안 채팅 "AI 연결하기"의 구현이다(#59, 설계는 ADR-0012). CLI 배포본은 아직 0.8.5(Bun 코어 +
 `SherpaHelper.app`)이고, `Sherpa.app` 은 공증 배포 전이라 이 저장소에서 빌드해 `/Applications` 에 둔다.
 
 ## 끝난 것 (커밋·태그·실측 근거)
@@ -24,15 +24,18 @@ Homebrew cask 배포(#31)와 앱 안 채팅 "AI 연결하기"(#59, ADR-0012)다.
     이었고, haiku 로 도구를 한 번 불러 `succeeded` 를 받았다.
   - Codex: `codex features enable mcp_2026_07_28` 와 `codex plugin add sherpa@plug-hole` 뒤, `-c` 없이 35개
     도구로 이어 호출이 `succeeded` 였다.
+- 배포 실측과 HANDOFF 를 실은 문서 PR #60(main `de49b16`). #55 닫힘.
+- #59 앱 안 채팅 설계(PR #61, main `6f415ae`): ADR-0012 를 더했고, ADR-0010 결정 2 정정 메모와 아키텍처 문단을 달았다.
+  - 채팅 루프는 코어 안 `core/src/chat/` 에서 돈다. 채팅 하나에 Mux 채널 하나를 쓰고, mux 는 2 로 올린다.
+  - 도구는 레지스트리의 `handle` 을 직접 부른다. `@ai-sdk/mcp` 자기 루프와 AI SDK `toolApproval` 은 쓰지 않는다.
+  - 나가는 연결은 지킨 `fetch` 하나다(https, 같은 출처, `redirect: "error"`).
+  - 키는 앱만 data protection keychain 에 두고, 차례마다 `turn` 메시지에 실어 코어로 넘긴다.
+  - 구현 전이라 지금의 코어는 네트워크를 열지 않는다(코드 검색으로 확인).
 - #29 일부(2026-11-21): 중계로 부른 `reminder_delete` 확인 창이 계약대로 동작했다.
 
 ## 진행 중
 
-- #59 앱 안 채팅 설계(ADR-0012). 작업자 `adr-chat` 이 워크트리 `.claude/worktrees/adr-chat`(브랜치
-  `docs/adr-0012-in-app-chat`)에서 설계 문서만 쓴다. 지시문은 아래 소유자 결정 그대로다. PR 을 만들고 멈춘다.
-  머지는 메인 세션이 한다.
-- 이 HANDOFF 와 배포 실측을 싣는 문서 PR(브랜치 `docs/plugin-release-evidence`, 워크트리
-  `.claude/worktrees/docs-release`). #55 를 닫는다.
+- 없음. 앱 안 채팅 구현은 아래 소유자 결정 뒤 ADR-0012 "구현 단계" 1~6 을 이슈로 나눠 시작한다.
 
 ## 하지 말 것 (실패한 시도, 되돌린 것)
 
@@ -56,13 +59,18 @@ Homebrew cask 배포(#31)와 앱 안 채팅 "AI 연결하기"(#59, ADR-0012)다.
 
 ## 막힌 것 · 오너 결정 대기
 
-- 앱 안 채팅(#59) 소유자 결정(2026-11-22):
-  - core 의 새 경계에서 Vercel AI SDK v7 을 쓰고, 제공자는 Anthropic·OpenAI·Google·OpenAI 호환이다.
-  - ADR-0010 결정 2 는 고른 제공자로 나가는 HTTPS 만 허용하도록 고친다.
-  - API 키는 data protection keychain 에 둔다. 소유자가 App ID `dev.xiyo.sherpa` 의 Developer ID
-    provisioning profile 을 만든다(소유자 할 일).
-  - 같은 35개 도구를 쓰고, 삭제·보내기는 같은 앱 확인 창을 거친다.
-  - ADR 이 열린 결정(OpenAI 호환의 로컬 http 허용, 대화 기록 저장)을 권고와 함께 올린다.
+- 앱 안 채팅(ADR-0012) 소유자 결정 대기:
+  - OpenAI 호환 제공자에 로컬 서버(`http://localhost` 등)를 허용할지. 권고는 허용하지 않고 https 만 받는 것이다.
+  - 대화 기록을 디스크에 저장할지. 권고는 저장하지 않는 것이다.
+  - 답을 받으면 ADR-0012 "남은 결정" 에 정정으로 단다.
+- 소유자 할 일: Apple Developer 에서 명시 App ID `dev.xiyo.sherpa` 를 등록하고 Developer ID provisioning profile 을
+  만든다. ADR-0012 구현 단계 3(앱 키 저장소)이 이것을 기다린다.
+- ADR-0012 "아직 확인 전":
+  - Google Interactions 경로, Anthropic `anthropic-version: 2026-10-21` 수락.
+  - 프로필 없을 때 -34018, 코어·중계가 앱의 키체인 항목을 못 읽는지.
+  - hardened runtime·Bun 1.4.5 의 크기와 RSS, 도구 정의 토큰 수, 프록시와 사설 루트 인증서.
+  - 프로필을 넣은 빌드의 공증과 권한 이어짐, 채팅 입력 중 확인 창의 키 입력.
+  - 구현 단계와 유료 실기에서 닫는다.
 - 미확인:
   - 사용자·플러그인 범위 Claude Code 가 MCP 꺼짐에서 실패한 뒤 옛 규격 고정이 남는지, `/mcp` Reconnect 로 붙는지.
   - 중계 69(앱 없음) 때의 옛 규격 고정.
@@ -76,8 +84,9 @@ Homebrew cask 배포(#31)와 앱 안 채팅 "AI 연결하기"(#59, ADR-0012)다.
 
 ## 다음 행동
 
-1. 문서 PR 의 게이트를 확인하고 병합한다(#55 닫힘).
-2. `adr-chat` 의 PR 을 검토하고, 열린 결정을 소유자에게 올린 뒤 병합한다. 받아들여지면 구현 이슈로 나눈다.
+1. 소유자에게 ADR-0012 의 두 결정과 App ID 프로필을 받는다. 결정은 ADR-0012 정정으로 싣는다.
+2. ADR-0012 "구현 단계" 1~6 을 이슈로 나눈다. 순서는 계약 다음 판 → 코어 나가는 길 경계와 정적 검사 → 앱 키
+   저장소(프로필 필요) → 코어 채팅 → 앱 화면 → 통합 실기다.
 3. #29 남은 실기, #46, §13.3 통합 시험, swift-format 도입.
 4. #31: 공증·스테이플, cask, formula 이전, 헬퍼 제거와 CLI 의 앱 소켓 연결. CLI 버전은 그 릴리스에서 올린다.
 
@@ -85,8 +94,8 @@ Homebrew cask 배포(#31)와 앱 안 채팅 "AI 연결하기"(#59, ADR-0012)다.
 
 - 원격 `bunny-holes/sherpa`(공개), Formula `XIYO/homebrew-tap`, 마켓플레이스 `XIYO/plug-hole`(원격 `bunny-holes/plug-hole`, 비공개,
   sherpa 항목은 `git-subdir` `plugins/sherpa`, ref 없음).
-- `main` 은 `075aa28`(#57 병합).
-- 워크트리: `.claude/worktrees/adr-chat`(작업자 `adr-chat`), `.claude/worktrees/docs-release`(이 문서 PR).
+- `main` 은 `6f415ae`(#61 병합)와 그 뒤 이 파일을 고친 문서 PR.
+- 작업자 워크트리는 없다.
 - 떠 있는 앱은 `/Applications/Sherpa.app`(main `b01470c` 빌드, Developer ID, 공증 전), MCP 켜짐.
 - 이 Mac 의 Claude Code·Codex 프로필에는 `sherpa@plug-hole` 0.9.0 이 깔려 있고, Codex 는 기능 `mcp_2026_07_28` 이 켜져 있다.
 - 개발 실행: `cd core && bun run build`, 앱 번들은 `xcodebuild`(계약 §2 "번들 빌드").
