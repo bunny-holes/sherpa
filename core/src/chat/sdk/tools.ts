@@ -130,6 +130,19 @@ function inputSchema(item: ModelTool): Schema {
   return schema;
 }
 
+/**
+ * The tools as the model reads them, without running them: what a chat's state fingerprints
+ * (./state.ts).
+ */
+export function toolDefinitions(tools: readonly ModelTool[]): ToolSet {
+  return Object.fromEntries(
+    tools.map((item) => [
+      item.entry.name,
+      tool({ description: item.entry.description, inputSchema: inputSchema(item) }),
+    ]),
+  );
+}
+
 /** The tools of one turn, each `execute` running its call through `runner`. */
 export function toolSet(tools: readonly ModelTool[], runner: ToolRunner): ToolSet {
   return Object.fromEntries(

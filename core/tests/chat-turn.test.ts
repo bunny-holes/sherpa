@@ -6,7 +6,15 @@ import { chatLimits } from "../src/chat/protocol.ts";
 import { type ChatOptions, ChatSessions } from "../src/chat/session.ts";
 import { installWarningLog } from "../src/chat/warnings.ts";
 import { FakeChannel, openStream, type ServerEvent, sse } from "./support/chat.ts";
-import { anthropic, chat, chunk, failure, google, openai } from "./support/provider-events.ts";
+import {
+  anthropic,
+  anthropicThinking,
+  chat,
+  chunk,
+  failure,
+  google,
+  openai,
+} from "./support/provider-events.ts";
 
 // app-connection-v1 §7.11 and ADR-0012 "스트리밍", "중단", "재시도": a turn through the AI SDK
 // 7.0.179 and the four providers, against a runtime fetch that answers with hand-written
@@ -363,47 +371,17 @@ describe("the conversation", () => {
     ]);
   });
 
-  test("reasoning stays in the conversation, with its signature, and never reaches the app", async () => {
-    const thinking: ServerEvent[] = [
-      {
-        event: "content_block_start",
-        data: {
-          type: "content_block_start",
-          index: 0,
-          content_block: { type: "thinking", thinking: "" },
-        },
-      },
-      {
-        event: "content_block_delta",
-        data: {
-          type: "content_block_delta",
-          index: 0,
-          delta: { type: "thinking_delta", thinking: "Let me see" },
-        },
-      },
-      {
-        event: "content_block_delta",
-        data: {
-          type: "content_block_delta",
-          index: 0,
-          delta: { type: "signature_delta", signature: "sig-1" },
-        },
-      },
-      { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
-    ];
-    const events = anthropic(["Hi"]).map((event) => {
-      const data = event.data as { index?: number };
-      return data.index === 0 ? { ...event, data: { ...data, index: 1 } } : event;
-    });
+  test("reasoning stays in the conversation, with its signature, and reaches the app only in the state", async () => {
     const { sent, open } = turns((_sent, n) =>
-      sse(n === 1 ? [events[0]!, ...thinking, ...events.slice(1)] : anthropic(["Bye"])),
+      sse(n === 1 ? anthropicThinking(["Hi"]) : anthropic(["Bye"])),
     );
     const channel = open();
     channel.write(turn("anthropic", "claude-sonnet-5-5"));
     expect(await channel.untilEnd()).toEqual([{ type: "delta", text: "Hi" }, done()]);
     channel.write(turn("anthropic", "claude-sonnet-5-5", { text: second }));
     await channel.untilEnd();
-    expect(JSON.stringify(channel.sent)).not.toContain("Let me see");
+    expect(channel.bodies.join()).not.toContain("Let me see");
+    expect(Buffer.from(channel.states[1]!, "base64").toString()).toContain("Let me see");
     expect((sent[1]!.body!.messages as unknown[])[1]).toEqual({
       role: "assistant",
       content: [
@@ -738,14 +716,19 @@ describe("a turn without text", () => {
 
   // A cancel that meets the end of the answer: the turn ends as the core saw it first, and
   // `resend` says which. The whole answer is in the stream at once, so the core reads its end in
-  // the microtasks after the test ends the stream, and the text goes out with the `done`.
+  // the microtasks after the test ends the stream. The text goes out before the step's `state`,
+  // which comes before the turn reads the end of its stream: a cancel the app sends once it has
+  // the text still stops the turn, and the step stays.
   test.each([
     {
       moment: "in the task that ends the answer's stream",
       frames: [done("aborted", null, null, true)],
     },
     { moment: "a microtask after it", frames: [done("aborted", null, null, true)] },
-    { moment: "once the answer's text reached the app", frames: [done("stop", 11, 3, false)] },
+    {
+      moment: "once the answer's text reached the app",
+      frames: [done("aborted", null, null, false)],
+    },
     {
       moment: "a millisecond after it",
       frames: [{ type: "delta", text: "Hello" }, done("stop", 11, 3, false)],

@@ -16,6 +16,14 @@ export const FIXED_BASE_URLS: Readonly<Record<FixedProvider, string>> = {
   google: "https://generativelanguage.googleapis.com/v1beta",
 };
 
+/**
+ * The base URL a provider's requests start with: the URL as the WHATWG parser writes it, without
+ * the `/` at its end, or `null` for what is no URL. A chat's base URL is kept this way.
+ */
+export function requestBase(url: string): string | null {
+  return URL.parse(url)?.href.replace(/\/+$/, "") ?? null;
+}
+
 /** The Anthropic API version the core names: the latest, as Anthropic recommends (ADR-0012). */
 export const ANTHROPIC_VERSION = "2026-10-21";
 

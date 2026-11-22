@@ -4,11 +4,13 @@
  * its own conversation. A message that fails ends in an `error` on its channel and a log line;
  * none ends the channel or the core.
  */
+import type { ModelMessage } from "ai";
 import { log } from "../log.ts";
 import type { ModelTool } from "../tools/call.ts";
-import { type ChatIdentity, Conversation } from "./conversation.ts";
+import { type ChatIdentity, Conversation, type TurnRefusal } from "./conversation.ts";
 import { type AllowedOrigin, allowedOrigin, type Egress, EgressDeniedError } from "./egress.ts";
-import { ChatFailure } from "./errors.ts";
+import { type ChatErrorCode, ChatFailure } from "./errors.ts";
+import { loadChat } from "./load.ts";
 import { listModels, type ModelSource } from "./models.ts";
 import { systemTimeZone, timeNote } from "./now.ts";
 import {
@@ -20,7 +22,8 @@ import {
   type TurnAnswer,
   type TurnRequest,
 } from "./protocol.ts";
-import { FIXED_BASE_URLS } from "./providers.ts";
+import { FIXED_BASE_URLS, requestBase } from "./providers.ts";
+import { decodeState, encodeState } from "./state.ts";
 import { ChatTurn, type TurnLimits } from "./turn.ts";
 
 /** What a chat needs of its channel: one JSON message per `data` frame each way. */
@@ -43,6 +46,8 @@ export interface ChatOptions {
   clock?: () => Date;
   /** The IANA time zone it was sent in, read for each turn; tests fix it. */
   timeZone?: () => string;
+  /** The most bytes of a `data` body the core writes (§7.4); tests lower it. */
+  dataBytes?: number;
 }
 
 const errorType = (error: unknown) => (error instanceof Error ? error.name : typeof error);
@@ -58,13 +63,21 @@ function destination(request: ListModelsRequest | TurnRequest): {
   const raw =
     request.provider === "openai-compatible" ? request.base_url : FIXED_BASE_URLS[request.provider];
   const origin = allowedOrigin(raw);
-  return { origin, base: URL.parse(raw)!.href.replace(/\/+$/, "") };
+  return { origin, base: requestBase(raw)! };
 }
 
 function modelSource(request: ListModelsRequest): ModelSource & { origin: AllowedOrigin } {
   const { origin, base } = destination(request);
   return { provider: request.provider, base, apiKey: request.api_key, origin };
 }
+
+/** The code of a turn its chat refuses. */
+const REFUSAL_CODES: Readonly<Record<TurnRefusal, ChatErrorCode>> = {
+  other_chat: "invalid_message",
+  state_mismatch: "chat_state_mismatch",
+  nothing_to_retry: "invalid_message",
+  conversation_limit: "conversation_limit",
+};
 
 /** What a failed `list_models` ends with; anything unforeseen is a core defect. */
 function failureOf(error: unknown): ChatFailure {
@@ -77,6 +90,10 @@ class ChatSession {
   private readonly conversation = new Conversation();
   private listing = false;
   private turn: ChatTurn | null = null;
+  /** The channel read a `turn` or a `resume`: a `resume` comes before both (§7.11 "이어 쓰기"). */
+  private opened = false;
+  /** A `resume` is being checked. */
+  private resuming = false;
   /** The tool calls this channel has made: a `tool` message's number (§7.11). */
   private calls = 0;
 
@@ -88,6 +105,7 @@ class ChatSession {
     private readonly turnLimits: TurnLimits,
     private readonly clock: () => Date,
     private readonly timeZone: () => string,
+    private readonly dataBytes: number,
     onEnd: () => void,
   ) {
     channel.onmessage = (body) => this.receive(body);
@@ -108,7 +126,12 @@ class ChatSession {
       return;
     }
     if (message.type === "turn") {
+      this.opened = true;
       this.startTurn(message.request);
+      return;
+    }
+    if (message.type === "resume") {
+      this.resume(message.state);
       return;
     }
     if (message.type === "cancel") {
@@ -164,9 +187,84 @@ class ChatSession {
   }
 
   /**
-   * Starts a turn, or refuses it at once: one runs already, the base URL is not allowed, the turn
-   * is for another chat, a turn without text has nothing to send again, or the conversation is
-   * full. A refused turn sends nothing and leaves the conversation as it was.
+   * Takes a `resume` (§7.11 "이어 쓰기"): only as the channel's first `turn` or `resume`, a
+   * `list_models` allowed before it. A `turn` that comes while its state is checked is `busy`.
+   */
+  private resume(state: string): void {
+    if (this.opened) {
+      log.warn(`[core:chat:resume] refused channel=${this.channel.id} reason=not_first`);
+      this.reply(errorEvent("resume", "invalid_message"));
+      return;
+    }
+    this.opened = true;
+    this.resuming = true;
+    void this.restore(state).then((answer) => {
+      // A turn is taken once the resume is answered, as the next turn is once one ends.
+      this.resuming = false;
+      if (answer) this.reply(answer);
+    });
+  }
+
+  /**
+   * Checks a `resume`'s state and takes its conversation: `resumed`, an `error` after which the
+   * chat starts empty, or `null` when the channel ended first. Anthropic gets the conversation
+   * without its reasoning when the instructions or the tools changed since the state was written
+   * (ADR-0012 "이어 쓰기").
+   */
+  private async restore(value: string): Promise<ChatEvent | null> {
+    const id = this.channel.id;
+    const started = Date.now();
+    const bytes = Buffer.byteLength(value);
+    let taken:
+      | { refusal: string }
+      | { identity: ChatIdentity; messages: ModelMessage[]; same: boolean; pruned: number };
+    try {
+      const decoded = decodeState(value);
+      if ("refusal" in decoded) {
+        taken = decoded;
+      } else {
+        const [{ state: sdk }, tools] = await Promise.all([loadChat(), this.tools()]);
+        const { identity, fingerprint, messages } = decoded.state;
+        const checked = sdk.checkMessages(messages);
+        if ("refusal" in checked) {
+          taken = checked;
+        } else {
+          const same = (await sdk.fingerprint(tools)) === fingerprint;
+          taken =
+            !same && identity.provider === "anthropic"
+              ? { identity, ...sdk.withoutReasoning(checked.messages), same }
+              : { identity, messages: checked.messages, same, pruned: 0 };
+        }
+      }
+    } catch (error) {
+      if (this.ended.signal.aborted) return this.abandoned(started);
+      log.error(
+        `[core:chat:resume] failure channel=${id} code=internal error_type=${errorType(error)} ms=${Date.now() - started}`,
+      );
+      return errorEvent("resume", "internal");
+    }
+    if (this.ended.signal.aborted) return this.abandoned(started);
+    if ("refusal" in taken) {
+      log.warn(`[core:chat:resume] refused channel=${id} reason=${taken.refusal} bytes=${bytes}`);
+      return errorEvent("resume", "chat_state_invalid");
+    }
+    this.conversation.resume(taken.identity, taken.messages);
+    log.info(
+      `[core:chat:resume] success channel=${id} provider=${taken.identity.provider} messages=${taken.messages.length} bytes=${bytes} fingerprint=${taken.same ? "same" : "changed"} pruned=${taken.pruned} ms=${Date.now() - started}`,
+    );
+    return { type: "resumed", resend: this.conversation.resendable() };
+  }
+
+  private abandoned(started: number): null {
+    log.info(`[core:chat:resume] abandoned channel=${this.channel.id} ms=${Date.now() - started}`);
+    return null;
+  }
+
+  /**
+   * Starts a turn, or refuses it at once: one runs already or a `resume` is being checked, the
+   * base URL is not allowed, the turn is for another chat, a turn without text has nothing to
+   * send again, or the conversation is full. A refused turn sends nothing and leaves the
+   * conversation as it was.
    */
   private startTurn(request: TurnRequest): void {
     const id = this.channel.id;
@@ -174,7 +272,7 @@ class ChatSession {
       log.warn(`[core:chat:turn] refused channel=${id} reason=${reason}`);
       this.answer(event);
     };
-    if (this.turn) {
+    if (this.turn || this.resuming) {
       refuse("busy", errorEvent("turn", "busy"));
       return;
     }
@@ -197,8 +295,7 @@ class ChatSession {
         ? this.conversation.again(identity)
         : this.conversation.start(identity, request.text, timeNote(this.clock(), this.timeZone()));
     if (start.type === "refused") {
-      const code = start.reason === "conversation_limit" ? "conversation_limit" : "invalid_message";
-      refuse(start.reason, errorEvent("turn", code));
+      refuse(start.reason, errorEvent("turn", REFUSAL_CODES[start.reason]));
       return;
     }
     const turn = new ChatTurn({
@@ -219,7 +316,11 @@ class ChatSession {
           messages: start.messages,
           room: start.room,
         },
-        (messages) => this.conversation.keep(messages),
+        {
+          said: request.text !== undefined,
+          keep: (messages) => this.conversation.keep(messages),
+          state: (fingerprint) => this.stateWriter(identity, fingerprint),
+        },
       )
       .then((end) => {
         // The next turn is taken once this one is answered, as the next list is.
@@ -239,8 +340,38 @@ class ChatSession {
     this.reply({ ...event, resend: this.turn === null && this.conversation.resendable() });
   }
 
+  /**
+   * The conversation's `state` as it stands (§7.11 "대화 상태"), to write once what comes before
+   * it is out, or `null` when it would not fit one `data` (§7.4): the chat then takes no later
+   * turn, and the turn ends.
+   */
+  private stateWriter(identity: ChatIdentity, fingerprint: string): (() => void) | null {
+    const messages = this.conversation.kept;
+    const event: ChatEvent = {
+      type: "state",
+      state: encodeState({ identity, fingerprint, messages }),
+    };
+    const body = JSON.stringify(event);
+    // Base64 and the keys around it are ASCII: each character is a byte.
+    const fields = `channel=${this.channel.id} bytes=${body.length}`;
+    if (body.length > this.dataBytes) {
+      log.error(`[core:chat:state] failure ${fields} reason=too_large`);
+      this.conversation.fill();
+      return null;
+    }
+    const count = messages.length;
+    return () => {
+      log.debug(`[core:chat:state] sent ${fields} messages=${count} pending=0`);
+      this.write(body);
+    };
+  }
+
   private reply(event: ChatEvent): void {
-    this.channel.send(JSON.stringify(event)).catch((error: unknown) => {
+    this.write(JSON.stringify(event));
+  }
+
+  private write(body: string): void {
+    this.channel.send(body).catch((error: unknown) => {
       log.error(
         `[core:chat:send] failure channel=${this.channel.id} error_type=${errorType(error)}`,
       );
@@ -289,6 +420,7 @@ export class ChatSessions {
       { ...TURN_LIMITS, ...this.options.turn },
       this.options.clock ?? (() => new Date()),
       this.options.timeZone ?? systemTimeZone,
+      this.options.dataBytes ?? chatLimits.dataBytes,
       () => this.open.delete(session),
     );
     this.open.add(session);

@@ -1,18 +1,34 @@
 import type { ChatChannel } from "../../src/chat/session.ts";
 
-/** The app's side of one chat channel: what it writes, and what the core wrote back in order. */
+/**
+ * The app's side of one chat channel: what it writes, and what the core wrote back in order. The
+ * conversation's `state` messages go to `states`, and to `sent` as well only when the test asks.
+ */
 export class FakeChannel implements ChatChannel {
   onmessage?: (body: Uint8Array) => void;
   onclose?: () => void;
   readonly sent: Record<string, unknown>[] = [];
+  /** The base64 of each `state` the core wrote, in order. */
+  readonly states: string[] = [];
+  /** Each `data` body the core wrote, in order. */
+  readonly bodies: string[] = [];
   closed: string | null = null;
   private taken = 0;
   private waiter: ((message: Record<string, unknown>) => void) | null = null;
 
-  constructor(readonly id: number) {}
+  constructor(
+    readonly id: number,
+    private readonly options: { states?: boolean } = {},
+  ) {}
 
   async send(body: string): Promise<void> {
-    this.sent.push(JSON.parse(body) as Record<string, unknown>);
+    this.bodies.push(body);
+    const message = JSON.parse(body) as Record<string, unknown>;
+    if (message.type === "state") {
+      this.states.push(message.state as string);
+      if (!this.options.states) return;
+    }
+    this.sent.push(message);
     const wake = this.waiter;
     this.waiter = null;
     wake?.(this.sent[this.taken++]!);

@@ -1,8 +1,9 @@
 /**
  * One chat turn from the core's side (app-connection-v1 §7.11, ADR-0012 "스트리밍", "중단",
- * "재시도", "도구"): the answer's text in `delta` events, each tool call in `tool` events, then one
- * `done` or `error`. The AI SDK and the providers load with the first turn (src/chat/load.ts);
- * this module takes only their types.
+ * "재시도", "도구", "상태를 넘기는 때"): the answer's text in `delta` events, each tool call in
+ * `tool` events, the conversation's `state` each time it changes, then one `done` or `error`.
+ * The AI SDK and the providers load with the first turn (src/chat/load.ts); this module takes only
+ * their types.
  *
  * A model request that goes `firstOutputMs` without output ends the turn. The turn has one such
  * limit, which every request the AI SDK sends starts anew. It stops at the request's first
@@ -13,14 +14,16 @@
  * `firstChunkMs` would start only once the response streams, which leaves the wait for its
  * headers open, and for OpenAI the wait for `response.in_progress` as well.
  */
+import type { ModelMessage } from "ai";
 import { log } from "../log.ts";
 import type { ModelTool } from "../tools/call.ts";
 import { TurnCalls } from "./calls.ts";
 import type { Fetch } from "./egress.ts";
 import { ChatFailure } from "./errors.ts";
-import { loadTurn } from "./load.ts";
+import { loadChat } from "./load.ts";
 import { type ChatEvent, type DoneReason, errorEvent, type TurnAnswer } from "./protocol.ts";
-import type { TurnCall, TurnHooks, TurnOutcome } from "./sdk/turn.ts";
+import type { TurnCall, TurnOutcome } from "./sdk/turn.ts";
+import { StateTooLarge } from "./state.ts";
 
 /** The limits of one turn (§7.11); tests shorten them. */
 export interface TurnLimits {
@@ -185,6 +188,19 @@ export interface TurnContext {
   callNumber: () => number;
 }
 
+/** What a turn needs of its chat's conversation (src/chat/session.ts). */
+export interface TurnChat {
+  /** The turn added the person's text: the conversation changed before the first request. */
+  said: boolean;
+  /** Keeps the messages of a step that finished. */
+  keep(messages: ModelMessage[]): void;
+  /**
+   * The conversation's `state` as it stands, to write once what comes before it is out, or
+   * `null` when it would not fit one `data` (§7.4).
+   */
+  state(fingerprint: string): (() => void) | null;
+}
+
 /**
  * One turn: its answer goes out as `delta` events, and `run` resolves the `done` or `error` that
  * ends it, which the session sends with its `resend`.
@@ -213,12 +229,14 @@ export class ChatTurn {
   }
 
   /**
-   * Runs the turn. Resolves its `done` or `error`, or `null` when the channel closed first;
-   * the messages of each step that finished go to `keep` as it finishes.
+   * Runs the turn. Resolves its `done` or `error`, or `null` when the channel closed first.
+   * The messages of each step that finished go to the chat as it finishes, and the
+   * conversation's `state` goes out once the person's text is in it and after each step it
+   * keeps, after the text before it: `done` and `error` come after the turn's last `state`.
    */
   async run(
     call: Omit<TurnCall, "fetch" | "signal" | "chunkMs" | "steps" | "tools">,
-    keep: TurnHooks["step"],
+    chat: TurnChat,
   ): Promise<TurnAnswer | null> {
     const { channel, provider, limits } = this.context;
     const fields = `channel=${channel} provider=${provider}`;
@@ -234,7 +252,20 @@ export class ChatTurn {
     log.info(`[core:chat:turn] start ${fields}`);
     let outcome: TurnOutcome;
     try {
-      const [{ streamTurn }, tools] = await Promise.all([loadTurn(), this.context.tools()]);
+      const [sdk, tools] = await Promise.all([loadChat(), this.context.tools()]);
+      const fingerprint = await sdk.state.fingerprint(tools);
+      const state = () => {
+        const write = chat.state(fingerprint);
+        return (
+          write &&
+          (() => {
+            // The channel closed: nothing more goes out.
+            if (this.context.ended.aborted) return;
+            deltas.flush();
+            write();
+          })
+        );
+      };
       const calls = new TurnCalls({
         channel,
         tools,
@@ -248,19 +279,40 @@ export class ChatTurn {
         },
       });
       this.calls = calls;
-      outcome = await streamTurn(
-        {
-          ...call,
-          fetch: requests.fetch,
-          signal,
-          chunkMs: limits.chunkMs,
-          steps: limits.steps,
-          tools: calls,
-        },
-        { output: requests.output, text: (text) => deltas.add(text), step: keep },
-      );
+      // The person's text is in the conversation before the first request (ADR-0012 "상태를
+      // 넘기는 때"); a turn without text left it as it was.
+      const first = chat.said ? state() : () => {};
+      if (first === null) {
+        outcome = {
+          type: "failed",
+          failure: new ChatFailure("internal"),
+          error: new StateTooLarge(),
+          steps: 0,
+        };
+      } else {
+        first();
+        outcome = await sdk.turn.streamTurn(
+          {
+            ...call,
+            fetch: requests.fetch,
+            signal,
+            chunkMs: limits.chunkMs,
+            steps: limits.steps,
+            tools: calls,
+          },
+          {
+            output: requests.output,
+            text: (text) => deltas.add(text),
+            step: (messages) => {
+              chat.keep(messages);
+              return state();
+            },
+          },
+        );
+      }
     } catch (error) {
-      // Only loading the AI SDK or the tools can throw here: `streamTurn` ends in an outcome.
+      // Only loading the AI SDK or the tools, or their fingerprint, can throw here: `streamTurn`
+      // ends in an outcome.
       outcome = { type: "failed", failure: new ChatFailure("internal"), error, steps: 0 };
     }
     requests.output();

@@ -30,6 +30,7 @@ import type { ToolOutcome } from "../../tools/outcome.ts";
 import type { TurnRoom } from "../conversation.ts";
 import { EgressDeniedError, type Fetch } from "../egress.ts";
 import { ChatFailure, isTransportError, responseFailure, transportFailure } from "../errors.ts";
+import { StateTooLarge } from "../state.ts";
 import { answerLimit } from "./answer.ts";
 import { type TurnTarget, turnProvider } from "./provider.ts";
 import { type ToolRunner, toolSet } from "./tools.ts";
@@ -80,8 +81,12 @@ export interface TurnHooks {
   output(): void;
   /** A piece of the answer's text. */
   text(text: string): void;
-  /** The messages of a step that finished, which the conversation keeps. */
-  step(messages: ModelMessage[]): void;
+  /**
+   * The messages of a step that finished, which the conversation keeps: what writes the
+   * conversation's state then, or `null` when the state would not fit one `data`, after which
+   * no step follows.
+   */
+  step(messages: ModelMessage[]): (() => void) | null;
 }
 
 export type TurnOutcome =
@@ -199,10 +204,26 @@ function failureOf(error: unknown): ChatFailure {
 /** One turn's model call; it never throws, since every way it ends is an outcome. */
 export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<TurnOutcome> {
   const calls = call.tools;
-  /** The calls the SDK did not run, which the app hears of once every part of the turn is read. */
-  const unrun: string[] = [];
   let steps = 0;
   let calledTools = false;
+  /**
+   * What each step the conversation kept tells the app, by the step's number, once this loop has
+   * read the step's end: after the step's text, before the next step's parts. The SDK calls
+   * `onStepEnd` once it has passed the step's end on, which this loop may read before or after
+   * (ai 7.0.179 stream-text.ts). The calls of the step the SDK did not run come first, then the
+   * conversation's state, which holds their results; `write` is `null` for a state that would
+   * not fit one `data`.
+   */
+  const ended: { step: number; unrun: string[]; write: (() => void) | null }[] = [];
+  let read = 0;
+  let stateFailed = false;
+  const tell = ({ unrun, write }: (typeof ended)[number]) => {
+    for (const name of unrun) calls.notRun(name);
+    write?.();
+  };
+  const tellEnded = () => {
+    while (ended.length > 0 && ended[0]!.step <= read) tell(ended.shift()!);
+  };
   let failed: { failure: ChatFailure; error: unknown } | null = null;
   let timedOut = false;
   let finish: {
@@ -230,6 +251,8 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
         () => calls.cancelled,
         // The turn passed the conversation's limit: it refused a call, or kept a step past it.
         () => call.room.passed,
+        // The state of a step it kept would not fit one `data`.
+        () => stateFailed,
         // The SDK takes the next step once each call of a step has a result, an error for one it
         // refused included, whatever the step ended with (ai 7.0.179 stream-text.ts
         // `shouldStartNextStep`), though its `StopCondition` says it stops after a finish reason
@@ -249,11 +272,15 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
         calledTools = step.toolCalls.length > 0;
         calls.stepEnded();
         if (DROPPED.has(step.finishReason)) return;
+        const unrun: string[] = [];
         const messages = answered(step.response.messages, (toolCall) => {
           unrun.push(toolCall.toolName);
           return calls.unrun(toolCall.toolName);
         });
-        hooks.step(messages);
+        const write = hooks.step(messages);
+        if (write === null) stateFailed = true;
+        ended.push({ step: steps, unrun, write });
+        tellEnded();
         // A step that passes the limit stays, as its calls ran; no request follows it.
         call.room.keep(messages);
       },
@@ -267,7 +294,8 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
           }
           break;
         case "reasoning-delta":
-          // Reasoning stays in the conversation and never reaches the app (ADR-0012 "스트리밍").
+          // Reasoning stays in the conversation, which reaches the app only in a state it does
+          // not read (ADR-0012 "스트리밍").
           if (part.text.length > 0) hooks.output();
           break;
         case "tool-input-delta":
@@ -290,6 +318,10 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
           // Not the turn's own signal: the SDK's limit between two outputs.
           if (!call.signal.aborted) timedOut = true;
           break;
+        case "finish-step":
+          read += 1;
+          tellEnded();
+          break;
         case "finish":
           finish = {
             reason: part.finishReason,
@@ -302,10 +334,20 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
   } catch (error) {
     failed ??= { failure: failureOf(error), error };
   }
-  // The app hears of a call the SDK did not run once every part of the turn is read: after the text
-  // before the call, however far the SDK's step ran ahead of this loop, and before the turn's end.
-  // No step follows one with such a call (`RUNS_CALLS`).
-  for (const name of unrun) calls.notRun(name);
+  // A stream that ended early left the last steps' ends unread: what they tell goes now. The app
+  // hears of a call the SDK did not run after the text before it, however far the SDK's step ran
+  // ahead of this loop, and before the turn's end. No step follows one with such a call
+  // (`RUNS_CALLS`).
+  for (const entry of ended.splice(0)) tell(entry);
+  // A state that does not fit is the core's defect, however else the turn ended.
+  if (stateFailed) {
+    return {
+      type: "failed",
+      failure: new ChatFailure("internal"),
+      error: new StateTooLarge(),
+      steps,
+    };
+  }
   if (call.signal.aborted) return { type: "aborted", steps };
   if (timedOut) return { type: "failed", failure: new ChatFailure("timeout"), error: null, steps };
   if (failed) return { type: "failed", ...failed, steps };
