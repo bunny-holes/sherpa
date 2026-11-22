@@ -112,8 +112,20 @@ Anything not listed here is not proven by the gate.
     may come after the first request's limit; the 600 s between outputs on a
     fake clock, which each output starts anew; Bun's idle-timeout
     `TimeoutError` before the headers, in the body and after output, each
-    sent once and ending with `timeout`; the 2 MiB conversation limit; and no
-    key, text or answer in a log line.
+    sent once and ending with `timeout`; the 2 MiB conversation limit; a turn
+    without text, which sends the conversation again, with a test for each row
+    of the contract's table without a tool, each reading `resend` in what
+    answered the turn before and taken exactly when it said so (refused with
+    `nothing_to_retry` in a chat with no turn yet and after an answer that
+    ends with `stop`, `length` or `other`, the conversation left as it was;
+    after an answer with nothing in it, `content-filter`, `aborted` and an
+    error of a turn that started, the person's text sent once with its one
+    time line; refused after an answer of reasoning alone; a `cancel` that
+    meets the answer's end at four moments; another key after
+    `provider_auth`; `busy` and a malformed turn while one runs with
+    `resend` false; another chat and a refused `base_url` leaving the
+    conversation as it was; `conversation_limit` once the chat passed its
+    limit); and no key, text or answer in a log line.
     A test fails on any AI SDK warning it does not expect. The providers'
     event shapes live in `tests/support/provider-events.ts`, which
     `chat-tools.test.ts` shares.
@@ -146,7 +158,18 @@ Anything not listed here is not proven by the gate.
     answer ending for a reason the package does not know with `other`, and
     before a stream error with `error` and nothing kept); a conversation holding a
     call without its result ending `internal` with one error line and no
-    request; Anthropic's top-level `cache_control` and tools without a mark;
+    request; a turn without text after each row of the contract's table with
+    a tool, taken exactly when the `resend` of what ended the turn said so (a
+    `length` or `other` step with a call the AI SDK did not run,
+    one formed badly or one cut in its arguments, a `cancel` while a window
+    waited, and an error after a tool step each send the conversation ending
+    with the call's result and the person's text once; `step-limit` lets the
+    tools take 20 more requests; a step of reasoning alone after a tool step
+    that ended with `length` is refused; a step with text after a call formed
+    badly is taken on Anthropic and OpenAI-compatible, whose `tool` and
+    `delta` come in different orders; a conversation that passed 2 MiB inside
+    a turn ends it with `resend` false and is `conversation_limit`);
+    Anthropic's top-level `cache_control` and tools without a mark;
     and no arguments, results or made-up tool names in a log line. A test
     fails on any AI SDK warning it does not expect.
   - `mcp-tools.test.ts` proves when each call becomes irreversible: a
@@ -212,6 +235,19 @@ Anything not listed here is not proven by the gate.
     the real `@vercel/oidc`, called in a child with a scratch `HOME`, the same
     two files and `fetch` refused by a preload, rewrites that login to `{}`
     without calling `fetch`.
+  - `chat-tools.test.ts` (contract §7.11 "도구", §9): with the planner's
+    discovery answered and a model server on an HTTPS loopback origin the
+    core trusts, the model's `event_delete` brings the preview read and a
+    `confirm` on channel 0 that names the chat's channel and the client
+    `sherpa-chat` with the core's version. An approval sends `event.delete`
+    under the confirmed operation id and the next model request carries the
+    outcome; a decline asks the planner for nothing more and the model reads
+    that nothing changed; a `cancel` while the window is open withdraws it on
+    channel 0 and ends the turn with `done` `aborted` and `resend` true,
+    after which a turn without text sends the conversation ending with the
+    call taken back. No key, text, answer or tool argument reaches standard
+    error. `tls.ts` makes the certificate authority each test of this file
+    and `egress.test.ts` uses.
   - `waits.test.ts`: the 30 s confirmation and 5 s discovery waits on the real
     clock.
   - `cli.test.ts`: the built CLI checks every argument before it opens a store,

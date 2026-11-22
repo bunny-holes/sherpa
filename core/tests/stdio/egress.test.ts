@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, expect, test } from "vite-plus/test";
 import type { CoreFrame, FakeApp } from "./fake-app.ts";
 import { BINARY, cleanHomes, launch, scratchHome } from "./launch.ts";
+import { trustedCertificate } from "./tls.ts";
 
 // ADR-0012 "시험으로 지키기" and app-connection-v1 §7.1, §7.11 on real sockets: the built core holds
 // no internet socket and listens on nothing while it serves MCP, a model list for an origin the
@@ -239,83 +240,6 @@ test("the built core trusts the macOS system store as well as the authorities Bu
   expect(new Set(outside.default)).toEqual(new Set(outside.bundled));
 });
 
-/**
- * A certificate authority made for this run and a certificate for 127.0.0.1 it signed, with the
- * system's openssl. The core trusts the authority only when NODE_EXTRA_CA_CERTS names its file at
- * start, and the app passes no such variable (§7.1).
- */
-async function trustedCertificate(): Promise<{ ca: string; cert: string; key: string }> {
-  const dir = scratchHome();
-  const at = (name: string) => join(dir, name);
-  await Bun.write(
-    at("openssl.cnf"),
-    ["[req]", "distinguished_name = dn", "[dn]"]
-      .concat(["[authority]", "basicConstraints = critical,CA:TRUE"])
-      .concat(["keyUsage = critical,keyCertSign,cRLSign", "[server]"])
-      .concat(["subjectAltName = IP:127.0.0.1", "basicConstraints = critical,CA:FALSE"])
-      .concat(["keyUsage = critical,digitalSignature,keyEncipherment"])
-      .concat(["extendedKeyUsage = serverAuth", ""])
-      .join("\n"),
-  );
-  const openssl = (...args: string[]) => {
-    const made = Bun.spawnSync(["/usr/bin/openssl", ...args], { stdout: "ignore", stderr: "pipe" });
-    if (made.exitCode !== 0) {
-      throw new Error(`openssl ${args[0]} exited with ${made.exitCode}: ${made.stderr.toString()}`);
-    }
-  };
-  const key = ["-newkey", "rsa:2048", "-nodes", "-config", at("openssl.cnf")];
-  openssl(
-    "req",
-    "-x509",
-    ...key,
-    "-days",
-    "1",
-    "-subj",
-    "/CN=Sherpa stdio test authority",
-    "-extensions",
-    "authority",
-    "-keyout",
-    at("ca-key.pem"),
-    "-out",
-    at("ca.pem"),
-  );
-  openssl(
-    "req",
-    ...key,
-    "-subj",
-    "/CN=127.0.0.1",
-    "-keyout",
-    at("key.pem"),
-    "-out",
-    at("server.csr"),
-  );
-  openssl(
-    "x509",
-    "-req",
-    "-days",
-    "1",
-    "-set_serial",
-    "1",
-    "-in",
-    at("server.csr"),
-    "-CA",
-    at("ca.pem"),
-    "-CAkey",
-    at("ca-key.pem"),
-    "-extfile",
-    at("openssl.cnf"),
-    "-extensions",
-    "server",
-    "-out",
-    at("cert.pem"),
-  );
-  return {
-    ca: at("ca.pem"),
-    cert: await Bun.file(at("cert.pem")).text(),
-    key: await Bun.file(at("key.pem")).text(),
-  };
-}
-
 /** Resolves once `done` holds, checking every 10 ms for at most 5 s. */
 async function until(done: () => boolean): Promise<void> {
   for (const deadline = Date.now() + 5_000; !done(); await Bun.sleep(10)) {
@@ -519,6 +443,7 @@ test("a turn for a plain http loopback origin is refused before it connects, and
       code: "egress_denied",
       retryable: false,
       status: null,
+      resend: false,
     });
     expect(sockets(app.pid)).toEqual(QUIET);
     app.closeInput();
@@ -631,7 +556,13 @@ test("a turn for an https loopback origin the core trusts streams its answer fro
     expect(sockets(app.pid).unixListeners).toEqual([]);
     release();
     expect((await app.next(isChat(1))).body).toEqual({ type: "delta", text: "marker" });
-    const done = { type: "done", reason: "stop", input_tokens: 11, output_tokens: 3 };
+    const done = {
+      type: "done",
+      reason: "stop",
+      input_tokens: 11,
+      output_tokens: 3,
+      resend: false,
+    };
     expect((await app.next(isChat(1))).body).toEqual(done);
     // The next turn goes on the same conversation, with the AI SDK already loaded.
     app.frame(1, "data", { ...message, text: SECOND });

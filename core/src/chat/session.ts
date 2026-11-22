@@ -17,6 +17,7 @@ import {
   errorEvent,
   type ListModelsRequest,
   readMessage,
+  type TurnAnswer,
   type TurnRequest,
 } from "./protocol.ts";
 import { FIXED_BASE_URLS } from "./providers.ts";
@@ -102,7 +103,8 @@ class ChatSession {
       log.warn(
         `[core:chat:message] refused channel=${this.channel.id} reason=${message.reason} bytes=${body.byteLength}`,
       );
-      this.reply(errorEvent(message.inReplyTo, "invalid_message"));
+      if (message.inReplyTo === "turn") this.answer(errorEvent("turn", "invalid_message"));
+      else this.reply(errorEvent(message.inReplyTo, "invalid_message"));
       return;
     }
     if (message.type === "turn") {
@@ -163,14 +165,14 @@ class ChatSession {
 
   /**
    * Starts a turn, or refuses it at once: one runs already, the base URL is not allowed, the turn
-   * is for another chat, or the conversation is full. A refused turn sends nothing and leaves the
-   * conversation as it was.
+   * is for another chat, a turn without text has nothing to send again, or the conversation is
+   * full. A refused turn sends nothing and leaves the conversation as it was.
    */
   private startTurn(request: TurnRequest): void {
     const id = this.channel.id;
-    const refuse = (reason: string, event: ChatEvent) => {
+    const refuse = (reason: string, event: TurnAnswer) => {
       log.warn(`[core:chat:turn] refused channel=${id} reason=${reason}`);
-      this.reply(event);
+      this.answer(event);
     };
     if (this.turn) {
       refuse("busy", errorEvent("turn", "busy"));
@@ -189,10 +191,13 @@ class ChatSession {
       baseURL: where.base,
       model: request.model,
     };
-    const note = timeNote(this.clock(), this.timeZone());
-    const start = this.conversation.start(identity, request.text, note);
+    // A turn without text adds no text, so no time line either (§7.11 "다시 보내기").
+    const start =
+      request.text === undefined
+        ? this.conversation.again(identity)
+        : this.conversation.start(identity, request.text, timeNote(this.clock(), this.timeZone()));
     if (start.type === "refused") {
-      const code = start.reason === "other_chat" ? "invalid_message" : "conversation_limit";
+      const code = start.reason === "conversation_limit" ? "conversation_limit" : "invalid_message";
       refuse(start.reason, errorEvent("turn", code));
       return;
     }
@@ -215,8 +220,19 @@ class ChatSession {
       .then((end) => {
         // The next turn is taken once this one is answered, as the next list is.
         this.turn = null;
-        if (end) this.reply(end);
+        if (end) this.answer(end);
       });
+  }
+
+  /**
+   * Writes what answers a `turn`, with `resend`: whether a turn without text sent right after it
+   * would start (§7.11 "다시 보내기"). None does while a turn runs, which is `busy`, nor one the
+   * conversation would refuse. Such a turn carries this chat's provider, base URL and model, and
+   * the egress let that base URL out when the chat's first turn started: its rule reads the URL
+   * alone.
+   */
+  private answer(event: TurnAnswer): void {
+    this.reply({ ...event, resend: this.turn === null && this.conversation.resendable() });
   }
 
   private reply(event: ChatEvent): void {

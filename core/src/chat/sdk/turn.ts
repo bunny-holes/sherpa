@@ -56,7 +56,7 @@ export interface TurnTools extends ToolRunner {
 
 export interface TurnCall {
   target: TurnTarget;
-  /** The conversation, the person's text of this turn last. */
+  /** The conversation, which ends with what the model answers: the person's text or tool results. */
   messages: ModelMessage[];
   /** The turn's fetch, which sends through the egress. */
   fetch: Fetch;
