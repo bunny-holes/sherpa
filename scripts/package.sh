@@ -25,6 +25,13 @@ PUBLISH=0
 [ "${1:-}" = "--publish" ] && PUBLISH=1
 readonly PUBLISH
 
+# 코어는 core/package.json 이 선언한 Bun 으로만 빌드한다(bunny-holes/sherpa#71). Bun 은 devEngines 를 읽지 않으므로
+# 게이트 밖에서, 특히 --publish 로 돌 때 PATH 앞의 다른 bun 이 그 런타임을 bin/sherpa 에 넣는다. 확인과 실패 이름은
+# 게이트와 같은 scripts/lib/bun-pin.sh 의 것이다.
+. "$REPO_ROOT/scripts/lib/bun-pin.sh"
+bun_pin_require "$REPO_ROOT" || fail failure "$BUN_PIN_FAILURE"
+log info toolchain "bun=$BUN_PIN_VERSION"
+
 log info start "building the core and the Apple helper"
 (cd "$CORE_PATH" && bun install --frozen-lockfile >/dev/null && bun run build >/dev/null) \
   || fail failure "reason=core_build_failed"
@@ -35,6 +42,7 @@ readonly BINARY="$CORE_PATH/dist/sherpa"
 readonly HELPER="$HELPER_PACKAGE/.build/release/sherpa-apple"
 [ -x "$BINARY" ] || fail failure "reason=binary_missing path=${BINARY#"$REPO_ROOT/"}"
 [ -x "$HELPER" ] || fail failure "reason=helper_missing path=${HELPER#"$REPO_ROOT/"}"
+bun_pin_verify_runtime "$BINARY" core/dist/sherpa || fail failure "$BUN_PIN_FAILURE"
 
 # 버전의 단일 진실 원천은 빌드된 코어다. Formula 의 test 가 이
 # 문자열에 기대므로 형식부터 검증하고, 헬퍼가 같은 판인지 대조한다.

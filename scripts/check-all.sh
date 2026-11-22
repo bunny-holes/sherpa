@@ -13,8 +13,53 @@ log() { printf '%s [%s] %s\n' "$1" "$2" "$3" >&2; }
 fail() { log error "$LOG_SCOPE:failure" "$1"; exit 1; }
 
 log info "$LOG_SCOPE:start" "root=${REPO_ROOT##*/}"
+# 0. 도구 판(bunny-holes/sherpa#71). 소유자 결정(2026-11-22)은 도구와 의존성을 늘 최신 안정판으로, 정확한 판으로
+#    고정해 두는 것이다(AGENTS.md). 코어는 core/package.json 의 devEngines.packageManager 가 적은 Bun 하나로
+#    설치·시험·빌드하고, bun build --compile 은 그 런타임을 dist/sherpa 에 넣는다. Bun 은 이 필드를 읽지 않는다.
+#    1.4.5 의 bun install 은 판이 달라도, onFail 이 error 여도 말없이 설치했고, 이 필드를 읽는 것은 Vite+ 의 vp 다
+#    (live-evidence.md 2026-11-22). 그래서 PATH 의 첫 bun 이 선언한 판이 아니면 아무것도 빌드하기 전에 멈춘다.
+#    확인은 scripts/lib/bun-pin.sh 한 곳에 있고 scripts/package.sh 도 그것을 쓴다.
+. "$REPO_ROOT/scripts/lib/bun-pin.sh"
+log info "check:environment:start" "manifest=core/package.json"
+bun_pin_require "$REPO_ROOT" || fail "$BUN_PIN_FAILURE"
+# 고정이 실제로 거부하는지도 본다. 다른 판을 답하는 가짜 bun 을 PATH 앞에 두면 package.sh 는 아무것도 빌드하기 전에
+# 게이트와 같은 이름으로 멈춰야 한다. 가짜는 --version 밖의 호출에 실패하므로 확인을 건너뛴 package.sh 는 다른 이름으로
+# 멈춘다. 같은 가짜를 컴파일한 코어로 넘기면 다른 런타임을 품은 코어이므로 core_runtime_mismatch 여야 한다.
+pin_probe="$(mktemp -d)"
+cat >"$pin_probe/bun" <<'SH'
+#!/bin/sh
+[ "$1" = --version ] && { echo 0.0.1; exit 0; }
+exit 97
+SH
+chmod +x "$pin_probe/bun"
+if package_refusal="$(PATH="$pin_probe:$PATH" SHERPA_DIST="$pin_probe/dist" bash "$REPO_ROOT/scripts/package.sh" 2>&1 >/dev/null)"; then
+  rm -rf "$pin_probe"
+  fail "reason=package_ignored_bun_pin"
+fi
+case "$package_refusal" in
+  *"[release:package:failure] reason=bun_version_mismatch expected=$BUN_PIN_VERSION actual=0.0.1 path="*) ;;
+  *)
+    printf '%s\n' "$package_refusal" | tail -5 >&2
+    rm -rf "$pin_probe"
+    fail "reason=package_bun_refusal_unexpected"
+    ;;
+esac
+runtime_refusal=accepted
+bun_pin_verify_runtime "$pin_probe/bun" probe || runtime_refusal="$BUN_PIN_FAILURE"
+rm -rf "$pin_probe"
+[ "$runtime_refusal" = "reason=core_runtime_mismatch expected=$BUN_PIN_VERSION actual=0.0.1 file=probe" ] \
+  || fail "reason=runtime_check_unexpected result=${runtime_refusal%% *}"
+xcode_version="$(xcodebuild -version 2>/dev/null | awk 'NR == 1 { v = $2 } NR == 2 { b = $3 } END { print v "/" b }')" \
+  || xcode_version=unknown
+swift_version="$(swift --version 2>&1 | sed -nE 's/.*Swift version ([0-9.]+).*/\1/p')" || swift_version=unknown
+log info "check:environment:success" "bun=$BUN_PIN_VERSION xcode=$xcode_version swift=${swift_version:-unknown}"
 
-# 0. Swift 서식(bunny-holes/sherpa#70). 기준은 저장소 루트의 .swift-format 하나다. swift-format 은 파일의 폴더에서
+# 새 릴리스 알림. 바깥 릴리스로 같은 커밋의 결과가 바뀌면 안 되므로 warn 만 내고 게이트를 실패시키지 않는다.
+# 출처와 한도는 스크립트에 적었다.
+python3 "$REPO_ROOT/scripts/checks/notify_new_releases.py" "$REPO_ROOT" "$BUN_PIN_VERSION" \
+  || log warn "check:currency:failure" "reason=notifier_exit_$? — new releases are UNCHECKED"
+
+# 1. Swift 서식(bunny-holes/sherpa#70). 기준은 저장소 루트의 .swift-format 하나다. swift-format 은 파일의 폴더에서
 #    위로 올라가며 가장 가까운 .swift-format 을 읽으므로 이 파일이 저장소의 모든 Swift 파일에 걸린다. Git 이 보는
 #    Swift 파일(추적한 것과 무시하지 않은 새 파일) 전부를 Xcode 도구 사슬의 swift format 으로 본다. 도구 사슬이
 #    바뀌어 출력이 달라지면 swift format --in-place 로 다시 맞춘 style: 커밋을 만들고 .git-blame-ignore-revs 에
@@ -37,7 +82,7 @@ fi
 rm -f "$format_log"
 log info "check:swift-format:success" "files=${#swift_sources[@]}"
 
-# 1. Swift 패키지 전부. eventkit-service 만 돌리던 시절, worker-protocol 과
+# 2. Swift 패키지 전부. eventkit-service 만 돌리던 시절, worker-protocol 과
 #    foundation-models-service 의 테스트 34 개가 아무도 돌리지 않는 채로 남아 있었다.
 #    돌리지 않는 테스트는 없는 테스트다.
 #    foundation-models-service 는 CLI 가 부르지 않는다 — 의도적으로 배선하지 않은 채
@@ -45,7 +90,7 @@ log info "check:swift-format:success" "files=${#swift_sources[@]}"
 #    이 패키지가 platforms: [.macOS(.v26)] 이라 게이트 전체가 macOS 26 이상을 요구한다.
 #    sherpa-app 은 앱과 중계의 라이브러리, 패키지의 sherpa-relay 와 그 시험 프로그램이다. 프로세스 시험이
 #    swift build 가 만든 DEBUG 실행 파일을 ad-hoc 서명해 띄우므로 build 가 test 보다 먼저다(계약 §13.2).
-#    Sherpa.app 번들은 코어를 빌드한 뒤 2.1 에서 Xcode 프로젝트가 만든다.
+#    Sherpa.app 번들은 코어를 빌드한 뒤 3.1 에서 Xcode 프로젝트가 만든다.
 readonly SWIFT_PACKAGES="worker-protocol foundation-models-service eventkit-service sherpa-app"
 for package in $SWIFT_PACKAGES; do
   log info "check:swift:start" "package=$package"
@@ -68,7 +113,7 @@ log info "check:swift:success" "packages=4"
 # 같은 사용자의 아무 프로세스나 launchctl setenv 로 그 값을 앱에 넣을 수 있기 때문이다. DEBUG 빌드에
 # 있는 이름이 릴리스 빌드에서 사라졌는지 본다. DEBUG 쪽에 이름이 없으면 이 검사는 아무것도 보지 못하므로
 # 그것도 실패로 친다. Swift 는 15 바이트 이하의 문자열 리터럴을 명령어 안에 넣어 grep 이 찾지 못하므로
-# 이름은 16 바이트 이상이어야 한다. 여기서는 패키지의 중계를 보고, 번들의 앱과 중계는 2.1 에서 본다.
+# 이름은 16 바이트 이상이어야 한다. 여기서는 패키지의 중계를 보고, 번들의 앱과 중계는 3.1 에서 본다.
 readonly APP_PACKAGE="$REPO_ROOT/apple/sherpa-app"
 readonly RELAY_TEST_VARIABLES="SHERPA_APP_SOCKET SHERPA_APP_REQUIREMENT"
 readonly APP_TEST_VARIABLES="SHERPA_APP_SOCKET SHERPA_TEST_CORE_BIN SHERPA_RELAY_REQUIREMENT SHERPA_CORE_REQUIREMENT"
@@ -160,14 +205,14 @@ for line in "socket_override=false" "core=$APP_PACKAGE/.build/release/sherpa-cor
 done
 log info "check:app-release:success" "release_relay_exit=$release_exit"
 
-# 2. Bun + TypeScript 코어(ADR-0008). 포맷·린트·타입 검사, Bun 런타임 위의 vitest,
+# 3. Bun + TypeScript 코어(ADR-0008). 포맷·린트·타입 검사, Bun 런타임 위의 vitest,
 #    그리고 배포와 같은 단일 실행 파일 빌드. 테스트를 `vp test` 로 돌리면 Node 에서 돌아
 #    bun:sqlite 를 못 읽는다.
 readonly CORE="$REPO_ROOT/core"
 log info "check:core:start" "root=core"
 (cd "$CORE" && bun install --frozen-lockfile >/dev/null) || fail "reason=core_install_failed"
 (cd "$CORE" && "$CORE/node_modules/.bin/vp" check >/dev/null) || fail "reason=core_check_failed"
-# 단위 시험의 planner 스키마 시험은 1 에서 빌드한 헬퍼에 권한이 필요 없는 요청만 넣어
+# 단위 시험의 planner 스키마 시험은 2 에서 빌드한 헬퍼에 권한이 필요 없는 요청만 넣어
 # protocol.invalid_payload 가 아님을 본다(app-connection-v1 §13.1).
 export SHERPA_APPLE_BIN="$REPO_ROOT/apple/eventkit-service/.build/debug/sherpa-apple"
 (cd "$CORE" && bun run test >/dev/null) || fail "reason=core_test_failed"
@@ -185,6 +230,9 @@ cli_version="$(printf '%s' "$raw" | awk '{print $2}')"
 
 [ "$("$SHERPA_APPLE_BIN" --version)" = "sherpa-apple $cli_version" ] \
   || fail "reason=helper_version_mismatch cli=$cli_version"
+
+# 코어가 품은 Bun 런타임도 0 에서 확인한 판이어야 한다(bunny-holes/sherpa#71).
+bun_pin_verify_runtime "$binary" core/dist/sherpa || fail "$BUN_PIN_FAILURE"
 
 # 실패는 이름 있는 오류 코드로 끝나야 한다. 최상위 catch 가 알 수 없는 실패를 stdout·stderr
 # 0 바이트로 끝내던 것을 이 호출로 재현했다. {} 는 봉투 검사에서 거부되므로 EventKit 과
@@ -229,7 +277,7 @@ python3 -c 'import json, sys; assert json.loads(sys.argv[1])["status"] == "succe
   || fail "reason=rejected_limit_override_applied"
 log info "check:core:success" "cli_version=$cli_version"
 
-# 2.1 Sherpa.app 번들. apple/sherpa-app/Sherpa.xcodeproj 가 앱과 sherpa-relay 를 빌드하고, Embed Core
+# 3.1 Sherpa.app 번들. apple/sherpa-app/Sherpa.xcodeproj 가 앱과 sherpa-relay 를 빌드하고, Embed Core
 #     단계가 방금 빌드한 core/dist/sherpa 를 확인해 넣는다(계약 §2). Xcode 의 스크립트 PATH 에는 bun 이
 #     없어 코어는 그 전에 빌드해야 한다. 서명은 소유자의 Developer ID 인증서로 한다.
 readonly XCODE_DERIVED="$APP_PACKAGE/.build/xcode"
@@ -313,9 +361,11 @@ for entry in "Sherpa:dev.xiyo.sherpa:com.apple.security.automation.apple-events 
 done
 [ "$("$release_app/Contents/MacOS/sherpa-relay" --version)" = "sherpa-relay $cli_version" ] \
   || fail "reason=bundled_relay_version_mismatch cli=$cli_version"
+# 번들에 든 코어도 0 에서 확인한 Bun 런타임을 품어야 한다(bunny-holes/sherpa#71).
+bun_pin_verify_runtime "$release_app/Contents/MacOS/sherpa-core" Sherpa.app/sherpa-core || fail "$BUN_PIN_FAILURE"
 log info "check:app-bundle:success" "version=$cli_version configuration=Release signed=developer_id"
 
-# 3. 에이전트 플러그인. 스킬은 Sherpa.app 의 MCP 도구를 부른다. 코어의 도구 등록부에서 이름을 뽑아
+# 4. 에이전트 플러그인. 스킬은 Sherpa.app 의 MCP 도구를 부른다. 코어의 도구 등록부에서 이름을 뽑아
 #    넘겨 스킬이 적은 도구가 서버에 실제로 있는지 확인시키고, 방금 빌드한 바이너리를 넘겨 스킬이
 #    사용자에게 안내하는 명령(kakaotalk setup)이 있는지 확인시킨다.
 mcp_tools="$(mktemp "${TMPDIR:-/tmp}/sherpa-mcp-tools.XXXXXX")"
@@ -328,13 +378,13 @@ SHERPA_BINARY="$binary" SHERPA_MCP_TOOLS="$mcp_tools" bash "$REPO_ROOT/plugins/s
   || { rm -f "$mcp_tools"; fail "reason=plugin_check_failed"; }
 rm -f "$mcp_tools"
 
-# 4. 자체 카탈로그가 다시 생기면 같은 플러그인이 두 목록에 보인다.
+# 5. 자체 카탈로그가 다시 생기면 같은 플러그인이 두 목록에 보인다.
 for catalog in "$REPO_ROOT/.claude-plugin/marketplace.json" "$REPO_ROOT/.agents/plugins/marketplace.json"; do
   [ ! -e "$catalog" ] || fail "reason=duplicate_marketplace_present file=${catalog#"$REPO_ROOT/"}"
 done
 log info "check:marketplace:success" "source=plug-hole"
 
-# 5. 문서 구조. 제목 앞에 본문이 오면 렌더러가 제목 없는 문서로 읽는다.
+# 6. 문서 구조. 제목 앞에 본문이 오면 렌더러가 제목 없는 문서로 읽는다.
 python3 "$REPO_ROOT/scripts/checks/verify_docs.py" "$REPO_ROOT" || fail "reason=doc_structure_invalid"
 # 사용 문서가 안내하는 명령이 실제로 있는가. 0.7.1 의 live-validation.md 가 없는 명령을 안내했다.
 help_snapshot="$(mktemp "${TMPDIR:-/tmp}/sherpa-help.XXXXXX")"
@@ -344,7 +394,7 @@ python3 "$REPO_ROOT/scripts/checks/verify_doc_commands.py" "$REPO_ROOT" "$help_s
 rm -f "$help_snapshot"
 log info "check:docs:success" "structure, links and commands"
 
-# 6. 릴리스 경로. brew 가 없으면 건너뛰되 건너뛴 사실을 남긴다.
+# 7. 릴리스 경로. brew 가 없으면 건너뛰되 건너뛴 사실을 남긴다.
 #    SHERPA_SKIP_RELEASE=1 로 명시적으로 끌 수 있다 — 반복 실행에서 느리기 때문이다.
 if [ "${SHERPA_SKIP_RELEASE:-0}" = "1" ]; then
   log warn "check:release:skipped" "reason=explicitly_disabled — release path is UNVERIFIED"
