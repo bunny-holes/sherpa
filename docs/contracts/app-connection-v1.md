@@ -1018,8 +1018,9 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 - 오래 켜 둔 앱과 코어의 메모리. 시험 빌드는 8분 동안 코어 13.6 MB, 호스트 5.2 MB 로 고정됐다.
 - MCP 스위치와 상태 창(bunny-holes/sherpa#54, #52, §2). 2026-11-22 메인 세션이 이 작업의 `e0e2670` 을 내보낸 앱으로
   쟀다. 첫 실행에 MCP 가 꺼진 채 상태 창이 저절로 열렸다. 꺼진 동안 중계는 75 와 remedy 로 끝났고 Codex 는 서버를
-  `failed` 로 두었다. 창의 스위치로 켜자 Codex 가 붙어 도구 35개를 보았고 호출은 `succeeded` 였다. 창의 중계 경로는
-  잘리지 않았다. [실측: live-evidence 2026-11-22 "The MCP switch in the exported app"] 같은 앱의 중계를 Claude Code
+  `failed` 로 두었다. 창의 스위치로 켜자 Codex 가 붙어 도구 35개를 보았고 호출은 `succeeded` 였다. Bun 프로그램이 직접
+  띄워 `server/discover` 를 보낸 중계는 창의 스위치로 끄자 0.87초 안에 75 `app_closed_session` 으로 끝났다. 창의 중계
+  경로는 잘리지 않았다. [실측: live-evidence 2026-11-22 "The MCP switch in the exported app"] 같은 앱의 중계를 Claude Code
   2.1.326 대화형의 `--mcp-config` 동적 서버로 붙이자, 꺼진 동안은 `Server stderr:` 에 remedy 를 남기고 실패했고
   켠 뒤 새 세션은 붙었다(§6). [실측: live-evidence 2026-11-22 "Claude Code against a relay turned away"] 남은 것은
   다음과 같다.
@@ -1142,7 +1143,8 @@ not json\n                                                                      
 에서 `server/discover`·`tools/list`·`tools/call` 을 모두 2026-07-28 봉투로 보내 `reminder_authorization_status` 를
 불렀다(결과 `succeeded`). 이로써 내보낸 앱 경로의 Claude Code 도구 호출이 닫혔다(ADR-0011). 같은 날 `e0e2670` 을
 내보낸 앱으로 첫 실행 창, 꺼진 동안의 거부(중계 75, Codex `failed`), 창의 스위치로 켠 뒤의 Codex 연결과 호출을
-쟀고, 동적 서버로 머리말 단계 실패 뒤 Claude Code 가 다시 띄우는 모양과 다음 세션을 쟀다(§6, §13.4).
+쟀다. 연결된 중계가 끌 때 75 `app_closed_session` 으로 끝나는 것과, 동적 서버로 머리말 단계 실패 뒤 Claude Code 가
+다시 띄우는 모양과 다음 세션도 쟀다(§6, §13.4).
 
 ## Related
 

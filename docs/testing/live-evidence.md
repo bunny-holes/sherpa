@@ -46,23 +46,38 @@ bunny-holes/sherpa#54 branch at `e0e2670`.
 
 This Mac, run by the main session on `Sherpa.app` exported from the
 bunny-holes/sherpa#54 branch at `e0e2670`; that session keeps the
-screenshots. Recorded from its report, which gave no Codex version or command
-line.
+screenshots.
 
+- Codex was codex-cli 0.171.0. `codex app-server` ran with no configuration
+  file, only `-c` overrides:
+  `-c mcp_servers.sherpa_probe.command="<app>/Contents/MacOS/sherpa-relay"`.
+  The runs that opted in to 2026-07-28 also gave
+  `-c features.mcp_2026_07_28=true` and
+  `-c mcp_servers.sherpa_probe.env={CODEX_MCP_PROTOCOL_VERSION="2026-07-28"}`.
+  A JSON-RPC client written with Bun sent `initialize`, `thread/start`
+  (ephemeral), `mcpServerStatus/list` (server `sherpa_probe`) and
+  `mcpServer/tool/call` (`reminder_authorization_status`).
 - At the first launch the status window opened by itself, with MCP off.
 - While MCP was off, the relay ended with exit 75 and its remedy line, and
-  Codex showed the server as `failed`.
+  Codex showed the server as `failed` with `toolsError`
+  `MCP startup failed: handshaking with MCP server failed: connection closed: initialize response`.
 - Turned on with the window's switch, Codex connected, listed 35 tools, and a
   tool call `succeeded`.
+- Turning MCP off under a connected relay: a Bun program started the relay
+  itself and sent `server/discover`. The status window read "On. 1 agent
+  session connected." (the layout of `e0e2670`). After the window's switch
+  was turned off, the relay ended with exit 75 within 0.87 s and wrote
+  `reason=app_closed_session`.
 - The relay path in the window was shown whole.
 - The owner then asked that the connection guide not fill the window: "mcp를
   활성화 하면 연결 방법은 ?를 통해서 직접 보게해라. 화면을 설명으로
   덮어버리지마라". The window now holds the header, the MCP row and the
   permissions, and the guide opens from the MCP row's help button while MCP is
   on (app-connection-v1 §2). That layout is not measured yet.
-- Not in the report: the menu's switch, turning MCP off under a connected
-  agent, Claude Code while MCP is off, a copied command, and an install path
-  longer than `/Applications/Sherpa.app` (app-connection-v1 §13.4).
+- Not measured: the menu's switch, what a connected Claude Code or Codex shows
+  when MCP is turned off, a copied command, and an install path longer than
+  `/Applications/Sherpa.app` (app-connection-v1 §13.4). Claude Code while MCP
+  is off is the entry above.
 
 ## 2026-11-22 — Agent registration commands written into empty configuration homes (bunny-holes/sherpa#54)
 
