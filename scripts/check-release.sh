@@ -72,7 +72,7 @@ published="$SMOKE_DIST/Formula/sherpa.rb"
 [ -f "$published" ] || fail failure "reason=published_formula_not_rendered"
 diff <(grep -v '^  url "' "$rendered") <(grep -v '^  url "' "$published") >/dev/null \
   || fail failure "reason=formulas_differ_beyond_url"
-grep -Eq '^  url "https://github\.com/XIYO/sherpa/releases/download/v[0-9]+\.[0-9]+\.[0-9]+/sherpa-[0-9]+\.[0-9]+\.[0-9]+-aarch64-apple-darwin\.tar\.gz"$' "$published" \
+grep -Eq '^  url "https://github\.com/bunny-holes/sherpa/releases/download/v[0-9]+\.[0-9]+\.[0-9]+/sherpa-[0-9]+\.[0-9]+\.[0-9]+-aarch64-apple-darwin\.tar\.gz"$' "$published" \
   || fail failure "reason=published_url_unexpected"
 
 # Homebrew 는 url 의 아카이브 이름에서 판을 읽는다. `version` 줄을 함께 적으면 `brew audit` 이

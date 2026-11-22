@@ -111,7 +111,7 @@ checksum="$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')"
 #   Swift 빌드가 비결정적이라 다른 실행의 아카이브는 해시가 다르다.
 # - local-tap/Formula/sherpa.rb: 개발본. url 이 방금 만든 file:// 아카이브라 게시 전에도
 #   설치된다. 릴리스 스모크(check-release.sh)와 로컬 개발 tap 이 쓴다.
-readonly RELEASE_REPOSITORY="XIYO/sherpa"
+readonly RELEASE_REPOSITORY="bunny-holes/sherpa"
 readonly ARCHIVE_NAME="${ARCHIVE##*/}"
 readonly TAG="v$version"
 readonly RELEASE_URL="https://github.com/$RELEASE_REPOSITORY/releases/download/$TAG/$ARCHIVE_NAME"
@@ -165,8 +165,8 @@ class Sherpa < Formula
       runs sherpa. Run "sherpa kakaotalk setup" once before reading KakaoTalk.
 
       Agent skills are not bundled with this CLI. Install them separately:
-      Your GitHub account needs access to the private XIYO/plug-hole repository.
-        claude plugin marketplace add https://github.com/XIYO/plug-hole.git
+      Your GitHub account needs access to the private bunny-holes/plug-hole repository.
+        claude plugin marketplace add https://github.com/bunny-holes/plug-hole.git
         claude plugin install sherpa@plug-hole
     EOS
   end

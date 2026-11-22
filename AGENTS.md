@@ -9,7 +9,7 @@ manner: "규칙만 적고 근거는 ADR·live-evidence·스크립트 주석으�
 
 # Sherpa repository instructions
 
-- Publish the agent plugin only through `XIYO/plug-hole` as `sherpa@plug-hole`.
+- Publish the agent plugin only through `bunny-holes/plug-hole` as `sherpa@plug-hole`.
   Keep its source and releases here without a repository marketplace.
 - This file is the only instruction file of the repository. Do not add
   `CLAUDE.md`, as an import, a symbolic link, or a copy (owner decision,
