@@ -129,11 +129,11 @@ other module, every socket, HTTP, WebSocket, and name-lookup API out of
 `core/src`, and the AI SDK's values inside `core/src/chat/sdk/`; a unit test
 reads the bundled packages for the same modules and Bun's own network API, as
 patterns. Stdio tests check with `lsof` that the built core holds no internet
-or listening socket while it serves MCP or refuses a model list for a
-plain-HTTP origin, and no socket but its connection to the origin whose
-certificate a test made it trust while a model list waits on it; a turn
-refused for a plain-HTTP origin reaches no listener, and one for the trusted
-origin sends that server only its own requests. The
+or listening socket while it serves MCP or refuses a model list or a turn for
+a plain-HTTP origin, and no socket but its connection to the origin whose
+certificate a test made it trust while a model list or a turn waits on it;
+the refused turn reaches no listener, and the trusted origin's server gets
+only the requests of the model list and the turns. The
 app listens only on its Unix socket for relays, and the relay connects only to
 that socket. [ADR-0012](../adr/0012-in-app-chat.md)
 (owner decision 2026-11-22, bunny-holes/sherpa#59) amends ADR-0010 decision 2

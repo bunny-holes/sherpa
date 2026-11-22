@@ -470,11 +470,11 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   전역 `fetch`·`WebSocket`·기본 제공자로 가는 길은 시작 때의 거부가 막는다. [계약; ADR-0012 "코드로 지키기"]
   빌드한 코어는 MCP 연결을 받는 동안 인터넷 소켓도 듣는 Unix 소켓도 쥐지 않는다. 나가는 길이 막는 출처(평문 http
   루프백)의 모델 목록은 연결 없이 `egress_denied` 로 끝나고, 그 뒤에도 소켓이 없다. 같은 출처의 글 차례도 그 출처에
-  연결 하나 오지 않은 채 `egress_denied` 로 끝나고, 코어는 AI SDK 를 싣지 않는다. 자체 서명 인증서의 https 루프백
-  출처에는 연결하지만 TLS 확인이 거부해 그 서버의 처리기에 요청이 닿지 않는다. 시험이 넘긴 인증 기관(아래)이 서명한
-  https 루프백 출처의 모델 목록은 그 서버에 닿고, 서버가 답을 잡고 있는 동안 코어의 인터넷 소켓은 모두 그 서버로 가는
-  연결이다. 같은 출처의 글 차례는 그 서버에서 답을 흘려 받고, 그 서버가 받은 요청은 모델 목록 하나와 차례 둘뿐이다.
-  모델 목록에 그 출처가 보낸 리디렉트는 따르지 않는다. [실측: `core/tests/stdio/egress.test.ts`]
+  연결 하나 오지 않은 채 `egress_denied` 로 끝나고, 그 뒤에도 소켓이 없으며, 코어는 AI SDK 를 싣지 않는다. 자체 서명
+  인증서의 https 루프백 출처에는 연결하지만 TLS 확인이 거부해 그 서버의 처리기에 요청이 닿지 않는다. 시험이 넘긴 인증
+  기관(아래)이 서명한 https 루프백 출처의 모델 목록과 글 차례는 그 서버에 닿고, 서버가 답을 잡고 있는 동안 코어의
+  인터넷 소켓은 모두 그 서버로 가는 연결이다. 그 서버가 받은 요청은 모델 목록 하나와 차례 둘뿐이다. 모델 목록에 그
+  출처가 보낸 리디렉트는 따르지 않는다. [실측: `core/tests/stdio/egress.test.ts`]
 - 환경은 물려주지 않는다. `HOME`, `TMPDIR`, `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, `LOG_LEVEL` 만 넘긴다.
   [계약] 그래서 Bun 이 시작 때 읽는 `NODE_EXTRA_CA_CERTS`, `NODE_USE_SYSTEM_CA`, `BUN_OPTIONS` 는 앱이 띄운 코어에
   닿지 않는다. Bun 1.4.5 로 빌드한 코어는 `NODE_EXTRA_CA_CERTS` 가 가리킨 인증 기관을 믿고, 시험만 이것으로 믿을 수
@@ -823,16 +823,20 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   않는다. 그 시계는 응답이 흐르기 시작한 뒤에야 돌아, 머리말을 기다리는 동안과 OpenAI·Anthropic 패키지가 흐름의 첫
   조각을 미리 읽는 동안을 재지 않기 때문이다. 출력 사이의 한도는 AI SDK 의 `timeout.chunkMs` 다. [계약; 문서: `ai`
   7.0.179 `src/generate-text/stream-text.ts`, `@ai-sdk/openai` 4.0.122 `throwIfOpenAIStreamErrorBeforeOutput`]
-- [설계; 추론] 첫 출력의 한도가 600초인 까닭: 지금의 Claude(Opus 5.5·5, Sonnet 5.5·5, Haiku 5.5, Fable 5.x, Mythos
-  5.x, Opus 4.8·4.7)는 thinking 의 `display` 기본이 `omitted` 여서, 생각하는 동안 글을 흘리지 않고 빈 thinking
-  delta 와 서명 하나만 보낸다. 그래서 생각하는 시간이 모두 첫 출력 전의 기다림이다. [문서: Claude
-  [Thinking](https://platform.claude.com/docs/en/build-with-claude/thinking) "Controlling thinking display",
-  [Streaming](https://platform.claude.com/docs/en/build-with-claude/streaming) "Thinking delta"] `@ai-sdk/anthropic`
-  4.0.107 도 그 모델들의 thinking 을 끌 수 없는 것으로 둔다(`thinkingCanBeDisabled`). 한도가 짧으면 이미 값을 치른
-  생각을 버리고, "다시" 를 눌러도 같은 곳에서 끊긴다. 오래 기다리는 차례는 사람이 `cancel` 로 멈출 수 있다.
-  `display: "summarized"` 를 보내 생각을 출력으로 흘리는 길은 쓰지 않는다. 요청의 모양과 대화 상태가 바뀌고, OpenAI
-  와 Google 에는 같은 길이 없으며, OpenAI 의 reasoning 요약은 조직 인증을 요구할 수 있기 때문이다 [추론]. 모델이 첫
-  출력 전에 얼마나 생각하는지는 재지 않았다(§16).
+- [설계; 추론] 첫 출력의 한도가 600초인 까닭: 코어는 Anthropic 요청에 `thinking` 을 싣지 않는다. [실측:
+  `core/tests/chat-turn.test.ts`] 그래도 Claude 5 이후의 모델(Opus 5.5·5, Sonnet 5.5·5, Haiku 5.5, Fable 5.x, Mythos
+  5.x)은 adaptive thinking 으로 스스로 정한 만큼 생각하고, thinking 의 `display` 기본이 `omitted` 여서 생각하는
+  동안 글을 흘리지 않고 빈 thinking delta 와 서명 하나만 보낸다. 그래서 생각하는 시간이 모두 첫 출력 전의 기다림이다.
+  Opus 5.5·Sonnet 5.5·Fable 5.x·Mythos 5.x 는 thinking 을 끌 수도 없다. Opus 4.8·4.7 은 `display` 기본이 같지만
+  `thinking` 이 없으면 생각하지 않는다. [문서: Claude
+  [Thinking](https://platform.claude.com/docs/en/build-with-claude/thinking) "Configuring thinking", "Controlling
+  thinking display", [Streaming](https://platform.claude.com/docs/en/build-with-claude/streaming) "Thinking delta"]
+  `@ai-sdk/anthropic` 4.0.107 도 Opus 5.5·Sonnet 5.5·Fable 5.x 의 thinking 을 끌 수 없는 것으로
+  둔다(`thinkingCanBeDisabled: false`). 한도가 짧으면 이미 값을 치른 생각을 버리고, "다시" 를 눌러도 같은 곳에서
+  끊긴다. 오래 기다리는 차례는 사람이 `cancel` 로 멈출 수 있다. `display: "summarized"` 를 보내 생각을 출력으로
+  흘리는 길은 쓰지 않는다. 요청의 모양과 대화 상태가 바뀌고, OpenAI 와 Google 에는 같은 길이 없으며, OpenAI 의
+  reasoning 요약은 조직 인증을 요구할 수 있기 때문이다 [추론]. 모델이 첫 출력 전에 얼마나 생각하는지는 재지
+  않았다(§16).
 - 연결에 바이트가 오가지 않는 사이는 Bun 의 유휴 한도가 끊는다. 바이트가 오갈 때마다 다시 켜지는 소켓 한도이고,
   문서의 기본은 5분이다. 코어의 나가는 길은 Bun 의 `timeout` 선택을 떨구므로 기본이 쓰인다. [문서: bun-types 1.4.5
   `BunFetchRequestInit.timeout`] 이 Mac 에서 머리말을 기다리는 요청과 머리말 뒤 몸을 기다리는 요청 모두 360초에
@@ -1417,7 +1421,7 @@ result         object | null
   ·연결 실패의 코드와 `retryable`, `busy`, `timeout`, 닫힘의 중단, 다섯째 채널의 `chat_limit`, 로그(debug 포함)와
   다른 프레임에 키가 없음. 런타임 `fetch` 는 나가는 길 뒤의 가짜다.
 - 글 차례(§7.11, `chat-turn.test.ts`): 네 제공자마다 나가는 요청의 URL·머리말·몸(키는 머리말에만, Anthropic 의 판과
-  지시문의 캐시 제어와 표집 설정 없음과 아는 모델의 `max_tokens` 128,000, OpenAI 의 `store: false` 와 reasoning
+  지시문의 캐시 제어와 표집 설정·`thinking` 없음과 아는 모델의 `max_tokens` 128,000, OpenAI 의 `store: false` 와 reasoning
   모델에만 붙는 옛 `include`, Google 의 Interactions 와 `store: false`, OpenAI 호환의 `stream_options`)과 `done` 의
   토큰 수, Anthropic 이 모르는 모델의 `max_tokens`(128,000 과 4,096)와 그 경고와 `length`, 50 ms 의 `delta` 와 4 KiB 를
   문자 사이에서 자르기, 대화의 이어짐(오류·끊김·거절로 끝난 단계는 빠지고, reasoning 은 서명과 함께 남되 앱에 가지
@@ -1426,8 +1430,9 @@ result         object | null
   코드, 503 뒤 200 은 503 이 적은 `retry-after-ms` 뒤, 다시 보내기를 기다리는 동안의 `cancel` 은 곧바로 `done`
   `aborted` 이고 더 보내지 않음, 401·403·400·404·인증서·리디렉트는 한 번, 연결 실패는 2초와 4초 간격, OpenAI·Anthropic
   의 첫 출력 전 흐름 오류는 세 번, `onError` 를 넘겨도 출력 뒤의 흐름 오류는 한 번과 그 코드), 짧게 줄인 첫 출력과
-  출력 사이의 한도(첫 출력 한도는 한 번 보내고 끝남, 상태로 실패한 뒤의 기다림은 한도에 들지 않음, 첫 출력 전 오류를
-  보낸 OpenAI 응답 뒤에 다시 보낸 요청은 한도를 새로 켬), Bun 의 유휴 한도가 머리말 전·몸 도중·출력 뒤에 던지는
+  출력 사이의 한도(첫 출력 한도는 한 번 보내고 끝남, 상태로 실패한 뒤의 기다림은 한도에 들지 않음), 가짜 시계 위의
+  600초 한도(한도 1초 전에 첫 출력 전 오류를 보낸 OpenAI 응답 뒤에 다시 보낸 요청은 한도를 새로 켜, 첫 요청의 마감
+  뒤에 답해도 `timeout` 이 아님), Bun 의 유휴 한도가 머리말 전·몸 도중·출력 뒤에 던지는
   `TimeoutError` 가 한 번 보내고 `timeout` 으로 끝남, 2 MiB 대화 한도, 로그(debug 포함)에 키·글·답이 없음. 모든 시험은
   패키지가 아는 모델 id 를 쓰고, 기대하지 않은 AI SDK 경고가 하나라도 나오면 실패한다. 응답은 손으로 쓴 server-sent
   events 다.
@@ -1479,15 +1484,16 @@ stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). �
   `GET /v1/models` 하나를 `authorization: Bearer <키>` 와 함께 받는다. 서버가 답을 잡고 있는 동안 코어의 인터넷
   소켓은 모두 그 서버로 가는 연결이고 듣는 Unix 소켓은 없다. 리디렉트 회귀: 그 출처가 다른 출처로 보낸 307 과 같은
   출처로 보낸 302 는 `egress_denied` 로 끝나고 리디렉트 대상에는 요청이 가지 않는다. 글 차례: 평문 http 루프백
-  출처는 `egress_denied` 이고, 그 포트에서 듣는 시험 프로세스는 연결을 하나도 받지 않으며, 코어는 AI SDK 를 싣지
-  않는다(`[core:chat:load]` 줄 없음). 같은 기관이 서명한 출처에서는 모델 목록이 AI SDK 없이 답하고, 첫 차례가 AI SDK 를
-  한 번 싣는다. 그 차례는 서버가 답의 나머지를 잡고 있는 동안 첫 `delta` 를 앱에 내고 `done` 으로 끝나며, 둘째 차례는
-  첫 답을 대화에 싣는다. 서버가 받은 요청은 모델 목록 하나와 차례 둘이고, 사람 글 앞의 시각 줄은 `TZ` 없는 코어가
-  읽은 이 Mac 의 시간대(`/etc/localtime`)를 단다. 코어의 `HOME` 에 만료된 Vercel CLI 로그인을, 작업 폴더에
+  출처는 `egress_denied` 이고, 그 포트에서 듣는 시험 프로세스는 연결을 하나도 받지 않으며, 그 뒤 코어에 소켓이 없고,
+  코어는 AI SDK 를 싣지 않는다(`[core:chat:load]` 줄 없음). 같은 기관이 서명한 출처에서는 모델 목록이 AI SDK 없이
+  답하고, 첫 차례가 AI SDK 를 한 번 싣는다. 그 차례는 서버가 답의 나머지를 잡고 있는 동안 첫 `delta` 를 앱에 내고(그때
+  코어의 인터넷 소켓은 모두 그 서버로 가는 연결이고 듣는 Unix 소켓은 없다) `done` 으로 끝나며, 둘째 차례는 첫 답을
+  대화에 싣는다. 서버가 받은 요청은 모델 목록 하나와 차례 둘이고, 사람 글 앞의 시각 줄은 `TZ` 없는 코어가 읽은 이
+  Mac 의 시간대(`/etc/localtime`)를 단다. 코어의 `HOME` 에 만료된 Vercel CLI 로그인을, 작업 폴더에
   `.vercel/project.json` 을 두고 돌아도 두 파일의 바이트와 수정 시각은 그대로이고 거부 줄이 없다. 대조로, 같은 두
-  파일을 둔 임시 `HOME` 의 자식 프로세스에서 `fetch` 를 막고 진짜 `@vercel/oidc` 의 `getVercelOidcToken` 을 부르면
-  `VercelOidcTokenError` 를 던지고 `fetch` 는 부르지 않은 채 로그인을 `{}` 로 덮어쓴다(ADR-0012 "제공자 면"). 어느
-  경우든 키가 표준 오류와 프레임에 없다.
+  파일을 둔 임시 `HOME` 의 자식 프로세스에서 preload 로 `fetch` 를 막고 진짜 `@vercel/oidc` 의
+  `getVercelOidcToken` 을 부르면 `VercelOidcTokenError` 를 던지고 `fetch` 는 부르지 않은 채 로그인을 `{}` 로
+  덮어쓴다(ADR-0012 "제공자 면"). 어느 경우든 키가 표준 오류와 프레임에 없다.
 - 실제 시계(`waits.test.ts`): 답 없는 확인은 30초에 `withdraw` 되고 호출은 `confirmation.timed_out` 으로 실패하며
   늦은 승인은 아무것도 돌리지 않는다. 답 없는 발견은 5초 뒤 core 도구만 남기고 늦은 답은 버린다. planner 작업자가
   없는 앱은 core 도구를 곧바로 받는다.
