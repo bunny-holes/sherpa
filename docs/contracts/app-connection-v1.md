@@ -1121,8 +1121,9 @@ stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). �
   의 셋), Info.plist(식별자, 판, `LSUIElement`, 사용 설명, Xcode 표준 키), 세 식별자와 hardened runtime, 지정
   요건의 팀, 앱만 가진 권한 항목, `codesign --verify --strict --deep`, 번들 중계의 `--version`, 번들 코어의
   `BUN_BE_BUN=1 … --version` 이 선언한 Bun 판인지를 본다(bunny-holes/sherpa#71). 오류 봉투를 쓰는 가짜 코어를
-  `SHERPA_CORE` 로 주면 빌드가 `core_not_mux` 로 실패하고 번들에 서명과 실행 파일이 없어야 한다. 보안
-  타임스탬프는 내보낸 번들에만 있어 게이트는 보지 않는다. [계약]
+  `SHERPA_CORE` 로 주면 빌드가 `core_not_mux` 로 실패하고 번들에 서명과 실행 파일이 없어야 한다. 인사는 맞고
+  런타임만 `0.0.1` 이라고 답하는 가짜 코어는 `core_runtime_mismatch` 로 실패하고 마찬가지로 아무것도 남지 않아야
+  한다. 보안 타임스탬프는 내보낸 번들에만 있어 게이트는 보지 않는다. [계약]
 
 DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TEST_CORE_BIN`, `SHERPA_RELAY_REQUIREMENT`,
 `SHERPA_CORE_REQUIREMENT`, 중계는 `SHERPA_APP_SOCKET`, `SHERPA_APP_REQUIREMENT`. 릴리스 빌드에는 컴파일되지

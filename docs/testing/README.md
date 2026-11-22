@@ -114,7 +114,10 @@ Anything not listed here is not proven by the gate.
   builds `apple/sherpa-app/Sherpa.xcodeproj` from scratch and signs it with
   the owner's Developer ID certificate; without the certificate the gate
   stops. A fake core that does not know `app serve`, passed as `SHERPA_CORE`,
-  must fail the build with `core_not_mux` and leave no signed executable. The
+  must fail the build with `core_not_mux` and leave no signed executable, and
+  one with the right hello whose runtime answers `0.0.1` must fail it with
+  `core_runtime_mismatch`, the Embed Core phase's own Bun check, and leave
+  none either. The
   Release bundle holds exactly `Sherpa`, `sherpa-core` and `sherpa-relay`; the
   app and the relay hold none of the test variables; the Info.plist carries
   the contract's values and the CLI version; the signature verifies strictly

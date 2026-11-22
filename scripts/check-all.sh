@@ -313,6 +313,27 @@ if [ -e "$debug_app/Contents/_CodeSignature" ] || [ -n "$(ls -A "$debug_app/Cont
   xcode_failed "reason=app_bundle_built_with_stale_core"
 fi
 
+# 다른 Bun 런타임을 품은 코어 거부(bunny-holes/sherpa#71). Embed Core 단계는 인사를 본 뒤 0 에서 확인한 판을
+# BUN_BE_BUN=1 로 코어에 묻는다. 인사는 맞고 런타임만 0.0.1 이라고 답하는 가짜 코어를 SHERPA_CORE 로 넘기면
+# 빌드가 core_runtime_mismatch 로 실패하고, 번들에는 서명도 실행 파일도 남지 않아야 한다.
+runtime_probe="$(mktemp -d)"
+cat >"$runtime_probe/core" <<SH
+#!/bin/sh
+[ "\${BUN_BE_BUN:-}" = 1 ] && [ "\$1" = --version ] && { echo 0.0.1; exit 0; }
+[ "\$1" = app ] && [ "\$2" = serve ] && { printf '0\thello\t{"mux":2,"version":"%s"}\n' "$cli_version"; exit 0; }
+exit 64
+SH
+chmod +x "$runtime_probe/core"
+if xcode_build Debug SHERPA_CORE="$runtime_probe/core"; then
+  rm -rf "$runtime_probe"; xcode_failed "reason=app_bundle_accepted_runtime_mismatch"
+fi
+rm -rf "$runtime_probe"
+grep -qF "reason=core_runtime_mismatch expected=$BUN_PIN_VERSION actual=0.0.1 file=SHERPA_CORE" "$xcode_log" \
+  || xcode_failed "reason=app_bundle_runtime_mismatch_unnamed"
+if [ -e "$debug_app/Contents/_CodeSignature" ] || [ -n "$(ls -A "$debug_app/Contents/MacOS" 2>/dev/null)" ]; then
+  xcode_failed "reason=app_bundle_built_with_runtime_mismatch"
+fi
+
 xcode_build Debug || xcode_failed "reason=app_debug_build_failed"
 xcode_build Release || xcode_failed "reason=app_release_build_failed"
 rm -f "$xcode_log"

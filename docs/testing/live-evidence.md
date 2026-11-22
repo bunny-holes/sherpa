@@ -39,7 +39,8 @@ was touched.
   and `error: [build:app:embed-core] reason=core_runtime_mismatch
   expected=1.4.5 actual=0.0.1 file=SHERPA_CORE remedy="build the core with bun
   1.4.5 (bun run build in core/) or set SHERPA_CORE to a matching core"`. The
-  bundle's `Contents/MacOS` stayed empty and it had no `_CodeSignature`.
+  bundle's `Contents/MacOS` stayed empty and it had no `_CodeSignature`. The
+  gate's step 3.1 keeps this refusal as a regression with the same fake.
 - Not measured: an archive and export with a mismatched core, which runs the
   same phase; a real core compiled by another Bun release.
 
