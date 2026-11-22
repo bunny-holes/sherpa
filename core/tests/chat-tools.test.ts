@@ -220,6 +220,12 @@ const create = (id = "call_1"): ModelCall => ({
   name: "event_create",
   input: { title: "Lunch", start: "2026-11-23T12:00:00+09:00", end: "2026-11-23T13:00:00+09:00" },
 });
+/** A call the AI SDK refuses before it runs: `event_list` needs its `to`. */
+const badly = (id = "call_1"): ModelCall => ({
+  id,
+  name: "event_list",
+  input: { from: WEEK.from },
+});
 const remove = (id = "call_1"): ModelCall => ({
   id,
   name: "event_delete",
@@ -617,15 +623,7 @@ describe("a call the AI SDK did not run (§7.11)", () => {
 
   test("in a step cut at its length limit, a call formed badly keeps the SDK's error, the other reads chat.not_run, and the results follow the calls' order", async () => {
     const { sent, open, asked } = world((_sent, n) =>
-      sse(
-        n === 1
-          ? chatCalls(
-              [list("call_1"), { id: "call_2", name: "event_list", input: { from: WEEK.from } }],
-              [],
-              "length",
-            )
-          : chat(["Done"]),
-      ),
+      sse(n === 1 ? chatCalls([list("call_1"), badly("call_2")], [], "length") : chat(["Done"])),
     );
     const channel = open();
     channel.write(compatible());
@@ -669,7 +667,7 @@ describe("a call the AI SDK did not run (§7.11)", () => {
       answer: anthropic,
     },
   ])(
-    "an $name call cut in the middle of its arguments reads as one formed badly: the turn goes on with why, and the next turn's request goes out",
+    "an $name call cut in the middle of its arguments reads as one formed badly: the turn ends at the length limit, and the next turn's request carries the call and why",
     async ({ message, calls, finish, answer }) => {
       const cut: ModelCall = { id: "call_1", name: "event_list", input: '{"from":"2026-11-23T0' };
       const { sent, open, asked } = world((_sent, n) =>
@@ -677,24 +675,103 @@ describe("a call the AI SDK did not run (§7.11)", () => {
       );
       const channel = open();
       channel.write(message);
-      // Every call of the step has a result, the SDK's error, so the SDK takes the next step
-      // whatever the step's finish reason (ai 7.0.179 stream-text.ts).
+      // Every call of the step has a result, the SDK's error, so the SDK would take the next step
+      // whatever the step ended with (ai 7.0.179 stream-text.ts): the turn stops it.
       expect(await ending(channel)).toEqual([
         tool(1, "event_list", "started"),
         tool(1, "event_list", "failed", "chat.invalid_call"),
-        answered(),
-        done(),
+        done("length", 11, 3),
       ]);
+      expect(sent).toHaveLength(1);
       expect(asked()).toEqual([]);
       expect(lines).toContain("warn [core:chat:tool-call] invalid channel=1 tool=event_list\n");
       expect(lines.some((line) => line.includes("not_run"))).toBe(false);
-      expect(sent).toHaveLength(2);
-      expect(JSON.stringify(sent[1]!.body)).toContain("Invalid input for tool event_list");
       channel.write({ ...message, text: "다시" });
       expect(await ending(channel)).toEqual([answered(), done("stop", 11, 3)]);
-      expect(sent).toHaveLength(3);
+      expect(sent).toHaveLength(2);
+      const next = JSON.stringify(sent[1]!.body);
+      expect(next).toContain("call_1");
+      expect(next).toContain("Invalid input for tool event_list");
     },
   );
+
+  test.each([
+    {
+      name: "an OpenAI-compatible answer its content filter stopped",
+      message: compatible(),
+      calls: () => chatCalls([badly()], [], "content_filter"),
+      answer: chat,
+    },
+    {
+      name: "an Anthropic refusal",
+      message: turn("anthropic", "claude-sonnet-5-5"),
+      calls: () => anthropicCalls([badly()], [], "refusal"),
+      answer: anthropic,
+    },
+  ])(
+    "$name with a call formed badly ends the turn with content-filter: no request follows, and the conversation keeps nothing of the step",
+    async ({ message, calls, answer }) => {
+      const { sent, open } = world((_sent, n) => sse(n === 1 ? calls() : answer(["Done"])));
+      const channel = open();
+      channel.write(message);
+      expect(await ending(channel)).toEqual([
+        tool(1, "event_list", "started"),
+        tool(1, "event_list", "failed", "chat.invalid_call"),
+        done("content-filter", 11, 3),
+      ]);
+      expect(sent).toHaveLength(1);
+      channel.write({ ...message, text: "다시" });
+      expect(await ending(channel)).toEqual([answered(), done("stop", 11, 3)]);
+      const next = JSON.stringify(sent[1]!.body);
+      expect(next).not.toContain("call_1");
+      expect(next).not.toContain("Invalid input for tool event_list");
+    },
+  );
+
+  test("an OpenAI-compatible answer that ends for a reason its package does not know, with a call formed badly, ends the turn with other and keeps the call and why", async () => {
+    const { sent, open } = world((_sent, n) =>
+      sse(n === 1 ? chatCalls([badly()], [], "eos") : chat(["Done"])),
+    );
+    const channel = open();
+    channel.write(compatible());
+    expect(await ending(channel)).toEqual([
+      tool(1, "event_list", "started"),
+      tool(1, "event_list", "failed", "chat.invalid_call"),
+      done("other", 11, 3),
+    ]);
+    expect(sent).toHaveLength(1);
+    channel.write(compatible("다시"));
+    expect(await ending(channel)).toEqual([answered(), done("stop", 11, 3)]);
+    const next = JSON.stringify(sent[1]!.body);
+    expect(next).toContain("call_1");
+    expect(next).toContain("Invalid input for tool event_list");
+  });
+
+  test("an error the stream reports after a call formed badly ends the turn: no request follows, and the conversation keeps nothing of the step", async () => {
+    const upstream = { data: { error: { message: "Upstream failed", code: 502 } } };
+    const { sent, open } = world((_sent, n) =>
+      sse(n === 1 ? [...chatCalls([badly()]).slice(0, 1), upstream] : chat(["Done"])),
+    );
+    const channel = open();
+    channel.write(compatible());
+    expect(await ending(channel)).toEqual([
+      tool(1, "event_list", "started"),
+      tool(1, "event_list", "failed", "chat.invalid_call"),
+      {
+        type: "error",
+        in_reply_to: "turn",
+        code: "provider_unavailable",
+        retryable: true,
+        status: 502,
+      },
+    ]);
+    expect(sent).toHaveLength(1);
+    channel.write(compatible("다시"));
+    expect(await ending(channel)).toEqual([answered(), done("stop", 11, 3)]);
+    const next = JSON.stringify(sent[1]!.body);
+    expect(next).not.toContain("call_1");
+    expect(next).not.toContain("Invalid input for tool event_list");
+  });
 
   test("the channel's next call takes the number after the one chat.not_run took", async () => {
     const { open } = world((_sent, n) => {

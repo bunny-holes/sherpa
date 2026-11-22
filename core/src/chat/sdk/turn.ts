@@ -102,6 +102,13 @@ const DROPPED: ReadonlySet<FinishReason> = new Set<FinishReason>([
 ]);
 
 /**
+ * The finish reasons after which the AI SDK runs a step's calls (ai 7.0.179
+ * is-tool-execution-allowed-finish-reason.ts, which the package does not export). The turn takes
+ * no step after any other.
+ */
+const RUNS_CALLS: ReadonlySet<FinishReason> = new Set<FinishReason>(["stop", "tool-calls"]);
+
+/**
  * A step's messages with a result for each call the AI SDK left without one, which `unrun` gives,
  * in the order of the calls. The SDK runs a step's calls only when the step ended with `stop` or
  * `tool-calls`, and refuses to send a conversation that holds a call without its result (ai
@@ -211,7 +218,15 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
       // One call at a time: the app shows one confirmation window at a time (§9), and a window
       // that waited behind another call would have spent its 30 s.
       toolCallConcurrency: 1,
-      stopWhen: [isStepCount(call.steps), () => calls.cancelled],
+      stopWhen: [
+        isStepCount(call.steps),
+        () => calls.cancelled,
+        // The SDK takes the next step once each call of a step has a result, an error for one it
+        // refused included, whatever the step ended with (ai 7.0.179 stream-text.ts
+        // `shouldStartNextStep`), though its `StopCondition` says it stops after a finish reason
+        // other than `tool-calls`. A call cut at the length limit would be cut again.
+        ({ steps }) => !RUNS_CALLS.has(steps.at(-1)!.finishReason),
+      ],
       abortSignal: call.signal,
       maxRetries: MODEL_RETRIES,
       // No `toolMs`: it would only abort a call's signal, and every tool has its own limit
@@ -279,7 +294,7 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
   }
   // The app hears of a call the SDK did not run once every part of the turn is read: after the text
   // before the call, however far the SDK's step ran ahead of this loop, and before the turn's end.
-  // No step follows one with such a call (ai 7.0.179 stream-text.ts).
+  // No step follows one with such a call (`RUNS_CALLS`).
   for (const name of unrun) calls.notRun(name);
   if (call.signal.aborted) return { type: "aborted", steps };
   if (timedOut) return { type: "failed", failure: new ChatFailure("timeout"), error: null, steps };
