@@ -361,6 +361,8 @@ for entry in "Sherpa:dev.xiyo.sherpa:com.apple.security.automation.apple-events 
 done
 [ "$("$release_app/Contents/MacOS/sherpa-relay" --version)" = "sherpa-relay $cli_version" ] \
   || fail "reason=bundled_relay_version_mismatch cli=$cli_version"
+# 번들에 든 코어도 0 에서 확인한 Bun 런타임을 품어야 한다(bunny-holes/sherpa#71).
+bun_pin_verify_runtime "$release_app/Contents/MacOS/sherpa-core" Sherpa.app/sherpa-core || fail "$BUN_PIN_FAILURE"
 log info "check:app-bundle:success" "version=$cli_version configuration=Release signed=developer_id"
 
 # 4. 에이전트 플러그인. 스킬은 Sherpa.app 의 MCP 도구를 부른다. 코어의 도구 등록부에서 이름을 뽑아
