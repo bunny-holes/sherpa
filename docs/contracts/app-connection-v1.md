@@ -966,7 +966,8 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   바뀌어도 이 규칙이 그대로이게 한다. `streamRetries` 는 두지 않는다. 0 이라도 두면 `onError` 가 한 단계를 다시
   돌릴 수 있기 때문이다. 코어는 차례 전체를 스스로 다시 돌리지 않고, 도구 실행은 어떤 경우에도 스스로 다시 하지
   않는다. 앱은 `resend` 가 참인 `done`·`error` 뒤에 "다시" 를 보이고, 누르면 `text` 없는 `turn` 이다("다시 보내기").
-  [계약; 문서: `ai` 7.0.179 `src/generate-text/stream-text.ts`]
+  `error` 의 `retryable` 은 같은 실패가 되풀이될지의 짐작일 뿐이라 차례의 "다시" 를 정하지 않는다. [계약; 문서: `ai`
+  7.0.179 `src/generate-text/stream-text.ts`]
 - AI SDK 가 다시 보내는 것은 응답이 흐르기 전에 실패한 요청뿐이다. 408·409·429·5xx 상태, 응답 전에 맺어지지 않았거나
   끊긴 연결, 그리고 OpenAI 와 Anthropic 에서 첫 출력 전에 흐름이 보낸 오류다. 두 패키지는 흐름의 첫 조각을 미리 읽어
   그런 오류를 요청의 실패로 바꾼다. 401·403·그 밖의 4xx, 믿지 않는 인증서, 리디렉트와 나가는 길의 거절, `cancel`,
@@ -1020,9 +1021,10 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   `text` 없는 `turn` 을 받는지다. 그래서 `provider_auth` 의 `error` 는 `retryable` 이 거짓이어도 `resend` 는 참이라
   키를 바꾸고 다시 보낼 수 있고, `busy` 는 둘 다 거짓이다. `resend` 가 참이어도 실패한 까닭이 그대로면 다시 보낸
   차례도 같게 끝날 수 있다. [계약; 실측: `core/tests/chat-turn.test.ts`]
-- 아래 표는 차례가 끝난 길마다 대화의 마지막 메시지와 `resend` 를 적는다. 줄마다 시험이 하나씩 있어 그 끝의
-  `resend` 를 보고, 같은 시험에서 `text` 없는 `turn` 을 보내 받는지가 `resend` 와 같은지 본다. 도구가 없는 줄은
-  `core/tests/chat-turn.test.ts`, 있는 줄은 `core/tests/chat-tools.test.ts` 에 있다. [계약; 실측: 두 시험]
+- 코어가 `resend` 로 알리고, 아래 표는 그 값이 언제 참인지를 설명한다. 차례가 끝난 길과 요청 전의 거절마다 대화의
+  마지막 메시지와 `resend` 를 적는다. 줄마다 시험이 있어 그 끝의 `resend` 를 보고, 같은 시험에서 바로 뒤에 `text`
+  없는 `turn` 을 보내 받는지가 `resend` 와 같은지 본다. 도구가 없는 줄은 `core/tests/chat-turn.test.ts`, 있는 줄은
+  `core/tests/chat-tools.test.ts` 에 있다. [계약; 실측: 두 시험]
 
 | 코어가 쓴 것 | 대화의 마지막 메시지 | `resend` |
 | --- | --- | --- |
@@ -1035,9 +1037,7 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 | `done` `aborted`, 호출이 도는 동안의 `cancel` | 그 단계의 도구 결과. 거둔 호출은 `chat.cancelled` 다 | 참 |
 | `done` `step-limit` | 스무째 단계의 도구 결과 | 참. 도구 고리를 다시 모델 요청 20번까지 잇는다 |
 | 시작한 차례의 `error`: `network`, `timeout`, `provider_*`, 리디렉트의 `egress_denied`, `internal` | 실패한 단계 앞의 것: 사람의 글이나 앞 단계의 도구 결과 | 참 |
-| 도는 차례가 있을 때 `turn` 에 답한 `error`: `busy`, 모양이 틀린 `turn` 의 `invalid_message` | 도는 차례가 정한다 | 거짓. 도는 차례는 그 끝에서 자기 `resend` 를 싣는다 |
-| 그 밖에 요청 전에 거절한 `turn` 의 `error`: `invalid_message`, 나가는 길이 막은 `base_url` 의 `egress_denied` | 그대로 | 그 앞의 끝과 같다 |
-| `conversation_limit` | 그대로 | 거짓 |
+| 첫 차례가 시작한 뒤에 요청 전에 거절한 `turn` 의 `error`: `invalid_message`, `busy`, 나가는 길이 막은 `base_url` 의 `egress_denied`, `conversation_limit` | 그대로 | 그 앞의 끝, 곧 바로 앞에 `turn` 에 답한 `done`·`error` 와 같다. `busy` 와 `conversation_limit` 는 거짓이다. 도는 차례가 있을 때 온 모양이 틀린 `turn` 의 `invalid_message` 도 `busy` 처럼 거짓이고, 도는 차례는 그 끝에서 자기 `resend` 를 싣는다 |
 
 - 어느 끝이든 대화가 2 MiB 를 넘었으면 `resend` 는 거짓이다. 코어는 한도를 차례를 시작할 때만 재므로 차례 안에서
   넘은 단계는 남지만, 다음 `turn` 은 `text` 가 없어도 `conversation_limit` 다. [계약; 실측:
@@ -1056,8 +1056,8 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   보내면 모델은 거둔 호출의 `chat.cancelled` 를 읽는다. 지시문은 거부되거나 거둔 호출을 사람이 청하지 않으면 다시
   부르지 말라고 적는다. 이어 갈지는 사람이 누르는 것으로 정한다. [계약; 소유자, 2026-11-22 의 20번; 실측:
   `core/tests/chat-tools.test.ts`]
-- 표의 주석: 아래 셋은 앱이 받은 프레임으로 줄을 가르지 못하고 `resend` 만 가른다. `resend` 가 거짓일 때 보낸
-  `text` 없는 `turn` 은 거절되고 대화는 그대로다. [실측: `core/tests/chat-turn.test.ts`,
+- 표의 주석: 아래 셋은 앱이 받은 프레임으로는 가를 수 없는 끝이다. 그래서 코어가 `resend` 를 싣고, 셋은 그 값의
+  예다. `resend` 가 거짓일 때 보낸 `text` 없는 `turn` 은 거절되고 대화는 그대로다. [실측: `core/tests/chat-turn.test.ts`,
   `core/tests/chat-tools.test.ts`]
   - 글도 reasoning 도 호출도 없는 답은 AI SDK 가 메시지로 남기지 않는다. 그래서 `done` 의 까닭이 무엇이든 그 앞의 것이
     마지막이고 `resend` 가 참이다. reasoning 만 있는 답은 남으므로 거짓이다. 앱에는 둘 다 `delta` 없이 `done` 만
@@ -1662,12 +1662,13 @@ result         object | null
   600초 한도(한도 1초 전에 첫 출력 전 오류를 보낸 OpenAI 응답 뒤에 다시 보낸 요청은 한도를 새로 켜, 첫 요청의 마감
   뒤에 답해도 `timeout` 이 아님), 가짜 시계 위에서 출력마다 새로 켜지는 출력 사이의 600초, Bun 의 유휴 한도가 머리말 전·몸 도중·출력 뒤에 던지는
   `TimeoutError` 가 한 번 보내고 `timeout` 으로 끝남, 2 MiB 대화 한도, 다시 보내기("다시 보내기" 의 표에서 도구가
-  없는 줄마다 하나이고, 줄마다 그 끝의 `resend` 와 뒤이은 `text` 없는 `turn` 을 받는지가 같음: 빈 대화와
-  `stop`·`length`·`other` 의 답 뒤에는 `nothing_to_retry` 이고 대화가 그대로임, 글·reasoning·호출이 없는 답과
+  없는 줄마다 시험이 있고, 거절을 포함해 `turn` 에 답한 것마다 그 `resend` 와 바로 뒤의 `text` 없는 `turn` 을 받는지가
+  같음: 빈 대화에서 거절한 `text` 없는 `turn` 과 막은 `base_url` 뒤, `stop`·`length`·`other` 의 답 뒤에는
+  `nothing_to_retry` 이고 대화가 그대로임, 글·reasoning·호출이 없는 답과
   `content-filter`·`aborted`·시작한 차례의 `error` 뒤에는 사람의 글을 시각 줄 하나와 함께 한 번만 실음, reasoning
   만 있는 답 뒤는 거절, 답의 끝과 겹친 `cancel` 의 네 때, `provider_auth` 뒤 바뀐 키, 도는 차례 중의 `busy` 와 모양이
-  틀린 `turn` 은 `resend` 가 거짓, 다른 채팅·막은 `base_url` 은 대화를 그대로 둠, `conversation_limit` 뒤에는
-  이것도 `conversation_limit`), 로그(debug 포함)에 키·글·답이 없음. 모든 시험은
+  틀린 `turn` 은 `resend` 가 거짓, 그 밖의 모양이 틀린 `turn`·다른 채팅·막은 `base_url` 은 앞의 끝이 참이든 거짓이든
+  그 `resend` 를 싣고 대화를 그대로 둠, `conversation_limit` 뒤에는 이것도 `conversation_limit`), 로그(debug 포함)에 키·글·답이 없음. 모든 시험은
   패키지가 아는 모델 id 를 쓰고, 기대하지 않은 AI SDK 경고가 하나라도 나오면 실패한다. 응답은 손으로 쓴 server-sent
   events 이고, 네 제공자의 응답 모양은 `tests/support/provider-events.ts` 가 `chat-tools.test.ts` 와 함께 쓴다.
 - 도구(§7.11 "도구", `chat-tools.test.ts`): planner 의 서술자로 지은 35개 도구를 `app serve` 처럼 넘긴 채팅이 네

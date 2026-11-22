@@ -115,17 +115,20 @@ Anything not listed here is not proven by the gate.
     sent once and ending with `timeout`; the 2 MiB conversation limit; a turn
     without text, which sends the conversation again, with a test for each row
     of the contract's table without a tool, each reading `resend` in what
-    answered the turn before and taken exactly when it said so (refused with
-    `nothing_to_retry` in a chat with no turn yet and after an answer that
-    ends with `stop`, `length` or `other`, the conversation left as it was;
+    answered a turn, a refusal included, and sending a turn without text right
+    after it, taken exactly when `resend` said so (refused with
+    `nothing_to_retry` in a chat with no turn yet, after a turn without text
+    or a refused `base_url` there and after an answer that ends with `stop`,
+    `length` or `other`, the conversation left as it was;
     after an answer with nothing in it, `content-filter`, `aborted` and an
     error of a turn that started, the person's text sent once with its one
     time line; refused after an answer of reasoning alone; a `cancel` that
     meets the answer's end at four moments; another key after
     `provider_auth`; `busy` and a malformed turn while one runs with
-    `resend` false; another chat and a refused `base_url` leaving the
-    conversation as it was; `conversation_limit` once the chat passed its
-    limit); and no key, text or answer in a log line.
+    `resend` false; a malformed turn, another chat and a refused `base_url`
+    after an end with `resend` true and after one with it false, each
+    carrying that end's `resend` and leaving the conversation as it was;
+    `conversation_limit` once the chat passed its limit); and no key, text or answer in a log line.
     A test fails on any AI SDK warning it does not expect. The providers'
     event shapes live in `tests/support/provider-events.ts`, which
     `chat-tools.test.ts` shares.
