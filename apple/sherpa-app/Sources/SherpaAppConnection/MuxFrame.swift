@@ -8,9 +8,9 @@ import Foundation
 ///     body    = 1*(%x00-09 / %x0B-FF)
 public struct MuxFrame: Equatable, Sendable {
     public static let maximumChannel: UInt64 = (1 << 53) - 1
-    /// The `mux` of both hellos (contract §7.5). Mux 2's `open` names the channel's kind; a core of
-    /// another `mux` is incompatible.
-    public static let muxVersion: Int64 = 2
+    /// The `mux` of both hellos (contract §7.5). Mux 2's `open` names the channel's kind and Mux 3's
+    /// `confirm` the channel of its call; a core of another `mux` is incompatible.
+    public static let muxVersion: Int64 = 3
 
     public let channel: UInt64
     public let type: String

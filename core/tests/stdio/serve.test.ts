@@ -151,11 +151,11 @@ describe("sessions", () => {
   });
 });
 
-describe("Mux 2 (§7.3, §7.5)", () => {
-  test("the core says Mux 2, and an app hello of Mux 1 ends it with version_unsupported and 65", async () => {
+describe("Mux 3 (§7.3, §7.5)", () => {
+  test("the core says Mux 3, and an app hello of Mux 2 ends it with version_unsupported and 65", async () => {
     const app = launch();
     apps.push(app);
-    expect((await app.handshake(["planner"], 1)).body).toMatchObject({ mux: 2 });
+    expect((await app.handshake(["planner"], 2)).body).toMatchObject({ mux: 3 });
     expect(await app.exited).toBe(65);
     expect(app.log.at(-1)).toEqual({
       channel: 0,
@@ -164,7 +164,7 @@ describe("Mux 2 (§7.3, §7.5)", () => {
     });
     expect(app.requested()).toEqual([]);
     expect(app.stderr.join("")).toContain(
-      "[core:mux:hello] failure reason=version_unsupported app_mux=1",
+      "[core:mux:hello] failure reason=version_unsupported app_mux=2",
     );
   });
 
@@ -250,6 +250,7 @@ describe("confirmation (§9)", () => {
     const confirm = app.log.find(isConfirm)!.body as Record<string, unknown>;
     expect(confirm).toMatchObject({
       tool: "reminder_delete",
+      channel: 1,
       client: { name: "fake-agent", version: "1.0.0" },
     });
     // The 30 s started before the preview read, which took part of them (§9).
@@ -260,6 +261,23 @@ describe("confirmation (§9)", () => {
       status: "succeeded",
       operation_id: confirm.operation_id,
     });
+  });
+
+  test("the request names the channel the call came on", async () => {
+    const app = await ready();
+    await Promise.all([app.open(1), app.open(2), app.open(3)]);
+    app.confirm = () => "declined";
+    await app.call(2, "reminder_delete", { native_locator: "r-1" });
+    await app.call(3, "event_delete", { native_locator: "e-1", span: "this" });
+    expect(
+      app.log.filter(isConfirm).map((frame) => {
+        const body = frame.body as { tool: string; channel: number };
+        return [body.tool, body.channel];
+      }),
+    ).toEqual([
+      ["reminder_delete", 2],
+      ["event_delete", 3],
+    ]);
   });
 
   test("a declined delete sends nothing", async () => {

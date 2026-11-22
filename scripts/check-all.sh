@@ -322,7 +322,7 @@ runtime_probe="$(mktemp -d)"
 cat >"$runtime_probe/core" <<SH
 #!/bin/sh
 [ "\${BUN_BE_BUN:-}" = 1 ] && [ "\$1" = --version ] && { echo 0.0.1; exit 0; }
-[ "\$1" = app ] && [ "\$2" = serve ] && { printf '0\thello\t{"mux":2,"version":"%s"}\n' "$cli_version"; exit 0; }
+[ "\$1" = app ] && [ "\$2" = serve ] && { printf '0\thello\t{"mux":3,"version":"%s"}\n' "$cli_version"; exit 0; }
 exit 64
 SH
 chmod +x "$runtime_probe/core"

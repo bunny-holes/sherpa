@@ -37,7 +37,7 @@ Human / LLM
 sherpa — Bun + TypeScript core (one compiled executable, core/)
     |-- cli/ -------------- argv parsing, bounded stdin, reports with remedies
     |-- commands.ts ------- the core commands both the CLI and the MCP tools call
-    |-- app/ -------------- `sherpa app serve`: Mux 2 frames, control channel,
+    |-- app/ -------------- `sherpa app serve`: Mux 3 frames, control channel,
     |                       one MCP transport per `mcp` channel (app-connection-v1 §7–§9)
     |-- mcp/ -------------- tool registry, input schemas, outcome envelope,
     |                       confirmation previews (app-connection-v1 §10)
@@ -96,7 +96,11 @@ Developer ID (contract §2 "번들 빌드"). Agents reach the core only while th
 app's MCP switch is on. The switch is off at the first launch and lives in the
 app's defaults as a same-user consent mark, not a security boundary. While it
 is off the app turns every relay away with the preface reason `mcp_disabled`,
-and turning it off closes the open sessions. The status window holds the
+and turning it off closes the open sessions and the confirmation windows of
+their calls. Each `confirm` names the channel its call came on: the app tells
+who asks by that channel's kind in its own table, never by the client name an
+agent reports about itself, and answers a confirm from a channel that is not
+open `unavailable` without a window (contract §9). The status window holds the
 switch; while it is on, the switch's help button opens the commands that
 register the bundled relay with Claude Code and Codex. The app copies them and
 never writes an agent's configuration (contract §2 "MCP 켜기와 연결 안내"). The app and relay are not released yet (notarized cask,

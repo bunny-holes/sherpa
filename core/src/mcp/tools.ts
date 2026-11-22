@@ -150,6 +150,7 @@ function plannerTool(
           {
             tool: entry.name,
             operation_id: operationID,
+            channel: call.channel,
             client: call.client,
             title: preview.title,
             lines: preview.lines,
@@ -339,7 +340,13 @@ function coreTool(
           if (call.signal.aborted) return null;
           const decision = await ask(
             dependencies,
-            { tool: entry.name, operation_id: operationID, client: call.client, ...shown },
+            {
+              tool: entry.name,
+              operation_id: operationID,
+              channel: call.channel,
+              client: call.client,
+              ...shown,
+            },
             call.signal,
             remaining(),
           );

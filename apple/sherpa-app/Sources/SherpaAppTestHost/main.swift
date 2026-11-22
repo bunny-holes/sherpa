@@ -38,8 +38,13 @@ struct ScriptedConfirmations: ConfirmationPort {
     let decision: ConfirmationDecision?
     let logger: SherpaLogger
 
-    func present(_ request: ConfirmationRequest, decide: @escaping @Sendable (ConfirmationDecision) -> Void) {
-        logger.info("testhost:confirm:present", "id=\(request.id) lines=\(request.lines.count)")
+    func present(
+        _ request: ConfirmationRequest, from kind: MuxChannelKind,
+        decide: @escaping @Sendable (ConfirmationDecision) -> Void
+    ) {
+        logger.info(
+            "testhost:confirm:present",
+            "id=\(request.id) lines=\(request.lines.count) channel=\(request.channel) kind=\(kind.rawValue)")
         guard let decision else { return }
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { decide(decision) }
     }

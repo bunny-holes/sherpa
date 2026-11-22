@@ -2,7 +2,7 @@ import { expect, test } from "vite-plus/test";
 import { AppConnection, type MuxChannel } from "../src/app/mux.ts";
 import { CollectingSink, PushInput, tick } from "./support/pipes.ts";
 
-const APP_HELLO = '0\thello\t{"mux":2,"version":"0.9.0","workers":["planner"]}\n';
+const APP_HELLO = '0\thello\t{"mux":3,"version":"0.9.0","workers":["planner"]}\n';
 const open = (channel: number) => `${channel}\topen\t{"kind":"mcp"}\n`;
 
 function connect() {
@@ -35,7 +35,7 @@ test("the handshake hands the app hello to the composition", async () => {
   input.push(APP_HELLO);
   input.end();
   expect(await exit).toBe(0);
-  expect(hellos).toEqual([{ mux: 2, version: "0.9.0", workers: ["planner"] }]);
+  expect(hellos).toEqual([{ mux: 3, version: "0.9.0", workers: ["planner"] }]);
 });
 
 test("open, data and close reach their channel in order, and each channel stays separate", async () => {

@@ -16,6 +16,7 @@ const MUTATION: PlannerPolicy = {
 const prompt: ConfirmationPrompt = {
   tool: "reminder_delete",
   operation_id: "op-2",
+  channel: 5,
   client: { name: "agent", version: "1" },
   title: "Delete this reminder?",
   lines: [{ label: "Reminder", value: "x" }],
@@ -169,6 +170,23 @@ describe("confirmations (§9)", () => {
       expect(written).toHaveLength(1);
     },
   );
+
+  test("the body carries exactly the keys the app reads, the channel of the call among them", () => {
+    const { channel, written } = control();
+    void channel.confirm(prompt, new AbortController().signal, 30_000);
+    // The app reads a body of exactly these keys and no other (§9).
+    expect(Object.keys(written[0]!.body)).toEqual([
+      "id",
+      "tool",
+      "operation_id",
+      "channel",
+      "client",
+      "title",
+      "lines",
+      "timeout_ms",
+    ]);
+    expect(written[0]!.body.channel).toBe(5);
+  });
 
   test("the wait is the time the caller gives, and timeout_ms says so", async () => {
     const { channel, written, timers } = control();

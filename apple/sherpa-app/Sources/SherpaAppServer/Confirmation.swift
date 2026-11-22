@@ -18,6 +18,10 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
     public let id: UInt64
     public let tool: String
     public let operationID: String
+    /// The channel of the call that asks. The server looks up its kind in its own channel
+    /// table and shows and refuses the request by that kind, never by the client (§9).
+    public let channel: UInt64
+    /// What the client says about itself: shown, never used to decide anything (§9).
     public let clientName: String
     public let clientVersion: String
     public let title: String
@@ -40,9 +44,11 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
             case let .integer(rawID)? = object["id"], rawID > 0, UInt64(rawID) <= MuxFrame.maximumChannel
         else { return .failure(.noIdentifier) }
         let id = UInt64(rawID)
-        guard Set(object.keys) == ["id", "tool", "operation_id", "client", "title", "lines", "timeout_ms"],
+        guard Set(object.keys) == ["id", "tool", "operation_id", "channel", "client", "title", "lines", "timeout_ms"],
             case let .string(tool)? = object["tool"],
             case let .string(operationID)? = object["operation_id"],
+            case let .integer(rawChannel)? = object["channel"], rawChannel > 0,
+            UInt64(rawChannel) <= MuxFrame.maximumChannel,
             case let .object(client)? = object["client"],
             case let .string(clientName)? = client["name"],
             case let .string(clientVersion)? = client["version"],
@@ -60,8 +66,9 @@ public struct ConfirmationRequest: Sendable, Equatable, Identifiable {
         }
         return .success(
             ConfirmationRequest(
-                id: id, tool: tool, operationID: operationID, clientName: clientName, clientVersion: clientVersion,
-                title: title, lines: lines, timeoutMilliseconds: Int(timeout), receivedAt: receivedAt
+                id: id, tool: tool, operationID: operationID, channel: UInt64(rawChannel), clientName: clientName,
+                clientVersion: clientVersion, title: title, lines: lines, timeoutMilliseconds: Int(timeout),
+                receivedAt: receivedAt
             ))
     }
 }
@@ -73,9 +80,13 @@ public enum ConfirmationDecision: String, Sendable, Equatable {
 /// The app-owned port that asks a person (§9). The app binds a front-most window; the test
 /// host binds a scripted decider.
 public protocol ConfirmationPort: Sendable {
-    /// Shows the request; calls `decide` at most once.
-    func present(_ request: ConfirmationRequest, decide: @escaping @Sendable (ConfirmationDecision) -> Void)
-    /// The core withdrew the request: close it without an answer.
+    /// Shows the request as one from a channel of `kind`, the kind the server's own channel table
+    /// gives the request's channel (§9); calls `decide` at most once.
+    func present(
+        _ request: ConfirmationRequest, from kind: MuxChannelKind,
+        decide: @escaping @Sendable (ConfirmationDecision) -> Void)
+    /// The core withdrew the request, or the MCP switch closed the channel its call came on:
+    /// close it without an answer.
     func withdraw(id: UInt64)
     /// The core that asked is gone: close every request.
     func withdrawAll()

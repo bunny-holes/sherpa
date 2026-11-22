@@ -12,7 +12,7 @@ import { plannerRequest } from "../src/planner/port.ts";
 import { CollectingSink, PushInput, tick } from "./support/pipes.ts";
 
 // app-connection-v1 §14. The app's hello is the second vector line.
-const APP_HELLO = '0\thello\t{"mux":2,"version":"0.9.0","workers":["planner"]}\n';
+const APP_HELLO = '0\thello\t{"mux":3,"version":"0.9.0","workers":["planner"]}\n';
 /** The app's `open` of a relay channel (§7.3). */
 const open = (channel: number) => `${channel}\topen\t{"kind":"mcp"}\n`;
 const encoder = new TextEncoder();
@@ -69,7 +69,7 @@ describe("§14 valid frames", () => {
     );
     const text = (body: Uint8Array | null) => (body ? new TextDecoder().decode(body) : null);
     expect(frames.map((frame) => [frame.channel, frame.type, text(frame.body)])).toEqual([
-      [0, "hello", '{"mux":2,"version":"0.9.0","workers":["planner"]}'],
+      [0, "hello", '{"mux":3,"version":"0.9.0","workers":["planner"]}'],
       [0, "response", '{"id":2,"report":{"error":"sherpa.internal_failure","status":"failed"}}'],
       [1, "open", '{"kind":"mcp"}'],
       [1, "data", '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'],
@@ -82,7 +82,7 @@ describe("§14 valid frames", () => {
     const { input, sink, exit } = connect();
     input.end();
     expect(await exit).toBe(0);
-    expect(sink.lines).toEqual(['0\thello\t{"mux":2,"version":"0.9.0"}']);
+    expect(sink.lines).toEqual(['0\thello\t{"mux":3,"version":"0.9.0"}']);
   });
 
   test("the capabilities request is the vector's bytes", async () => {
@@ -119,6 +119,7 @@ describe("§14 valid frames", () => {
     const prompt = {
       tool: "reminder_delete",
       operation_id: "op-2",
+      channel: 1,
       client: { name: "t", version: "0" },
       title: "t",
       lines: [],
@@ -145,7 +146,7 @@ describe("§14 valid frames", () => {
     const cancel = new AbortController();
     const decision = connection.control.confirm(prompt, cancel.signal, 30_000);
     expect(await sink.next((line) => line.startsWith("0\tconfirm\t"))).toBe(
-      '0\tconfirm\t{"id":3,"tool":"reminder_delete","operation_id":"op-2","client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}',
+      '0\tconfirm\t{"id":3,"tool":"reminder_delete","operation_id":"op-2","channel":1,"client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}',
     );
     cancel.abort();
     expect(await decision).toBe("withdrawn");
@@ -176,7 +177,7 @@ describe("§14 violations end the core with fatal and 65", () => {
     ["data without a body", `${open(1)}1\tdata\n`, "mux.frame_invalid"],
     ["an empty body", `${open(1)}1\tdata\t\n`, "mux.frame_invalid"],
     ["open on the control channel", '0\topen\t{"kind":"mcp"}\n', "mux.unexpected_frame"],
-    ["hello on a channel above 0", '1\thello\t{"mux":2}\n', "mux.unexpected_frame"],
+    ["hello on a channel above 0", '1\thello\t{"mux":3}\n', "mux.unexpected_frame"],
     ["channel 2^53", '9007199254740992\topen\t{"kind":"mcp"}\n', "mux.frame_invalid"],
     ["a second open of a live channel", open(1) + open(1), "mux.unexpected_frame"],
     ["open before hello", open(1), "mux.unexpected_frame", true],
@@ -218,20 +219,20 @@ describe("§14 violations end the core with fatal and 65", () => {
     expect(sink.lines.at(-1)).toBe(`0\tfatal\t{"code":"${code}"}`);
   });
 
-  // Mux 1 is not served beside Mux 2: the app and the core ship in one bundle (§7.5).
-  test.each([1, 3])("an app hello of mux %i is unsupported", async (mux) => {
+  // An earlier mux is not served beside Mux 3: the app and the core ship in one bundle (§7.5).
+  test.each([1, 2, 4])("an app hello of mux %i is unsupported", async (mux) => {
     const { input, sink, exit } = connect();
     input.push(`0\thello\t{"mux":${mux},"version":"0.9.0","workers":["planner"]}\n`);
     expect(await exit).toBe(65);
     expect(sink.lines).toEqual([
-      '0\thello\t{"mux":2,"version":"0.9.0"}',
+      '0\thello\t{"mux":3,"version":"0.9.0"}',
       '0\tfatal\t{"code":"mux.version_unsupported"}',
     ]);
   });
 
   test("an app hello of another shape is invalid", async () => {
     const { input, sink, exit } = connect();
-    input.push('0\thello\t{"mux":2,"version":"0.9.0"}\n');
+    input.push('0\thello\t{"mux":3,"version":"0.9.0"}\n');
     expect(await exit).toBe(65);
     expect(sink.lines.at(-1)).toBe('0\tfatal\t{"code":"mux.frame_invalid"}');
   });
@@ -264,7 +265,7 @@ describe("§14 frames that are not violations", () => {
       input.end();
       expect(await exit).toBe(0);
       expect(sink.lines).toEqual([
-        '0\thello\t{"mux":2,"version":"0.9.0"}',
+        '0\thello\t{"mux":3,"version":"0.9.0"}',
         '1\tclose\t{"reason":"unsupported_kind"}',
       ]);
     },

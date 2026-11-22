@@ -35,8 +35,8 @@ private let capabilities =
         // The app ignores SIGPIPE and SIGTERM for itself; the core must not inherit that.
         #expect(field("ignored", in: spawn) == "none")
         #expect(field("blocked", in: spawn) == "none")
-        // Mux 2: the app's hello and an `mcp` open for each relay (contract §7.3, §7.5).
-        #expect(rig.coreLog.contains("app-hello mux=2 version=0.9.0 workers=planner"))
+        // The app's Mux 3 hello and an `mcp` open for each relay (contract §7.3, §7.5).
+        #expect(rig.coreLog.contains("app-hello mux=3 version=0.9.0 workers=planner"))
         #expect((1...3).allSatisfy { rig.coreLog.contains("open \($0) kind=mcp") })
 
         for relay in relays { try relay.closeInput() }
@@ -171,14 +171,14 @@ private let capabilities =
         #expect(host.errorLines(containing: "[app:core:restart]").isEmpty)
     }
 
-    @Test func stopsACoreOfTheFirstMuxWithoutRestart() async throws {
-        // The app's version under Mux 1: a core built before Mux 2 (contract §7.5).
-        let rig = try Rig(core: #"{"version":"0.9.0","mode":"mux-1"}"#)
+    @Test func stopsACoreOfAnEarlierMuxWithoutRestart() async throws {
+        // The app's version under Mux 2: a core built before Mux 3 (contract §7.5).
+        let rig = try Rig(core: #"{"version":"0.9.0","mux":2}"#)
         defer { rig.tearDown() }
         let host = try await rig.startHost()
         #expect(await host.waitForError("[app:core:hello] status=incompatible"))
         let refusal = try #require(host.errorLines(containing: "[app:core:hello] status=incompatible").first)
-        #expect(field("mux", in: refusal) == "1")
+        #expect(field("mux", in: refusal) == "2")
         #expect(field("core_version", in: refusal) == "0.9.0")
         let relay = try rig.startRelay()
         #expect(await relay.exitStatus() == 75)
@@ -301,7 +301,9 @@ private let capabilities =
         let relay = try rig.startRelay()
         try relay.send(MCP.call(1, "confirm"))
         #expect(MCP.result(await relay.line())?["decision"] as? String == decision)
-        #expect(await host.waitForError("[testhost:confirm:present] id=1 lines=1"))
+        // The kind is the app's own for the channel the call names (contract §9).
+        #expect(await host.waitForError("[testhost:confirm:present] id=1 lines=1 channel=1 kind=mcp"))
+        #expect(await host.waitForError("[app:confirm:request] id=1 channel=1 kind=mcp tool=reminder_delete"))
         #expect(rig.coreLog.contains("confirmation 1 \(decision)"))
     }
 
@@ -458,7 +460,9 @@ private let capabilities =
         #expect(await second.exitStatus() == 75)
         #expect(first.errorText.contains("reason=app_closed_session"))
         #expect(await host.waitForError("[app:mcp:switch] enabled=false sessions_closed=2 confirmations_withdrawn=1"))
-        #expect(await host.waitForError("[testhost:confirm:withdraw-all]"))
+        // The switch closes the windows of `mcp` channels' calls one by one, not every window (§9).
+        #expect(await host.waitForError("[testhost:confirm:withdraw] id=1"))
+        #expect(host.errorLines(containing: "[testhost:confirm:withdraw-all]").isEmpty)
         #expect(
             await rig.waitForCoreLog { lines in
                 lines.contains("close 1 reason=mcp_disabled") && lines.contains("close 2 reason=mcp_disabled")
@@ -482,7 +486,7 @@ private let capabilities =
         let host = try await rig.startHost(["--confirm", "approved"])
         let relay = try rig.startRelay()
         #expect(try await relay.echo() != nil)
-        // The core asks only after a slow preview read, by then for a closed channel.
+        // The core asks only after a slow preview read, by then for an `mcp` channel the switch closed.
         try relay.send(MCP.call(2, "confirm", #"{"delay_ms":1500}"#))
         #expect(await rig.waitForCoreLog { $0.contains { $0.hasPrefix("data 1 method=confirm") } })
         try host.send("mcp off")
@@ -490,7 +494,44 @@ private let capabilities =
         #expect(await rig.waitForCoreLog { $0.contains("confirmation 1 unavailable") })
         #expect(
             await host.waitForError(
-                "[app:confirm:request] id=1 status=refused reason=mcp_disabled decision=unavailable"))
+                "[app:confirm:request] id=1 channel=1 status=refused reason=channel_closed decision=unavailable"))
+        #expect(host.errorLines(containing: "[testhost:confirm:present]").isEmpty)
+    }
+
+    @Test func answersAConfirmationOfAChannelThatIsNotOpenUnavailableWhileMCPIsOn() async throws {
+        let rig = try Rig()
+        defer { rig.tearDown() }
+        let host = try await rig.startHost(["--confirm", "approved"])
+        let first = try rig.startRelay()
+        #expect(try await first.echo()?.channel == 1)
+        try first.closeInput()
+        #expect(await first.exitStatus() == 0)
+        let second = try rig.startRelay()
+        #expect(try await second.echo()?.channel == 2)
+        // A core that names channel 1, which has closed, then 9, which the app never opened.
+        try second.send(MCP.call(2, "confirm", #"{"channel":1}"#))
+        #expect(MCP.result(await second.line())?["decision"] as? String == "unavailable")
+        try second.send(MCP.call(3, "confirm", #"{"channel":9}"#))
+        #expect(MCP.result(await second.line())?["decision"] as? String == "unavailable")
+        #expect(
+            await host.waitForError(
+                "[app:confirm:request] id=1 channel=1 status=refused reason=channel_closed decision=unavailable"))
+        #expect(
+            await host.waitForError(
+                "[app:confirm:request] id=2 channel=9 status=refused reason=channel_unknown decision=unavailable"))
+        #expect(host.errorLines(containing: "[testhost:confirm:present]").isEmpty)
+    }
+
+    @Test func answersAConfirmationWithoutAUsableChannelUnavailable() async throws {
+        let rig = try Rig()
+        defer { rig.tearDown() }
+        let host = try await rig.startHost(["--confirm", "approved"])
+        let relay = try rig.startRelay()
+        #expect(try await relay.echo()?.channel == 1)
+        // A body the app does not read, as one from a core of another edition (§9).
+        try relay.send(MCP.call(2, "confirm", #"{"channel":null}"#))
+        #expect(MCP.result(await relay.line())?["decision"] as? String == "unavailable")
+        #expect(await host.waitForError("[app:confirm:request] id=1 status=invalid decision=unavailable"))
         #expect(host.errorLines(containing: "[testhost:confirm:present]").isEmpty)
     }
 

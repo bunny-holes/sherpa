@@ -7,9 +7,9 @@
 #
 # The app starts the core as `sherpa-core app serve` (§7.1). A core without that subcommand fails
 # every start with frame violations until the app gives up (2026-11-21: a core/dist/sherpa from
-# before #44 was bundled), so its first line must be the Mux 2 hello of the app's version
-# (MARKETING_VERSION, the CLI version). The app stops a Mux 1 core, built before #63, as
-# incompatible (§7.5), so that core is stale too.
+# before #44 was bundled), so its first line must be the Mux 3 hello of the app's version
+# (MARKETING_VERSION, the CLI version). The app stops a core of an earlier mux, Mux 1 built before
+# #63 or Mux 2 built before #66, as incompatible (§7.5), so that core is stale too.
 #
 # A core that passes the hello must also carry the Bun runtime core/package.json declares
 # (devEngines.packageManager, bunny-holes/sherpa#71): `bun build --compile` puts the bun that ran it
@@ -26,7 +26,7 @@ tab="$(printf '\t')"
 hello="${greeting#0${tab}hello${tab}}"
 mux="$(printf '%s' "$hello" | plutil -extract mux raw -o - - 2>/dev/null || true)"
 version="$(printf '%s' "$hello" | plutil -extract version raw -o - - 2>/dev/null || true)"
-if [ "$hello" = "$greeting" ] || [ "$mux" != 2 ] || [ "$version" != "$MARKETING_VERSION" ]; then
+if [ "$hello" = "$greeting" ] || [ "$mux" != 3 ] || [ "$version" != "$MARKETING_VERSION" ]; then
   fail "reason=core_not_mux mux=${mux:-none} version=${version:-none} expected=$MARKETING_VERSION remedy=\"build the core from this checkout (bun run build in core/) or set SHERPA_CORE to a matching core\""
 fi
 repo="$SRCROOT/../.."

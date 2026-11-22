@@ -1,12 +1,15 @@
 import AppKit
 import Foundation
+import SherpaAppConnection
 import SherpaAppServer
 import SwiftUI
 
 /// Shows each delete or send request in a front-most window with the time left, one at a
 /// time; the others wait their turn while their own time runs. That time is the request's
 /// `timeout_ms`, what is left of the core's 30 seconds after its preview read (contract §9).
-/// The window's content is user data and is never logged. Each new request keeps its buttons
+/// The window's content is user data and is never logged. It names who asks by the kind of the
+/// channel the call came on, which the server takes from its own table, and shows the client's
+/// name only as what that client says about itself (§9). Each new request keeps its buttons
 /// off for a moment, so a second click meant for the request before cannot answer one that
 /// took its place unread.
 @MainActor
@@ -15,6 +18,7 @@ final class ConfirmationWindows {
 
     private struct Pending {
         let request: ConfirmationRequest
+        let source: MuxChannelKind
         let decide: @Sendable (ConfirmationDecision) -> Void
     }
 
@@ -26,12 +30,15 @@ final class ConfirmationWindows {
     private var shown = 0
     private let model = ConfirmationViewModel()
 
-    func present(_ request: ConfirmationRequest, decide: @escaping @Sendable (ConfirmationDecision) -> Void) {
+    func present(
+        _ request: ConfirmationRequest, from source: MuxChannelKind,
+        decide: @escaping @Sendable (ConfirmationDecision) -> Void
+    ) {
         guard !NSScreen.screens.isEmpty else {
             decide(.unavailable)
             return
         }
-        queue.append(Pending(request: request, decide: decide))
+        queue.append(Pending(request: request, source: source, decide: decide))
         showNext()
     }
 
@@ -54,6 +61,7 @@ final class ConfirmationWindows {
         let next = queue.removeFirst()
         current = next
         model.request = next.request
+        model.source = next.source
         model.remaining = max(0, Int((next.request.deadline - now).rounded(.up)))
         model.armed = false
         model.answer = { [weak self] decision in self?.answer(decision) }
@@ -119,6 +127,8 @@ final class ConfirmationWindows {
 @Observable
 final class ConfirmationViewModel {
     var request: ConfirmationRequest?
+    /// The kind of the channel the shown request's call came on.
+    var source: MuxChannelKind = .mcp
     var remaining = 0
     /// False for the first second of each request.
     var armed = false
@@ -132,7 +142,7 @@ struct ConfirmationView: View {
         if let request = model.request {
             VStack(alignment: .leading, spacing: 12) {
                 Text(request.title).font(.headline)
-                Text("\(request.clientName) \(request.clientVersion) asks to run \(request.tool).")
+                Text("\(asker(model.source, request)) asks to run \(request.tool).")
                     .font(.subheadline).foregroundStyle(.secondary)
                 ScrollView {
                     Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 6) {
@@ -163,6 +173,14 @@ struct ConfirmationView: View {
     }
 }
 
+/// Who asks, as the window says it: the kind of the channel the call came on, and for an MCP
+/// client the name and version it gives itself, shown as only that (contract §9).
+private func asker(_ source: MuxChannelKind, _ request: ConfirmationRequest) -> String {
+    switch source {
+    case .mcp: "An MCP agent that calls itself \(request.clientName) \(request.clientVersion)"
+    }
+}
+
 /// The server's confirmation port, carried to the main thread in arrival order.
 final class ConfirmationPresenter: ConfirmationPort, @unchecked Sendable {
     private let windows: ConfirmationWindows
@@ -172,9 +190,12 @@ final class ConfirmationPresenter: ConfirmationPort, @unchecked Sendable {
         self.windows = windows
     }
 
-    func present(_ request: ConfirmationRequest, decide: @escaping @Sendable (ConfirmationDecision) -> Void) {
+    func present(
+        _ request: ConfirmationRequest, from kind: MuxChannelKind,
+        decide: @escaping @Sendable (ConfirmationDecision) -> Void
+    ) {
         DispatchQueue.main.async { [windows] in
-            MainActor.assumeIsolated { windows.present(request, decide: decide) }
+            MainActor.assumeIsolated { windows.present(request, from: kind, decide: decide) }
         }
     }
 

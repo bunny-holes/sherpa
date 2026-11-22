@@ -108,7 +108,7 @@ export class ControlChannel {
   ): Promise<ConfirmationDecision> {
     if (signal.aborted) return Promise.resolve("withdrawn");
     const id = this.nextID++;
-    const fields = `id=${id} tool=${prompt.tool} operation_id=${prompt.operation_id}`;
+    const fields = `id=${id} channel=${prompt.channel} tool=${prompt.tool} operation_id=${prompt.operation_id}`;
     const bounded = boundedPrompt(prompt);
     return new Promise<ConfirmationDecision>((resolve) => {
       const withdraw = (decision: "timed_out" | "withdrawn") => {
@@ -136,6 +136,7 @@ export class ControlChannel {
         id,
         tool: bounded.tool,
         operation_id: bounded.operation_id,
+        channel: bounded.channel,
         client: bounded.client,
         title: bounded.title,
         lines: bounded.lines,

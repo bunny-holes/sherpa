@@ -9,6 +9,11 @@ import { coreFailure, type FittedOutcome, fit, type ToolOutcome } from "./outcom
 /** What a tool call knows about the request that made it. */
 export interface ToolCall {
   signal: AbortSignal;
+  /**
+   * The app channel the request came in on (app-connection-v1 §7.2). A confirmation names it, and
+   * the app tells by that channel's kind who asks (§9).
+   */
+  channel: number;
   /** Who asked: on MCP, `clientInfo` of the request's 2026-07-28 `_meta` envelope, self-reported (§9). */
   client: { name: string; version: string };
 }
@@ -19,10 +24,9 @@ export interface CallableTool {
   handle(args: unknown, call: ToolCall): Promise<ToolOutcome | null>;
 }
 
-/** The surface a call came in on: the module its lines name, its channel, and its byte limit. */
+/** The surface a call came in on: the module its lines name and its byte limit. */
 export interface CallSurface {
   module: "mcp";
-  channel: number;
   limit: number;
 }
 
@@ -43,7 +47,7 @@ export async function runToolCall(
   const { entry } = tool;
   const started = Date.now();
   const action = `[core:${surface.module}:tool-call]`;
-  const fields = `channel=${surface.channel} tool=${entry.name}`;
+  const fields = `channel=${call.channel} tool=${entry.name}`;
   log.info(`${action} start ${fields}`);
   const running = tool.handle(args, call);
   activeCalls.add(running);

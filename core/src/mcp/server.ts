@@ -51,9 +51,10 @@ export function createSherpaServer(
           args,
           {
             signal: AbortSignal.any([ctx.mcpReq.signal, options.session]),
+            channel: options.channel,
             client: requestClient(ctx.mcpReq.envelope),
           },
-          { module: "mcp", channel: options.channel, limit: RESULT_TEXT_LIMIT },
+          { module: "mcp", limit: RESULT_TEXT_LIMIT },
         );
         // The SDK does not answer an aborted request; this value is never written.
         return fitted === null ? { content: [], isError: true } : callToolResult(fitted);
