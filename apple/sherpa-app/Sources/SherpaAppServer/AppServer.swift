@@ -28,11 +28,14 @@ public final class AppServer: @unchecked Sendable {
     private var helloReceived = false
     /// One counter for the channels of every kind (contract §7.2).
     private var nextChannel: UInt64 = 1
-    /// The open `mcp` channels, one per relay (§7.3). The MCP switch closes these and only these.
+    /// The open `mcp` channels, one per relay (§7.3). The MCP switch closes these and only these,
+    /// and a confirmation whose call came on one of them is an `mcp` one (§9).
     private var channels: [UInt64: RelayConnection] = [:]
     private var connections: [Int: RelayConnection] = [:]
     private var nextConnectionID = 0
-    private var pendingConfirmations: Set<UInt64> = []
+    /// The confirmations shown or waiting, each with the kind of the channel its call came on
+    /// (§9). The MCP switch withdraws the `mcp` ones and only these.
+    private var pendingConfirmations: [UInt64: MuxChannelKind] = [:]
     private var policy: RestartPolicy
     private var shuttingDown = false
     private var coreGone = NSCondition()
@@ -104,8 +107,8 @@ public final class AppServer: @unchecked Sendable {
     /// The MCP switch (contract §2). While it is off, every relay is turned away with
     /// `mcp_disabled` once its signature passes. Turning it off closes every open session, the
     /// `mcp` channels, at once (§7.6): the core gets `close` for each and withdraws the calls that
-    /// were waiting for a confirmation (§9), and the windows of those confirmations close
-    /// unanswered. Every confirmation comes from an `mcp` channel's call while that is the only kind.
+    /// were waiting for a confirmation (§9), and the windows of those calls' confirmations close
+    /// unanswered. A confirmation from a channel of another kind stays (§9).
     public func setMCPEnabled(_ enabled: Bool) {
         state.lock()
         guard status.mcpEnabled != enabled else {
@@ -114,7 +117,7 @@ public final class AppServer: @unchecked Sendable {
         }
         status.mcpEnabled = enabled
         var closed = 0
-        var withdrawn = 0
+        var withdrawn: [UInt64] = []
         if !enabled {
             for (channel, connection) in channels {
                 if let core, core.generation == connection.generation {
@@ -127,16 +130,17 @@ public final class AppServer: @unchecked Sendable {
             }
             channels.removeAll()
             status.sessions = connections.count
-            withdrawn = pendingConfirmations.count
-            pendingConfirmations.removeAll()
+            withdrawn = pendingConfirmations.compactMap { id, kind in kind == .mcp ? id : nil }
+            for id in withdrawn { pendingConfirmations[id] = nil }
         }
         // A relay still waiting for the core wakes up and is turned away.
         state.broadcast()
         publishLocked()
         state.unlock()
         logger.info(
-            "app:mcp:switch", "enabled=\(enabled) sessions_closed=\(closed) confirmations_withdrawn=\(withdrawn)")
-        if !enabled { confirmations.withdrawAll() }
+            "app:mcp:switch",
+            "enabled=\(enabled) sessions_closed=\(closed) confirmations_withdrawn=\(withdrawn.count)")
+        for id in withdrawn { confirmations.withdraw(id: id) }
     }
 
     /// The orderly end of §7.10. Blocks; call it off the main thread.
@@ -468,30 +472,28 @@ public final class AppServer: @unchecked Sendable {
                 return .frameInvalid
             case let .failure(.invalid(id)):
                 logger.warn("app:confirm:request", "id=\(id) status=invalid decision=unavailable")
-                process.send(
-                    MuxFrame(
-                        channel: 0, type: "confirmation",
-                        json: #"{"id":\#(id),"decision":"unavailable"}"#))
+                process.send(Self.confirmation(id, .unavailable))
             case let .success(request):
-                // Every channel closed when MCP was turned off; this call was on one of them.
-                guard status.mcpEnabled else {
+                // The kind comes from the app's own channel table, never from the client the core
+                // passes on, which a client reports about itself (§9). A channel that is not open
+                // gets no window: the MCP switch closed it with every `mcp` channel, or it ended.
+                guard let kind = openKind(request.channel) else {
+                    let reason = request.channel < nextChannel ? "channel_closed" : "channel_unknown"
                     logger.warn(
                         "app:confirm:request",
-                        "id=\(request.id) status=refused reason=mcp_disabled decision=unavailable")
-                    process.send(
-                        MuxFrame(
-                            channel: 0, type: "confirmation",
-                            json: #"{"id":\#(request.id),"decision":"unavailable"}"#))
+                        "id=\(request.id) channel=\(request.channel) status=refused reason=\(reason) "
+                            + "decision=unavailable")
+                    process.send(Self.confirmation(request.id, .unavailable))
                     return nil
                 }
-                pendingConfirmations.insert(request.id)
+                pendingConfirmations[request.id] = kind
                 logger.info(
                     "app:confirm:request",
-                    "id=\(request.id) tool=\(logToken(request.tool)) "
+                    "id=\(request.id) channel=\(request.channel) kind=\(kind.rawValue) tool=\(logToken(request.tool)) "
                         + "operation_id=\(logToken(request.operationID)) client=\(logToken(request.clientName)) "
                         + "client_version=\(logToken(request.clientVersion))")
                 let generation = process.generation
-                confirmations.present(request) { [weak self] decision in
+                confirmations.present(request, from: kind) { [weak self] decision in
                     self?.decided(request.id, decision, generation: generation)
                 }
             }
@@ -500,7 +502,7 @@ public final class AppServer: @unchecked Sendable {
                 case let .integer(rawID)? = object["id"], rawID > 0
             else { return .frameInvalid }
             let id = UInt64(rawID)
-            if pendingConfirmations.remove(id) != nil {
+            if pendingConfirmations.removeValue(forKey: id) != nil {
                 logger.info("app:confirm:withdraw", "id=\(id)")
                 confirmations.withdraw(id: id)
             } else {
@@ -562,13 +564,24 @@ public final class AppServer: @unchecked Sendable {
     private func decided(_ id: UInt64, _ decision: ConfirmationDecision, generation: Int) {
         state.lock()
         defer { state.unlock() }
-        guard let core, core.generation == generation, pendingConfirmations.remove(id) != nil else {
+        guard let core, core.generation == generation, pendingConfirmations.removeValue(forKey: id) != nil else {
             logger.debug("app:confirm:decision", "id=\(id) decision=\(decision.rawValue) status=dropped")
             return
         }
         logger.info("app:confirm:decision", "id=\(id) decision=\(decision.rawValue)")
-        core.send(
-            MuxFrame(channel: 0, type: "confirmation", json: #"{"id":\#(id),"decision":"\#(decision.rawValue)"}"#))
+        core.send(Self.confirmation(id, decision))
+    }
+
+    /// `0\tconfirmation\t{"id":N,"decision":"…"}` (§9).
+    private static func confirmation(_ id: UInt64, _ decision: ConfirmationDecision) -> MuxFrame {
+        MuxFrame(channel: 0, type: "confirmation", json: #"{"id":\#(id),"decision":"\#(decision.rawValue)"}"#)
+    }
+
+    /// Under the lock: the kind of an open channel in the app's own table, or nil for a number
+    /// that is not open, one that closed or that this core never opened. The table holds `mcp`
+    /// channels only, as the app opens no other kind yet.
+    private func openKind(_ channel: UInt64) -> MuxChannelKind? {
+        channels[channel] == nil ? nil : .mcp
     }
 
     private func answer(_ job: WorkerJob, _ output: WorkerOutput) {

@@ -272,9 +272,10 @@ private struct RecordingPlanner: PlannerPort {
 
 @Test func parsesTheConfirmVectorAndRejectsBodiesOutsideTheLimits() throws {
     let vector =
-        #"{"id":3,"tool":"reminder_delete","operation_id":"op-2","client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}"#
+        #"{"id":3,"tool":"reminder_delete","operation_id":"op-2","channel":1,"client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}"#
     let request = try ConfirmationRequest.parse(Data(vector.utf8), receivedAt: 10).get()
     #expect(request.id == 3 && request.tool == "reminder_delete" && request.deadline == 40)
+    #expect(request.channel == 1)
     let longTitle = vector.replacingOccurrences(
         of: #""title":"t""#, with: #""title":"\#(String(repeating: "가", count: 101))""#)
     #expect(ConfirmationRequest.parse(Data(longTitle.utf8), receivedAt: 0) == .failure(.invalid(id: 3)))
@@ -282,6 +283,28 @@ private struct RecordingPlanner: PlannerPort {
     let tooMany = vector.replacingOccurrences(of: #""lines":[]"#, with: #""lines":[\#(lines)]"#)
     #expect(ConfirmationRequest.parse(Data(tooMany.utf8), receivedAt: 0) == .failure(.invalid(id: 3)))
     #expect(ConfirmationRequest.parse(Data(#"{"tool":"x"}"#.utf8), receivedAt: 0) == .failure(.noIdentifier))
+}
+
+/// The confirm vector of §14 with `channel` set to the given JSON text, or without it.
+private func confirmBody(channel: String?) -> Data {
+    let member = channel.map { #""channel":\#($0),"# } ?? ""
+    return Data(
+        #"{"id":3,"tool":"reminder_delete","operation_id":"op-2",\#(member)"client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}"#
+            .utf8)
+}
+
+@Test func readsTheChannelOfTheCallUpToTheHighestNumber() throws {
+    #expect(try ConfirmationRequest.parse(confirmBody(channel: "1"), receivedAt: 0).get().channel == 1)
+    #expect(
+        try ConfirmationRequest.parse(confirmBody(channel: "9007199254740991"), receivedAt: 0).get().channel
+            == MuxFrame.maximumChannel)
+}
+
+/// Without the channel of its call the app cannot tell who asks (§9), so such a body is
+/// answered `unavailable` like one outside the limits.
+@Test(arguments: [nil, "0", "-1", "9007199254740992", "1.5", #""1""#, "null", "true"])
+func refusesAConfirmWithoutTheChannelOfItsCall(_ channel: String?) {
+    #expect(ConfirmationRequest.parse(confirmBody(channel: channel), receivedAt: 0) == .failure(.invalid(id: 3)))
 }
 
 // MARK: socket folder, lock, environment (contract §3, §7.1)

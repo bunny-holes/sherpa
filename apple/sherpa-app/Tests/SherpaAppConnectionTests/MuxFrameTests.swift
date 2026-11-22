@@ -23,7 +23,7 @@ private let fromCore = [
     "0\thello\t{\"mux\":2,\"version\":\"0.9.0\"}\n",
     "0\trequest\t{\"id\":1,\"worker\":\"planner\",\"request\":{\"kind\":\"request\",\"protocol_version\":\"2.0.0\",\"application_contract\":\"sherpa.planner.v2\",\"request_id\":\"op-1\",\"operation_id\":\"op-1\",\"capability\":\"capabilities\",\"payload\":{\"schema\":\"sherpa.planner.capabilities.request.v2\"},\"deadline_ms\":20000,\"idempotency_key\":\"op-1\",\"policy\":{\"effect\":\"read\",\"required_evidence\":\"none\",\"artifact_directory\":null}}}\n",
     "1\tdata\t{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}\n",
-    "0\tconfirm\t{\"id\":3,\"tool\":\"reminder_delete\",\"operation_id\":\"op-2\",\"client\":{\"name\":\"t\",\"version\":\"0\"},\"title\":\"t\",\"lines\":[],\"timeout_ms\":30000}\n",
+    "0\tconfirm\t{\"id\":3,\"tool\":\"reminder_delete\",\"operation_id\":\"op-2\",\"channel\":1,\"client\":{\"name\":\"t\",\"version\":\"0\"},\"title\":\"t\",\"lines\":[],\"timeout_ms\":30000}\n",
     "0\twithdraw\t{\"id\":3}\n",
     "2\tclose\t{\"reason\":\"server_closed\"}\n",
     "1\tclose\t{\"reason\":\"unsupported_kind\"}\n",
