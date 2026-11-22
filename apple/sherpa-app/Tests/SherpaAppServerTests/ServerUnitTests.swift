@@ -466,6 +466,7 @@ private func socketPair() throws -> (Int32, Int32) {
     var pair: [Int32] = [0, 0]
     guard socketpair(AF_UNIX, SOCK_STREAM, 0, &pair) == 0 else { throw POSIXError(.EIO) }
     for descriptor in pair {
+        _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC)
         var on: Int32 = 1
         setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
     }
@@ -609,17 +610,23 @@ private func eventually(_ condition: () -> Bool) async -> Bool {
 private func printedByShell(_ shell: String, _ word: String) -> String? {
     var pipe: [Int32] = [0, 0]
     guard Darwin.pipe(&pipe) == 0 else { return nil }
+    for descriptor in pipe { _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC) }
     var actions: posix_spawn_file_actions_t?
     posix_spawn_file_actions_init(&actions)
     defer { posix_spawn_file_actions_destroy(&actions) }
+    posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0)
     posix_spawn_file_actions_adddup2(&actions, pipe[1], STDOUT_FILENO)
-    posix_spawn_file_actions_addclose(&actions, pipe[0])
+    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0)
+    var attributes: posix_spawnattr_t?
+    posix_spawnattr_init(&attributes)
+    defer { posix_spawnattr_destroy(&attributes) }
+    posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT))
     let argv = [shell, "-c", "printf %s " + word].map { strdup($0) } + [nil]
     let variables: [String] = ["PATH=/usr/bin:/bin", "HOME=/nonexistent"]
     let environment = variables.map { strdup($0) } + [nil]
     defer { (argv + environment).forEach { free($0) } }
     var pid: pid_t = 0
-    let spawned = posix_spawn(&pid, shell, &actions, nil, argv, environment)
+    let spawned = posix_spawn(&pid, shell, &actions, &attributes, argv, environment)
     close(pipe[1])
     defer { close(pipe[0]) }
     guard spawned == 0 else { return nil }
@@ -645,4 +652,27 @@ func quotedPathsReachTheShellAsOneUnchangedWord(_ shell: String) {
     for path in paths {
         #expect(printedByShell(shell, AgentSetup.shellQuoted(path)) == path)
     }
+}
+
+@Test func testSocketPairSetsCloseOnExecOnBothEnds() throws {
+    let (first, second) = try socketPair()
+    defer {
+        close(first)
+        close(second)
+    }
+    #expect((fcntl(first, F_GETFD) & FD_CLOEXEC) != 0)
+    #expect((fcntl(second, F_GETFD) & FD_CLOEXEC) != 0)
+}
+
+@Test func printedByShellClosesParentDescriptorsByDefault() throws {
+    // Open a pipe intentionally without FD_CLOEXEC and verify the spawned shell
+    // does not inherit it across exec because POSIX_SPAWN_CLOEXEC_DEFAULT is set.
+    var probe: [Int32] = [0, 0]
+    guard Darwin.pipe(&probe) == 0 else { throw POSIXError(.EIO) }
+    defer {
+        close(probe[0])
+        close(probe[1])
+    }
+    let script = "$(if : >&\(probe[1]) 2>/dev/null; then echo leaked; else echo closed; fi)"
+    #expect(printedByShell("/bin/sh", script) == "closed")
 }
