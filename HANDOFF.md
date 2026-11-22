@@ -1,4 +1,4 @@
-# sherpa HANDOFF — 2026-11-22 21:12 KST
+# sherpa HANDOFF — 2026-11-22 23:35 KST
 
 ## 목표
 
@@ -10,53 +10,49 @@ Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 
 
 ## 끝난 것 (커밋·태그·실측 근거)
 
-- 바탕: 앱 연결 계약(#26)부터 Xcode 빌드(#49)까지 PR #44·#45·#48·#50. MCP 2026-07-28 전용(#51, PR #53). MCP 스위치와
-  "?" 안내(#54·#52, PR #56). 플러그인 0.9.0 배포와 실측(#55, PR #57·#60). ADR-0012 설계(#59, PR #61).
+- 바탕: 앱 연결 계약(#26)~Xcode 빌드(#49), MCP 2026-07-28 전용(#51), MCP 스위치와 "?"(#54·#52), ADR-0012 설계(#59).
 - 2026-11-22 병합. 모두 PR head 에서 `bash scripts/check-all.sh` exit 0 을 확인하고 손으로 병합했다.
   - #73 swift-format(서식 커밋 `e3ed524` 는 `.git-blame-ignore-revs`), #75 Claude Code 2.1.326 실측과 플러그인 0.9.1,
     #77 Bun 고정(`devEngines`, `scripts/lib/bun-pin.sh`, 새 판은 경고만), #80 저장소 이전 뒤의 옛 주소(#79 닫힘),
-    #82 잠금 flake(#78 닫힘, 결정적 회귀 시험), #85·#90 이 파일.
+    #82 잠금 flake(#78 닫힘, 결정적 회귀 시험), #85·#90·#96·#98 이 파일.
   - #74 코어 나가는 길 경계(#64 닫힘): `core/src/chat/egress.ts`, oxlint 금지 규칙, stdio lsof 시험.
   - #76 ADR-0012 소유자 결정(#59 닫힘): OpenAI 호환도 https 만, 대화 기록은 앱이 AES-GCM 으로 저장(보관 기본 30일).
   - #81 Claude Code 2.1.330 재측정(#69 닫힘): MCP 가 꺼진 동안의 응답 후보 셋 가운데 권고는 c3 다. 플러그인 0.9.2.
   - #72 Mux 2(#63 닫힘, main `cc82033`): `open` 이 채널 종류를 싣고, Embed Core 가 번들 코어의 Bun 을 확인한다.
-  - #84 Mux 2 번들 실기: `/Applications` 의 `cc82033` 빌드에 Claude Code 2.1.330 과 Codex 0.171.0 이 붙었다. 켜진 채
-    끄자 세 채널이 닫혔고, 다시 켜자 둘 다 다시 붙었다. Claude Code 는 연결된 중계가 끝날 때 이유를 보이지 않는다(계약 §6).
-  - 단계 4(#66)의 앞 넷
-    - #86(A, main `070cf40`): 도구 호출의 생애를 `core/src/tools/call.ts`·`outcome.ts` 로 옮겨 MCP 와 채팅이 함께
-      쓴다. 나가는 길이 `globalThis.WebSocket` 도 거부한다.
-    - #87(B, main `1f73fdb`): 계약 3판, mux 3. `confirm` 이 `"channel":N` 을 싣고, 앱은 확인의 출처를 그 채널의
-      종류로 가른다. MCP 스위치는 mcp 채널의 확인만 거두고 거부한다.
-    - #89(C, main `31ac4f8`): 코어가 채널 종류 `chat` 과 `sherpa.chat.v1` 의 `list_models` 를 받는다(계약 §7.11).
-      코어의 첫 나가는 연결이다. 오류 코드와 한도는 닫힌 목록이고, 키는 그 요청의 머리말에만 있다.
-    - #88(main `fa89152`): ADR-0012 의 Mux 2 문장 옆에 3판이 mux 를 3 으로 올렸다고 적었다.
-    - #91(D1, main `fa370ef`): `ai` 7.0.179 와 `@ai-sdk/*` 넷을 고정하고 울타리(봉인, 린트, 의존 닫힘 검사, TLS
-      stdio 시험)를 쳤다.
-    - #97(main `f3ca09a`): 빌드가 `--compile-exec-argv=--use-system-ca` 를 넣어 코어가 시스템 저장소도 믿는다.
-      Bun 1.4.5 의 그 저장소는 관리자 신뢰 설정의 인증서만 넣고 사용자 신뢰 설정의 것은 넣지 않는다(실측).
-  - #92 보안 결함: 0.8.0~0.8.5 의 CLI 가 실행한 폴더의 `.env`·`bunfig.toml` 을 읽었다. 앱의 코어는 cwd 가 `/` 라
-    막혀 있었다. #93 이 빌드의 자동 읽기 넷을 끄고 회귀 시험과 `scripts/package.sh` 의 확인을 넣었고, #95 가 깃발 넷의
-    단위 시험과 `XDG_CONFIG_HOME` 을 더했다. #94 로 0.8.6 을 냈다(태그 `v0.8.6`, tap `3ee4e2b`). 이 Mac 의
-    Homebrew 0.8.6 에서 고침을 확인했고(live-evidence 2026-11-22), #92 를 닫았다.
+  - #84 Mux 2 번들 실기: `cc82033` 빌드에 Claude Code 2.1.330·Codex 0.171.0 이 붙고, 켜진 채 끄고 다시 켜기를 견뎠다.
+  - 단계 4(#66)
+    - #86(A, `070cf40`): 도구 호출의 생애를 `core/src/tools/call.ts`·`outcome.ts` 로 옮겨 MCP 와 채팅이 함께 쓴다.
+      나가는 길이 `globalThis.WebSocket` 도 거부한다.
+    - #87(B, `1f73fdb`): 계약 3판, mux 3. `confirm` 이 `"channel":N` 을 싣고, 앱은 확인의 출처를 그 채널의 종류로
+      가른다. MCP 스위치는 mcp 채널의 확인만 거두고 거부한다. #88 이 ADR-0012 에 mux 3 을 적었다.
+    - #89(C, `31ac4f8`): 코어가 채널 종류 `chat` 과 `sherpa.chat.v1` 의 `list_models` 를 받는다(계약 §7.11).
+    - #91(D1, `fa370ef`): `ai` 7.0.179 와 `@ai-sdk/*` 넷을 고정하고 울타리(봉인, 린트, 의존 닫힘 검사, TLS stdio
+      시험)를 쳤다. #97(`f3ca09a`): 코어가 시스템 인증서 저장소도 믿는다(관리자 신뢰 설정의 것만 든다, 실측).
+    - #99(D2, `26a369b`): 채팅이 `turn`·`cancel` 을 받아 `delta`·`done`·`error` 로 답한다(네 제공자, `streamText`).
+      재시도는 AI SDK 의 `maxRetries: 2` 가 첫 출력 전 요청만 하고, 첫 출력 한도는 요청마다 다시 켜는 600초, 출력
+      사이는 120초다(계약 §7.11). 사람 글 앞에 보낸 시각 줄을 붙이고, 대화는 채널 메모리에 2 MiB 까지 둔다. 빌드한
+      코어에 실린 AI Gateway·`@vercel/oidc` 의 길(진짜 oidc 는 만료된 Vercel 로그인을 `{}` 로 덮어쓴다, 실측)을 봉인이
+      막는 것을 stdio 시험이 대조 실행과 함께 본다. 실행 파일 +2.0 MB, 시작 +12 ms(까닭은 추론), 실제 점유 +2.3 MB.
+  - #92 보안 결함: 0.8.0~0.8.5 의 CLI 가 실행한 폴더의 `.env`·`bunfig.toml` 을 읽었다(앱의 코어는 cwd 가 `/` 라
+    막혔다). #93·#95 가 고치고 시험했고, #94 로 0.8.6 을 냈다(태그 `v0.8.6`, tap `3ee4e2b`). Homebrew 0.8.6 에서 확인했다.
 - 소유자 결정(2026-11-22)
-  - OpenAI 의 옛 `include: reasoning.encrypted_content` 는 ADR-0012 결정 7 의 예외로 둔다. D2 가 싣는다.
+  - OpenAI 의 옛 `include: reasoning.encrypted_content` 는 ADR-0012 결정 7 의 예외로 둔다. #99 가 실었다.
   - https 루프백은 이름으로 막지 않는다. 규칙은 https 와 코어가 믿는 인증서다. #89 가 실었다.
   - 한 차례의 단계 한도는 20이다. D3 이 싣는다.
   - 코어는 키체인이 신뢰한 인증서도 믿는다(#97). 사용자 신뢰 설정에서만 믿게 한 루트까지는 지금 넓히지 않고, 그런
     출처가 실제로 막히면 그때 넓힌다(ADR-0012 정정 "사용자 신뢰 설정").
-- 다른 저장소: plug-hole #13·#14·#15(main `c826044`), toolbox 0.46.2(태그 `toolbox-v0.46.2` → `2baffc5`),
-  swift-arch 0.9.6(태그 `swift-arch-v0.9.6`).
+- 다른 저장소: plug-hole #13·#14·#15(main `c826044`), toolbox 0.46.2(`2baffc5`), swift-arch 0.9.6.
 - 이 Mac 의 판(2026-11-22): Bun 1.4.5(Homebrew 와 `~/.bun/bin` 두 벌), Claude Code 2.1.330, Codex 0.171.0, vp 1.7.0,
   Xcode 27.2(27B52), Swift 6.4.2, swift-format 6.4.4.
 
 ## 진행 중
 
 - 단계 4(#66): 작업자 chat-core, 워크트리 `.claude/worktrees/chat-core`. 각 PR 을 병합한 뒤 다음 것을 시작한다.
-  - 지금 D2 글 차례: 네 제공자, `turn`·`cancel`·`delta`·`done`·`error`, 첫 조각과 조각 사이 120초, 결정 1. 재시도는 누가·
-    몇 번·최악 대기를 계약에 적고, 도구는 다시 하지 않는다. `ai` 를 실제로 읽으면 Gateway 가 빌드한 코어에 들어오므로
-    봉인과 의존 닫힘 검사가 그 길을 막는지 다시 본다.
-  - D3 도구: 레지스트리를 AI SDK 도구로 넘긴다. 상태 일곱, 단계 한도 20, `toolCallConcurrency` 1, 채팅 확인의 채널 번호.
-  - 그 뒤 E(대화 상태 `state`·`resume`)와 F(크기·메모리 실측, 문서, 이 파일, #66 닫기).
+  - 지금 D3 도구: 레지스트리를 AI SDK 도구로 넘긴다. 상태 일곱, 단계 한도 20, `toolCallConcurrency` 1, 채팅 확인의
+    채널 번호, 채팅의 도구 결과 한도와 `toolMs`. "다시" 는 text 없는 `turn` 이다([설계], 계약 §7.11). 도구 사이에
+    생각하는 동안 `chunkMs` 120초가 잘못 울릴 수 있어 다시 본다. 설계를 먼저 받고 코드를 시작한다.
+  - 그 뒤 E(대화 상태 `state`·`resume`, 차례 중의 답 크기까지 한도를 세 곳에서 보기)와 F(크기·메모리 실측, 문서, 이
+    파일, #66 닫기). F 는 첫 차례 뒤 메모리, hardened runtime 의 값, 시작 +12 ms 를 줄이는 길(`--bytecode` 등)을 잰다.
 - 패키지 판은 넣는 날 npm 의 최신 안정판으로 다시 보고, 기존 의존의 올림은 따로 PR 로 먼저 낸다.
 
 ## 하지 말 것 (실패한 시도, 되돌린 것)
@@ -67,8 +63,9 @@ Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 
   뒤 15분 동안 건너뛰고, 실제 프로필에서 재면 시험 항목이 `mcp-needs-auth-cache.json` 에 남는다.
 - plug-hole 의 sherpa 항목은 ref 고정이 없다. `plugins/sherpa/` 변경을 main 에 병합하면 다음 갱신 때 배포된다.
 - 작업자가 게이트나 커밋을 끝냈는지 보지 않고 그 워크트리를 지우지 않는다. #56 때 push 전 커밋이 사라질 뻔했다.
-- 작업자의 "병합 준비" 보고만 믿고 병합하지 않는다. 병합 전에 PR head·base 와 본문의 게이트 줄을 다시 본다. 보고와
-  병합 신호가 엇갈려, 옛 main 위의 head 가 준비됐다고 올라온 적이 있다(#72).
+- 작업자의 "병합 준비" 보고만 믿고 병합하지 않는다. PR head·base, 본문의 게이트 줄, 지시를 반영했는지를 다시 본다.
+  옛 main 위의 head 가 준비됐다고 올라온 적이 있고(#72), 오래 도는 작업자는 그 사이 온 메시지를 차례가 끝난 뒤에
+  읽어 D2 의 검토 넷이 PR 을 연 뒤에야 닿았다.
 - 문서에 PR 번호를 PR 을 열기 전에 적지 않는다. 나란히 연 PR 에 번호를 두 번 빼앗겼다(#87·#88). PR 을 먼저 열어
   번호를 잡고 고친다.
 - live-evidence 충돌을 한쪽 항목을 버려 풀지 않는다. 항목을 모두 남기고 실측 시각 순으로 둔다(새 것이 위).
@@ -101,8 +98,13 @@ Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 
     (`MuxFrame` 은 `mcp` 뿐) #67 의 몫이다.
   - Mux 3 번들 실기. `/Applications` 의 앱은 아직 Mux 2 빌드다.
 - 미확인:
-  - 네 제공자의 실제 모델 목록 응답 모양, Anthropic 목록이 `anthropic-version: 2026-10-21` 과 `lifecycle` 을 문서대로
-    다루는지, Google 이 `pageSize=1000` 을 받는지. 소유자의 키가 있어야 해서 #68 실기에서 잰다.
+  - 네 제공자의 실제 모델 목록과 차례 응답(흐름, 흐름 안 오류)의 모양, Anthropic 이 `anthropic-version: 2026-10-21`
+    과 `lifecycle` 을 문서대로 다루는지, Google 이 `pageSize=1000` 을 받는지. 소유자의 키가 있어야 해서 #68 실기에서
+    잰다(계약 §16).
+  - 제공자가 생각하는 동안 바이트(ping 등)를 보내는지와 첫 출력 전에 생각하는 시간. 바이트가 없으면 Bun 의 유휴
+    한도(이 Mac 실측 360초)가 600초보다 먼저 차례를 끊는다. 유료라 #68 실기에서 잰다.
+  - 일찍 닫힌 답의 코드가 제공자마다 다르다(OpenAI·Google 은 늘 `network`, OpenAI 호환과 출력 전 Anthropic 은
+    `provider_invalid_response`). 맞출지는 정하지 않았고, 지금 동작은 시험 여섯이 고정한다(계약 §7.11).
   - 관리자 신뢰 설정의 루트 뒤 출처를 코어의 `fetch` 가 끝까지 받는지, 회사 MDM 이 넣은 루트가 어느 신뢰 설정에
     드는지. 키체인을 바꾸지 않고는 재지 못하므로 #68 실기에서 본다.
   - 2026-11-22 04:29Z 게이트 실패(#78)가 잠금 원인이었는지. 그 실행은 outcome 을 남기지 않았고, 줄과 조건은 재현과 같다.
@@ -118,7 +120,7 @@ Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 
 
 ## 다음 행동
 
-1. 단계 4 를 D1 → D2 → D3 → E → F 순서로 chat-core 와 마친다. 병합 전마다 PR head·base 와 본문의 게이트 줄을 다시
+1. 단계 4 를 D3 → E → F 순서로 chat-core 와 마친다. 병합 전마다 PR head·base 와 본문의 게이트 줄을 다시
    본다.
 2. 소유자에게 c3 와 Codex 기능 다시 켜기를 받는다. c3 를 정하면 구현 이슈를 내고, 켜진 채 끌 때 Claude Code 가 이유를
    보이지 않는 것(#84)도 그 이슈에서 함께 본다.
@@ -133,7 +135,7 @@ Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 
   - 원격: `bunny-holes/sherpa`(공개)
   - Formula: `XIYO/homebrew-tap`(공개, 옮기지 않았다). `3ee4e2b` 가 0.8.6 을 가리킨다.
   - 마켓플레이스: `bunny-holes/plug-hole`(비공개). sherpa 항목은 `git-subdir` `plugins/sherpa` 이고 ref 가 없다.
-- `main` 은 `f3ca09a`(#97)와 그 뒤 이 파일을 고친 문서 PR 이다.
+- `main` 은 `26a369b`(#99)와 그 뒤 이 파일을 고친 문서 PR 이다.
 - 작업자 워크트리: `.claude/worktrees/chat-core`(chat-core). 브랜치는 지금 하는 PR 의 것이다. 그 밖에는 없다.
 - 이 Mac 의 CLI: Homebrew `sherpa` 0.8.6(2026-11-22 11:33Z 에 올렸다).
 - 떠 있는 앱: `/Applications/Sherpa.app` 은 main `cc82033` 빌드다. main 의 앱 판은 이제 0.8.6 이다.
