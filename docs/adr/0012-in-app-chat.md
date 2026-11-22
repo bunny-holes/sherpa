@@ -12,18 +12,22 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > **정정 (2026-11-23, #66, 대화 상태).** 구현 단계 4 의 아홉째 몫이 PR #110 으로 들어갔다. 코어는 채팅의 대화가 바뀔
 > 때마다 그 전체를 `{"type":"state","state":"<S 의 base64>"}` 로 앱에 넘긴다. 바뀌는 때는 사람의 글을 더한 뒤 첫
 > 요청 전과 남긴 단계마다이고, 단계의 `state` 는 그 단계의 `delta`·`tool` 과 AI SDK 가 돌리지 않은 호출의 `tool` 둘
-> 뒤에 온다. S 는 `format`, `provider`, `base_url`(OpenAI 호환만), `model`, `fingerprint`, `pending`(이 판은 늘 빈
-> 배열), `messages` 의 JSON 이고, 앱은 받은 문자열을 해석하지 않고 그대로 둔다. 4 MiB `data` 를 넘을 `state` 는
-> 코어의 결함이라 쓰지 않고 그 차례를 `internal` 로 끝내며, 그 채팅은 가득 찬다. 앱은 받은 `state` 를 저장한 뒤에 그
-> 뒤의 프레임, 특히 채널 0 의 작업 요청을 처리한다. 앱은 저장한 상태를 새 채널의 `resume` 으로 돌려주고, `resume` 은
-> 그 채널의 첫 `turn`·`resume` 이어야 한다. 코어는 base64 를 다시 적어 견주는 엄격한 풀기, JSON, 봉투, AI SDK 의
-> `modelMessageSchema`, system 메시지, 파일 데이터, 결과 없는 호출을 보고 `resumed`(`resend`)나 `chat_state_invalid`
-> 로 답한다. 이어 쓴 채팅에 상태와 다른 제공자·base URL·모델의 `turn` 이 오면 `chat_state_mismatch` 다. 지문이
-> 다르면 Anthropic 대화의 reasoning 을 모두 빼고 다른 셋은 그대로 보낸다. 상태를 보는 동안의 `turn` 은 `busy` 이고,
-> AI SDK 는 처음으로 메시지를 보는 `resume` 에서도 실린다. `call_id` 는 이어 쓴 채널도 1부터 센다. 단계의 글이 그
-> `state` 와 함께 나가므로, 답의 글이 앱에 닿은 뒤 코어가 응답의 끝을 읽기 전에 닿은 `cancel` 은 `stop` 이 아니라 그
-> 단계를 남긴 `done` `aborted`(`resend` 거짓)다. [실측: `core/tests/chat-state.test.ts`,
-> `core/tests/chat-tools.test.ts`, `core/tests/chat-turn.test.ts`, `core/tests/stdio/egress.test.ts`] 아래 본문이
+> 뒤에 온다. S 는 `format`, `provider`, `base_url`(OpenAI 호환만), `model`, `fingerprint`, `full`(채팅이 찼는지),
+> `pending`(이 판은 늘 빈 배열), `messages` 의 JSON 이고, 앱은 받은 문자열을 해석하지 않고 그대로 둔다. 채팅이 차는
+> 때, 곧 차례 안에서 대화 한도를 넘은 때와 차례를 시작할 때 넘어 거절한 때 코어는 `full` 이 참인 `state` 를 한 번,
+> 그 `turn` 을 끝내는 메시지 앞에 쓴다. 그 상태로 이어 쓴 채팅은 `resumed` 의 `resend` 가 거짓이고 어느 `turn` 도
+> 요청 없이 `conversation_limit` 다. 4 MiB `data` 를 넘을 `state` 는 코어의 결함이라 쓰지 않고 그 `turn` 을
+> `internal` 로 끝내며, 그 채팅은 가득 찬다. 앱에는 `full` 이 거짓인 앞의 `state` 가 남는다. 앱은 받은 `state` 를
+> 저장한 뒤에 그 뒤의 프레임, 특히 채널 0 의 작업 요청을 처리한다. 앱은 저장한 상태를 새 채널의 `resume` 으로
+> 돌려주고, `resume` 은 그 채널의 첫 `turn`·`resume` 이어야 한다. 코어는 base64 를 다시 적어 견주는 엄격한 풀기,
+> JSON, 봉투, AI SDK 의 `modelMessageSchema`, system 메시지, 파일 데이터, 결과 없는 호출을 보고
+> `resumed`(`resend`)나 `chat_state_invalid` 로 답한다. 이어 쓴 채팅에 상태와 다른 제공자·base URL·모델의 `turn` 이
+> 오면 `chat_state_mismatch` 다. 지문이 다르면 Anthropic 대화의 reasoning 을 모두 빼고 다른 셋은 그대로 보낸다.
+> 상태를 보는 동안의 `turn` 은 `busy` 이고, AI SDK 는 처음으로 메시지를 보는 `resume` 에서도 실린다. `call_id` 는
+> 이어 쓴 채널도 1부터 센다. 단계의 글이 그 `state` 와 함께 나가므로, 답의 글이 앱에 닿은 뒤 코어가 응답의 끝을 읽기
+> 전에 닿은 `cancel` 은 `stop` 이 아니라 그 단계를 남긴 `done` `aborted`(`resend` 거짓)다. [실측:
+> `core/tests/chat-state.test.ts`, `core/tests/chat-tools.test.ts`, `core/tests/chat-turn.test.ts`,
+> `core/tests/chat-limit.test.ts`, `core/tests/stdio/egress.test.ts`] 아래 본문이
 > 적은 봉투의 `origin`, `resume` 이 채널의 첫 메시지라는 것, 이어 쓰기가 크기를 본다는 것, 정정의 "`state` 는 아직
 > 없어" 는 이제 맞지 않는다. 진행 중인 변경(`pending`)과 기록부 줄은 다음 몫이다. 그 메시지를 읽는 앱이 아직 없어
 > `sherpa.chat.v1` 의 판은 그대로다. [설계] 계약 §7.11 의 "대화 상태" 와 "이어 쓰기" 가 이것을 싣는다. 고친 곳은
@@ -784,10 +788,11 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   [문서: `@ai-sdk/anthropic` 4.0.107 `src/convert-to-anthropic-prompt.ts`·`src/anthropic-language-model.ts`,
   `@ai-sdk/openai` 4.0.122 `src/responses/convert-to-openai-responses-input.ts`, `@ai-sdk/google` 4.0.124
   `src/interactions/convert-to-google-interactions-input.ts`] (정정 2026-11-23, #66, 대화 상태: 봉투는
-  `{format, provider, base_url, model, fingerprint, pending, messages}` 이고 코어는 키를 그 차례로 적는다. `origin`
-  대신 채팅이 요청을 시작하는 `base_url` 을 OpenAI 호환에만 싣는다. 앞의 세 제공자는 이름이 출처를 정한다. `pending`
-  은 진행 중인 변경이고 이 판의 코어는 늘 빈 배열을 적는다. 앱이 받는 값은 S 의 UTF-8 바이트를 base64 로 적은
-  것이다. 상태에 키가 없음은 `core/tests/chat-state.test.ts` 와 `core/tests/stdio/egress.test.ts` 가 본다. [설계;
+  `{format, provider, base_url, model, fingerprint, full, pending, messages}` 이고 코어는 키를 그 차례로 적는다.
+  `origin` 대신 채팅이 요청을 시작하는 `base_url` 을 OpenAI 호환에만 싣는다. 앞의 세 제공자는 이름이 출처를 정한다.
+  `pending` 은 진행 중인 변경이고 이 판의 코어는 늘 빈 배열을 적는다. `full` 은 채팅이 찼는지의 불리언이고 코어는 늘
+  싣는다("상태를 넘기는 때"). 앱이 받는 값은 S 의 UTF-8 바이트를 base64 로 적은 것이다. 상태에 키가 없음은
+  `core/tests/chat-state.test.ts` 와 `core/tests/stdio/egress.test.ts` 가 본다. [설계;
   계약 §7.11 "대화 상태"])
 - 지시문과 도구 정의는 상태에 넣지 않는다. 코어가 차례마다 자기 판의 것을 넘긴다. `fingerprint` 는 모델에 보낸
   그 둘의 SHA-256 이다("이어 쓰기"). [설계] (정정 2026-11-23, #66, 대화 상태: 해시하는 것은 지시문과, 도구마다 AI
@@ -803,11 +808,13 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
 - 코어는 상태가 바뀔 때마다 그 전체를 `state` 로 보낸다. 바뀌는 때는 차례의 사람 글을 더할 때와, 단계가 끝나 그
   단계의 응답 메시지를 더할 때다. `done`·`error` 는 그 차례의 마지막 `state` 뒤에 온다. 앱은 받은 `state` 로
   앞의 것을 바꾸고 파일을 다시 쓴다. 코어나 앱이 차례 중에 끝나도 끝난 단계까지는 남는다. [설계] (정정 2026-11-23,
-  #66, 대화 상태: 코어가 이대로 보내고, 단계의 `state` 는 그 단계의 `delta`·`tool` 뒤에 온다. 앱은 받은 `state` 를
+  #66, 대화 상태: 코어가 이대로 보내고, 단계의 `state` 는 그 단계의 `delta`·`tool` 뒤에 온다. 채팅이 찰 때, 곧 차례
+  안에서 대화 한도를 넘은 때와 차례를 시작할 때 넘어 거절한 때도 `full` 이 참인 `state` 를 한 번, 그 `turn` 을 끝내는
+  메시지 앞에 보낸다. 넘은 단계가 남으면 그 단계의 `state` 가 그것이고, 거절한 글은 그 상태에 없다. 앱은 받은 `state` 를
   저장한 뒤에 그 뒤에 읽은 프레임을 처리하고, 특히 그 뒤의 채널 0 `request` 를 먼저 처리하지 않는다. 차례의 호출이
   청한 작업 요청은 그 앞 단계의 `state` 뒤에 나가므로, 앱은 늘 그 앞 단계까지의 대화를 저장한 뒤에 그 요청을
-  실행한다. 앱이 닫은 채널에 엇갈려 온 `state` 는 그 기록을 다른 채널로 다시 열지 않았으면 그 기록에 쓴다. [계약
-  §7.3, §7.11 "대화 상태"; 실측: `core/tests/chat-state.test.ts`])
+  실행한다. 앱이 닫은 채널에 엇갈려 온 `state` 는 그 기록을 다른 채널로 다시 열지 않았으면 그 기록에 쓴다. [계약 §7.3,
+  §7.11 "대화 상태", "대화 한도"; 실측: `core/tests/chat-state.test.ts`])
 - 앱은 `state` 를 받을 때와 차례가 끝날 때(`done`·`error`) 파일을 쓰고, 글 조각(`delta`)마다 쓰지는 않는다.
   파일의 보이는 대화와 모델 상태는 같은 단계에서 끝나고, 보이는 대화에는 차례 끝 표시(거절, 끊김)가 더 있을
   뿐이다. [설계]
@@ -839,7 +846,9 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   2 MiB 의 대화는 봉투와 함께 2.67 MiB 남짓이고, 4 MiB 에는 3 MiB 가까운 대화가 든다. 그 사이는 단계가 끝날 때
   한도를 넘겨 남은 단계 하나의 몫이다. 그래도 넘을 `state` 는 코어의 결함이라, 코어는 쓰지 않고 error 로그를 남기며
   그 차례를 다음 요청 없이 `error` `internal` 로 끝내고, 그 채팅은 뒤의 차례를 받지 않는다. 앱이 가진 것은 그 앞의
-  `state` 다. [설계; 계약 §7.11 "대화 상태"; 실측: `core/tests/chat-state.test.ts`])
+  `state` 다. 채팅이 찬 것을 알릴 `state` 가 넘을 때도 같고(차례를 시작할 때의 거절이 쓰려던 것이면 그 `turn` 이
+  `internal` 이다), 앱에는 `full` 이 거짓인 앞의 상태가 남아 그것으로 이어 쓴 채팅은 다시 차례를 받는다. [설계; 계약
+  §7.11 "대화 상태"; 실측: `core/tests/chat-state.test.ts`])
 
 ### 이어 쓰기
 
@@ -848,7 +857,9 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   제공자·출처·모델이 상태의 것과 같은지 본다. 어기면 `error` `chat_state_invalid` 나 `chat_state_mismatch` 로
   끝내고, 앱은 그 대화를 읽기 전용으로 둔다. [설계; 문서: `ai` 7.0.179 `src/prompt/message.ts`] (정정 2026-11-23,
   #66, 대화 상태: `resume` 은 채널의 첫 메시지가 아니라 첫 `turn`·`resume` 이고 `list_models` 는 그 앞에 와도 된다.
-  코어는 크기로 거절하지 않고, 2 MiB 를 넘는 대화는 이어 쓴 뒤 차례를 시작할 때 `conversation_limit` 이다. 코어가
+  코어는 크기로 거절하지 않는다. `full` 이 참인 상태로 이어 쓴 채팅은 `resumed` 의 `resend` 가 거짓이고 어느 `turn` 도
+  요청 없이 `conversation_limit` 이며 새 `state` 를 쓰지 않는다. `full` 이 거짓이라도 2 MiB 를 넘는 대화는 이어 쓴 뒤
+  차례를 시작할 때 `conversation_limit` 이고, 그 거절이 채팅을 채우므로 그 앞에 `full` 이 참인 `state` 를 쓴다. 코어가
   보는 것은 base64(풀어 다시 적은 것이 같은지), 온전한 UTF-8, JSON, 봉투, `modelMessageSchema`, system 메시지, 파일
   데이터가 base64 글자만인지, 결과 없는 호출이고, 처음 걸린 것으로 `chat_state_invalid` 로 답한다. 파일 데이터를
   보는 것은 AI SDK 가 파일 문자열을 먼저 URL 로 읽어, 주소면 요청 때 받아 오거나 제공자에게 넘기기 때문이다. 거절된
@@ -1013,8 +1024,8 @@ Anthropic 대화는 reasoning part(`reasoning`·`reasoning-file`)를 모두 빼�
   경로라 이미 금지다. [설계; 계약 §12]
 - `state`·`resume` 프레임은 다른 채팅 프레임처럼 바이트 수로만 적는다("코어로 넘기기"). [설계] (정정 2026-11-23,
   #66, 대화 상태: 코어의 줄은 `debug [core:chat:state] sent` 와 `info [core:chat:resume] success` 등이고, 바이트
-  수와 함께 메시지 수, 지문이 같은지, 뺀 reasoning part 수를 싣는다. `state`·`resume` 의 값은 어느 줄에도 없다.
-  [계약 §12])
+  수와 함께 메시지 수, 지문이 같은지, 뺀 reasoning part 수, 채팅이 찼는지(`full`)를 싣는다. `state`·`resume` 의 값은
+  어느 줄에도 없다. [계약 §12])
 
 ### Spotlight 와 다른 프로세스
 
@@ -1093,8 +1104,9 @@ Anthropic 대화는 reasoning part(`reasoning`·`reasoning-file`)를 모두 빼�
   코어가 적는 2 KiB 까지 세므로, 단계가 끝날 때의 잼은 어림이 놓친 것의 안전망이다. 그때 넘은 단계 하나가 남고 그 뒤에는
   요청하지 않는다. [설계; 실측: `core/tests/chat-limit.test.ts`, `core/tests/chat-tools.test.ts`; 계약 §7.11 "도구",
   "대화 한도"]) (정정 2026-11-23, #66, 대화 상태: 상태는 base64 라 대화의 4/3 이고, 2 MiB 의 대화는 4 MiB `data` 에
-  2.67 MiB 남짓으로 든다("상태를 넘기는 때"). 이어 쓴 대화는 크기로 거절하지 않으므로, 2 MiB 를 넘는 대화는 이어 쓴
-  뒤 차례를 시작할 때 `conversation_limit` 이다. [계약 §7.11 "이어 쓰기"])
+  2.67 MiB 남짓으로 든다("상태를 넘기는 때"). 이어 쓴 대화는 크기로 거절하지 않으므로, 2 MiB 를 넘는 대화는 이어 쓴 뒤
+  차례를 시작할 때 `conversation_limit` 이다. 한도에 닿은 채팅은 그 상태가 `full` 을 참으로 실으므로, 이어 써도 차례를
+  받지 않는다. [계약 §7.11 "이어 쓰기", "대화 한도"])
 - hardened runtime 은 JIT 를 막아 MCP 탐침의 실제 점유를 22.7 → 16.5 MB 로 낮췄다(ADR-0010 실측). 채팅 빌드의
   hardened runtime 값, Bun 1.4.5 값, 긴 대화의 증가는 재지 않았다. [미확인] (정정 2026-11-22, #66: Bun 1.4.5 의 크기와
   대기 메모리는 위 정정이 쟀다. hardened runtime 의 값, 첫 차례 뒤의 값, 긴 대화의 증가는 아직 재지 않았다.)
@@ -1180,8 +1192,9 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
     막고, 닿기 전에 새 채팅을 권한다. [설계]
     (정정 2026-11-23, #66, 대화 한도: 대화 크기 한도는 차례가 도는 동안에도 서서, 도구 결과가 많은 차례도 그
     한도에서 끝난다. 한도를 넘겨 남을 수 있는 것은 답의 셈이 놓친 것이 있을 때 단계가 끝나며 넘은 단계 하나다. [설계;
-    계약 §7.11 "대화 한도"]) (정정 2026-11-23, #66, 대화 상태: 그래도 4 MiB 를 넘을 `state` 는 쓰지 않고 그 차례를
-    `internal` 로 끝내며, 그 채팅은 가득 찬다("상태를 넘기는 때"). [실측: `core/tests/chat-state.test.ts`])
+    계약 §7.11 "대화 한도"]) (정정 2026-11-23, #66, 대화 상태: 그래도 4 MiB 를 넘을 `state` 는 쓰지 않고 그 `turn` 을
+    `internal` 로 끝내며, 그 채팅은 가득 찬다("상태를 넘기는 때"). 한도에 닿은 채팅은 `full` 이 참인 `state` 로 그것을
+    알리므로, 이어 써도 차례를 받지 않고 앱은 새 채팅을 권한다. [실측: `core/tests/chat-state.test.ts`])
 14. **시계와 보관 기한:** 시계가 크게 틀리면 기한이 일찍 오거나 늦게 온다. 하루 넘게 미래인 기록은 지운다.
     [설계]
 
@@ -1256,9 +1269,9 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
   넣었다(정정 2026-11-23, #66). 다시 보내기(`text` 없는 `turn` 과 `resend`)와 빌드한 코어로 채팅의 확인을 보는
   stdio 시험은 PR #104 가 넣었다(정정 2026-11-23, #66). 차례 안의 대화 한도(흐르는 답을 끊기, 호출 앞의 결과 자리,
   단계 끝의 재기, `chat.conversation_limit`)는 PR #107 이 넣었다(정정 2026-11-23, #66). 대화 상태와 이어
-  쓰기(`state`·`resume`, 엄격한 풀기, 지문과 Anthropic 의 reasoning 빼기, `chat_state_invalid` 와
-  `chat_state_mismatch`, 4 MiB 울타리)는 PR #110 이 넣었다(정정 2026-11-23, #66). 진행 중인 변경(`pending`)과 그
-  기록부 줄은 다음 몫이다.
+  쓰기(`state`·`resume`, 엄격한 풀기, 지문과 Anthropic 의 reasoning 빼기, 채팅이 찬 것을 싣는 `full`,
+  `chat_state_invalid` 와 `chat_state_mismatch`, 4 MiB 울타리)는 PR #110 이 넣었다(정정 2026-11-23, #66). 진행 중인
+  변경(`pending`)과 그 기록부 줄은 다음 몫이다.
 5. **앱 채팅 화면:** 첫 화면의 두 타일, 동의, 제공자·모델 고르기, 원격 자원 없는 마크다운, 한글 입력, 확인
    창과의 포커스. 계약 §2 의 첫 화면도 이 단계가 싣는다(정정 2026-11-22, #63: 단계 1 에서 옮겼다). MCP 를 끈 동안 채팅 호출의
    확인 창이 뜨는지와 스위치를 끌 때 그 창이 남는지를 끝까지 보는 시험도 이 단계가 더한다. 단계 4 의 앱은 채팅
