@@ -9,6 +9,86 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — Bun ignores `devEngines`, so the gate pins Bun itself; the Vite+ core alias catches up with `vite-plus` 1.7.0 (bunny-holes/sherpa#71)
+
+This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52, Swift 6.4.2), worker session
+on `chore/version-currency` from `main` `3ce5e60`. No model or paid API was
+called and no agent configuration was changed. Two `bun` executables are on
+`PATH`: the official installer's `~/.bun/bin/bun` first and Homebrew's
+`oven-sh/bun/bun` at `/opt/homebrew/bin/bun` second. Both printed `1.4.5`;
+the main session had upgraded both from 1.4.4 at 03:50 UTC, so gate runs and
+core builds before then used 1.4.4.
+
+- Bun does not enforce `devEngines`. In scratch packages without dependencies,
+  Bun 1.4.5's `bun install` printed `No packages! Deleted empty lockfile` and
+  exited 0 with no warning for `devEngines.packageManager`
+  `{"name": "bun", "version": "1.4.4", "onFail": "error"}`, for the same with
+  `"onFail": "download"` (after which `bun -e 'console.log(Bun.version)'`
+  still printed `1.4.5`), for `{"name": "pnpm", "version": "10.0.0",
+  "onFail": "error"}`, and for a top-level `"packageManager": "bun@1.4.4"` with
+  `"engines": {"bun": "1.4.4"}`. Vite+'s package-manager selection guide names
+  `devEngines.packageManager`, with `onFail: "download"`, as what `vp` uses to
+  pick and fetch a package manager; the gate and the `core/` scripts call
+  `bun` directly.
+- The gate's new first step, with a script that answers `--version` with
+  `1.4.4` first on `PATH`: after `info [check:environment:start]` it printed
+  `error [check:repository:failure] reason=bun_version_mismatch expected=1.4.5
+  actual=1.4.4 path=…` and exited 1 within 0.4 s, before any Swift build. A
+  declared version of `^1.4.5` ended in `reason=bun_version_undeclared`. With
+  the real `bun` it printed `info [check:environment:success] bun=1.4.5
+  xcode=27.2/27B52 swift=6.4.2`.
+- Built core: `bun run build` under 1.4.5 gave a `dist/sherpa` whose
+  `BUN_BE_BUN=1 dist/sherpa --version` printed `1.4.5` (Bun's "Act as the Bun
+  CLI", new in 1.2.16). The gate now checks this after the build.
+- Vite+ before this change: `vite-plus` `^1.2.0` had resolved to 1.7.0 while
+  the `vite` alias and its override pinned
+  `@voidzero-dev/vite-plus-core@1.4.0`. The lock held two cores: 1.4.0 (Vite
+  8.3.5) at the top level, which the top-level Vitest resolved, and 8.3.8000
+  (Vite 8.3.8) under `vite-plus`, which `vp --version` reported as
+  `vite v8.3.8`. It also held two entries each of Vitest 5.1.0 and of the
+  platform binaries (1.4.0 and 1.7.0). `bun outdated` listed only the alias:
+  Current 1.4.0, Latest 8.3.8000.
+- 8.3.8000 continues the same package. Vite+ 1.7.0's release notes give the
+  core "a version that encodes the bundled Vite version: `8.3.8000` for Vite
+  `8.3.8`", say that `vite-plus` and the core no longer share a version
+  number, and point to `npm view vite-plus@1.7.0 dependencies.vite`;
+  `bun info vite-plus@1.7.0 dependencies.vite` printed
+  `npm:@voidzero-dev/vite-plus-core@8.3.8000`. Both packages come from
+  `voidzero-dev/vite-plus` (`packages/cli`, `packages/core`) through GitHub
+  Actions trusted publishing, the core about 5 minutes before `vite-plus` 1.7.0
+  on 2026-11-17.
+- `vp migrate` 1.7.0 in a scratch copy of `core/` set the alias and the
+  override to 8.3.8000 and `vite-plus` to exactly `1.7.0`. It also rewrote the
+  one test that imports `vitest` (`tests/apple-helper.test.ts`) to
+  `vite-plus/test` and added `.vitest/` to `core/.gitignore`; this change
+  takes only the versions. With the new pins the lock holds one core, one Vitest
+  and one set of platform binaries, `vp toolchain vite-plus-core` reports
+  8.3.8000, and `bun outdated` lists nothing. The lock is the one Bun 1.4.5
+  resolves from scratch for these pins, which against the old lock also moves
+  `@babel/runtime` from 7.29.14 to 7.29.15.
+- The other pins only drop ranges: `@types/bun` `latest` becomes `1.4.5` and
+  `typescript` `^7.0.2` becomes `7.0.2`, the versions already resolved and the
+  registry's `latest`. `zod` 4.6.7 and `@modelcontextprotocol/server` 2.4.0
+  are the registry's `latest` as well, so the SDK and its
+  `SUPPORTED_MODERN_PROTOCOL_VERSIONS` (ADR-0011) stay as they are.
+- Release notice from the npm registry: Bun 1.4.5 current,
+  `warn [check:currency:newer] tool=claude current=2.1.326 latest=2.1.330`,
+  Codex 0.171.0 current, `bun outdated` empty. Claude Code here is the Homebrew
+  cask `claude-code@latest` at 2.1.326, which offered 2.1.330; the npm
+  `stable` tag and the cask `claude-code` were at 2.1.323. Codex is the cask
+  `codex` at 0.171.0, also GitHub's latest `rust-v0.171.0`. With
+  `HTTPS_PROXY=http://127.0.0.1:9` the step printed
+  `warn [check:currency:skipped] reason=registry_unreachable … — new releases
+  are UNCHECKED` and the gate went on. Against the old lock it printed
+  `dependency=vite@npm:@voidzero-dev/vite-plus-core(dev) current=1.4.0
+  latest=8.3.8000`.
+- Xcode: Apple's developer releases feed lists Xcode 27.2 (27B52) of 2026-10-29
+  as the newest release and Xcode 27.3 beta 2 (27C5035i) of 2026-11-16 as a
+  beta. The installed Xcode is the newest release.
+- Not measured: whether `vp install` fetches Bun 1.4.5 for
+  `onFail: "download"` (the global `vp` here is 1.4.0, the latest 1.7.0), and
+  the notice against a registry that accepts a connection but never answers.
+
 ## 2026-11-22 — An encrypted chat history file in a scratch folder: backup flag, file mode, AES-GCM and Spotlight (bunny-holes/sherpa#59)
 
 This Mac (macOS 27.3, build 26C5035r), run by the chat history design worker

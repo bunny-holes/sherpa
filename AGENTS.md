@@ -46,6 +46,16 @@ manner: "규칙만 적고 근거는 ADR·live-evidence·스크립트 주석으�
   plugin version lives in both plugin manifests and `plugins/sherpa/CHANGELOG.md`
   and gets no tag. Bump it whenever `plugins/sherpa/` changes, because Claude
   Code compares only that version.
+- Keep tools and dependencies on their latest stable release (owner decision,
+  2026-11-22): Bun, the core's npm packages, the Swift toolchain of the
+  installed Xcode, and the Claude Code and Codex that live evidence runs on.
+  Pin exact versions, Bun in `devEngines.packageManager` of
+  `core/package.json` and every npm package without a range, and move to a
+  newer release in a change of its own, so that a regression traces to one
+  upgrade. Bun ignores `devEngines`, so the gate refuses a `bun` of another
+  version; it warns about each newer release it can see but never fails on one,
+  because a release published elsewhere must not change a commit's result.
+  Name in every live-evidence entry the versions it ran on.
 - Sherpa supports macOS only, and the repository has no CI (owner decision,
   2026-11-20: Windows support and its hook job were removed). The gate is the
   macOS run of `bash scripts/check-all.sh` — the Swift format check

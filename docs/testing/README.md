@@ -14,6 +14,14 @@ manner: "One level per bullet; live evidence and the verification matrix stay in
 These are the deterministic proofs that exist and run in `bash scripts/check-all.sh`.
 Anything not listed here is not proven by the gate.
 
+- **Toolchain pin** (before any build): the first `bun` on `PATH` is the version
+  `devEngines.packageManager` in `core/package.json` declares, or the gate stops
+  with `bun_version_mismatch`; Bun itself ignores that field
+  (bunny-holes/sherpa#71). After the build, `BUN_BE_BUN=1 dist/sherpa --version`
+  must print the same version, so the compiled core carries that runtime. The
+  release notice that runs before the builds proves nothing: it warns about newer
+  Bun, core dependency, Claude Code and Codex releases from the npm registry and
+  `bun outdated`, and never fails the gate.
 - **Core unit tests** (`core/tests`, vitest on the Bun runtime with
   `bun --bun vitest run`). They use synthetic fixtures only:
   - `mail.test.ts` builds a fixture envelope index and proves the keyset cursor

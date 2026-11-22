@@ -29,7 +29,16 @@ Homebrew release smoke:
 bash scripts/check-all.sh
 ```
 
-The core uses the Vite+ toolchain with Bun as its package manager and runtime:
+The core uses the Vite+ toolchain with Bun as its package manager and runtime,
+each at an exact version. `devEngines.packageManager` in `core/package.json`
+names the one Bun the core installs, tests and compiles with, and
+`bun build --compile` puts that runtime into `dist/sherpa`. Bun itself does not
+enforce the field, so the gate stops with `bun_version_mismatch` when the first
+`bun` on `PATH` is another version. The gate also warns, without failing, about
+newer releases of Bun, the core's packages, Claude Code and Codex. Move
+`vite-plus` and the `vite` alias of `@voidzero-dev/vite-plus-core` together:
+`bun info vite-plus@<version> dependencies.vite` prints the alias a release
+expects.
 
 ```bash
 cd core
