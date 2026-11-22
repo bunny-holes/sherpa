@@ -636,7 +636,8 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   `warn [core:mcp-transport:send] refused channel=N reason=unsupported_protocol_version` 을 남긴다. [계약]
 - 에이전트: Claude Code 는 stdio 서버에 기본으로 2026-07-28 을 묻는다. [문서: Claude Code MCP, "Push messages with
   channels"] 2.1.326 은 이 판의 코어를 담은 내보낸 앱의 중계에 `server/discover` 로 붙어 2026-07-28 로 열고
-  `tools/list` 를 받았다. [실측: live-evidence 2026-11-22 "The exported app with the 2026-07-28-only core"] Codex 0.171.0 은 기능 `mcp_2026_07_28` 과 서버 항목 env
+  `tools/list` 를 받았다. [실측: live-evidence 2026-11-22 "The exported app with the 2026-07-28-only core"] `claude -p`
+  로 같은 봉투의 `tools/call` 을 보내 읽기 도구를 불렀다. [실측: live-evidence 2026-11-22 "Claude Code calls a tool"] Codex 0.171.0 은 기능 `mcp_2026_07_28` 과 서버 항목 env
   `CODEX_MCP_PROTOCOL_VERSION=2026-07-28` 이 둘 다 있을 때만 2026-07-28 로 연다(§2). [실측: 같은 기록; 문서: ADR-0011]
   기본 설정의 Codex 는 `initialize`(2025-06-18) 하나만 보내고, -32022 를 받으면 더 새 판으로 다시 묻지 않는다. 서버를
   `failed` 로 두고 `toolsError` 에 `MCP startup failed: handshaking with MCP server failed: JSON-RPC error: -32022: …`
@@ -987,7 +988,10 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 - Developer ID 로 서명하고 공증한 번들: Claude Code 와 Codex(기능과 env 를 켠, §2) 설정으로 `tools/list` 와 읽기
   호출, 기본 설정 Codex 의 거부, 앱을 끈 상태의 69, 코어를 `kill -9` 했을 때 중계 75 와 재시작 뒤 에이전트의 재연결.
   2026-11-22 공증 전 내보낸 앱(이 판의 코어)으로 Codex 의 `tools/list`·읽기 호출, 기본 설정 Codex 의 거부, Claude
-  Code 의 `server/discover`·`tools/list` 를 쟀다. Claude Code 의 도구 호출은 남았다. [실측: live-evidence 2026-11-22 "The exported app with the 2026-07-28-only core"]
+  Code 의 `server/discover`·`tools/list` 를 쟀다. [실측: live-evidence 2026-11-22 "The exported app with the 2026-07-28-only core"]
+  같은 날 `main` `8de36c6` 을 처음부터 빌드해 내보낸 앱으로 Claude Code 의 읽기 호출(`claude -p`)과 Codex 의
+  읽기 호출·기본 설정의 거부를 다시 쟀다. [실측: live-evidence 2026-11-22 "Claude Code calls a tool"] 공증한 번들과
+  앱을 끈 상태의 69, 코어 `kill -9` 는 남았다.
 - 삭제와 보내기: 확인 창이 맨 앞에 뜨는지, 허용·거부·30초 초과, 호출이 Codex 기본 60초 안에 끝나는지. 삭제의
   창·허용·거부·30초는 2026-11-21 내보낸 앱으로 쟀다(§9). 보내기와 Codex 를 거친 호출은 남았다.
 - Codex 가 띄운 중계가 `~/Library/Application Support/Sherpa/run/app.sock` 에 붙는지. 2026-11-22 Codex 0.171.0
@@ -1083,8 +1087,6 @@ not json\n                                                                      
 ## 16. 미확인
 
 - 중계가 앱을 띄우는 동작과 로그인 항목(ADR-0010).
-- 내보낸 앱 경로로 Claude Code 가 도구를 부르는지. 2026-11-22 실측은 모델을 부르지 않아 연결과 `tools/list` 까지만
-  쟀다(ADR-0011).
 - Claude Code 가 기능 플래그나 7일 생략으로 2025-11-25 `initialize` 로 붙어 거부되는 일, Codex 의 2026 모드가
   2025-06-18 로 내려가는 조건(ADR-0011 의 위험).
 - 이 Mac 의 선 위에서 Claude Code 와 Codex 가 2026-07-28 봉투의 `clientCapabilities` 에 선언하는 elicitation(Claude
@@ -1106,7 +1108,9 @@ not json\n                                                                      
 표시를 쟀다(§9). 같은 실기에서 상태 창이 중계 경로를 "…" 로 자른 결함은 bunny-holes/sherpa#52 다. 2026-11-22 Codex
 실측은 Codex 가 띄운 중계의 기본 소켓 연결과, 기능과 env 를 켠 Codex 의 2026-07-28 연결을 쟀다. 같은 날 이 판의
 코어를 담은 내보낸 앱으로 Claude Code 의 2026-07-28 연결과 기본 설정 Codex 의 거부(서버 `failed`, 도구 호출 -32603,
-다시 묻지 않음)를 쟀다(§10.1).
+다시 묻지 않음)를 쟀다(§10.1). `main` `8de36c6` 을 처음부터 빌드해 내보낸 앱으로 Claude Code 2.1.326 이 `claude -p`
+에서 `server/discover`·`tools/list`·`tools/call` 을 모두 2026-07-28 봉투로 보내 `reminder_authorization_status` 를
+불렀다(결과 `succeeded`). 이로써 내보낸 앱 경로의 Claude Code 도구 호출이 닫혔다(ADR-0011).
 
 ## Related
 

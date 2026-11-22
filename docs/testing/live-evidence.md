@@ -47,6 +47,31 @@ as the app quotes it.
   (bunny-holes/sherpa#52). They are the owner-operated checks of
   app-connection-v1 §13.4.
 
+## 2026-11-22 — Claude Code calls a tool through the exported app built from `main` (bunny-holes/sherpa#51)
+
+This Mac, run by the main session. `main` at `8de36c6` was built from
+scratch and exported: `Sherpa.app` 0.8.5, Developer ID,
+`codesign --verify --deep --strict` passed, not notarized. A `tee` in front
+of the bundled `sherpa-relay` recorded the wire; only methods and versions
+were kept.
+
+- Claude Code 2.1.326, `claude -p` with `--model haiku` (`claude-haiku-5-5`),
+  `--strict-mcp-config --mcp-config` and
+  `--allowedTools mcp__sherpa__reminder_authorization_status`:
+  - The requests were `server/discover`, `tools/list` and `tools/call`, all
+    three with the 2026-07-28 envelope and `clientInfo.name` `claude-code`.
+    The first answer gave `supportedVersions: ["2026-07-28"]`.
+  - The tool result's `status` was `succeeded`. The run took 3 turns and
+    about 0.006 USD.
+- Codex 0.171.0 `codex app-server` on the same build:
+  - With the feature `mcp_2026_07_28` and `CODEX_MCP_PROTOCOL_VERSION=2026-07-28`
+    in the server entry's env, it connected, listed 35 tools, and the call
+    succeeded.
+  - In its default configuration it was refused, and a tool call returned
+    `-32603` `failed to get client`.
+- This closes "a tool call from Claude Code through the exported app", left
+  open in the entry below, in ADR-0011 and in app-connection-v1 §16.
+
 ## 2026-11-22 — The exported app with the 2026-07-28-only core serves both agents' 2026-07-28 opening and refuses Codex's default `initialize` (bunny-holes/sherpa#51)
 
 This Mac, run by the main session. Branch `feat/mcp-2026-07-28` at `233ee48`
