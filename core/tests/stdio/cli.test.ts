@@ -94,3 +94,40 @@ test("a valid operations list opens the journal", () => {
   expect(JSON.parse(child.stdout.toString())).toEqual([]);
   expect(existsSync(join(home, "Library/Application Support/Sherpa/native.sqlite3"))).toBe(true);
 });
+
+test("the built CLI reads no configuration from the directory it runs in or from HOME", async () => {
+  // A Bun standalone executable reads .env files and bunfig.toml from its working directory, and
+  // tsconfig.json and package.json when its build asks, unless the build turns each off
+  // (`bun build --help`); Bun 1.4.5 reads the last two only while it reads .env files. Each file
+  // here shows on standard error if the core reads it.
+  const directory = scratchHome();
+  const home = scratchHome();
+  const files: Record<string, string> = {
+    [join(directory, ".env")]: "LOG_LEVEL=debug\n",
+    [join(directory, ".env.local")]: "LOG_LEVEL=debug\n",
+    [join(directory, ".env.production")]: "LOG_LEVEL=debug\n",
+    [join(directory, "bunfig.toml")]: 'preload = ["./preload.js"]\n',
+    [join(directory, "preload.js")]: 'console.error("preloaded from the directory");\n',
+    [join(directory, "tsconfig.json")]: "{ not json\n",
+    [join(directory, "package.json")]: "{ not json\n",
+    [join(home, ".bunfig.toml")]: `preload = [${JSON.stringify(join(home, "preload.js"))}]\n`,
+    [join(home, "preload.js")]: 'console.error("preloaded from HOME");\n',
+  };
+  await Promise.all(Object.entries(files).map(([path, text]) => Bun.write(path, text)));
+  const version = (env: Record<string, string> = {}) =>
+    Bun.spawnSync([BINARY, "--version"], {
+      cwd: directory,
+      env: { HOME: home, PATH: "/usr/bin:/bin:/usr/sbin:/sbin", ...env },
+      stdin: "ignore",
+    });
+  for (const env of [{}, { NODE_ENV: "production" }] as Record<string, string>[]) {
+    const run = version(env);
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout.toString()).toMatch(/^sherpa \d+\.\d+\.\d+\n$/);
+    expect(run.stderr.toString()).toBe("");
+  }
+  // LOG_LEVEL=debug given for real prints the line a loaded .env would.
+  expect(version({ LOG_LEVEL: "debug" }).stderr.toString()).toMatch(
+    /^debug \[core:egress:install\]/m,
+  );
+});
