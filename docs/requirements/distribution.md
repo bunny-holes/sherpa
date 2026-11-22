@@ -22,7 +22,7 @@ Sherpa operation after the CLI is installed.
   The Formula declares one runtime dependency, `sqlcipher`, whose library the
   core loads to read the KakaoTalk database, and installs no toolchain. The tap
   is the public `XIYO/homebrew-tap` repository, and the Formula's
-  checksum-pinned URL names the release asset of the public `XIYO/sherpa`
+  checksum-pinned URL names the release asset of the public `bunny-holes/sherpa`
   repository for that version. For development on one machine, the same
   generated Formula may be rendered against a checksum-pinned `file://` archive
   and published into a local tap; that tap is a development convenience, not a
@@ -46,7 +46,7 @@ Sherpa operation after the CLI is installed.
   references — the one Homebrew scans, since the Formula carries no `version`
   line — is read back from the built binary rather than written by hand.
 - `FR-DP-005`: The CLI does not register, update, or remove agent plugins on
-  any host. `XIYO/plug-hole` is the only marketplace for this repository's
+  any host. `bunny-holes/plug-hole` is the only marketplace for this repository's
   `plugins/sherpa/` package, and skills are installed with each host's own
   plugin command. The plugin registers the MCP server of `Sherpa.app` and its
   skills call that server's tools, not the CLI, so no CLI version is paired

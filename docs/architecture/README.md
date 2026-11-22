@@ -268,7 +268,7 @@ A changed or missing fingerprint makes the candidate stale instead of closing a
 revision or performing a mutation.
 
 
-Agent skills are not an application port. They install from the `XIYO/plug-hole`
+Agent skills are not an application port. They install from the `bunny-holes/plug-hole`
 marketplace with each host's own command, and the CLI neither registers nor
 inspects them. The plugin registers the app's MCP server: its root `.mcp.json`
 names the server `sherpa` with the installed relay
@@ -347,7 +347,7 @@ core at `bin/sherpa` and the Swift helper bundle at `libexec/SherpaHelper.app`, 
 else; a prebuilt archive prevents compilation on the user's Mac. The Formula
 declares one runtime dependency, `sqlcipher`, whose library the core loads to
 read the KakaoTalk database. Agent skills are not
-part of that archive — they install from the `XIYO/plug-hole` marketplace,
+part of that archive — they install from the `bunny-holes/plug-hole` marketplace,
 and the Formula never registers them.
 
 Homebrew's Formula catalog is distinct from the release archive it references.

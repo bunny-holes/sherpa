@@ -184,15 +184,15 @@ The agent skills live in `plugins/sherpa/` and are listed by the `plug-hole`
 marketplace. They are not bundled into the CLI archive — installing the CLI
 does not install them, and vice versa:
 
-Your GitHub account needs access to the private `XIYO/plug-hole` repository.
+Your GitHub account needs access to the private `bunny-holes/plug-hole` repository.
 
 ```bash
-claude plugin marketplace add https://github.com/XIYO/plug-hole.git
+claude plugin marketplace add https://github.com/bunny-holes/plug-hole.git
 claude plugin install sherpa@plug-hole
 ```
 
 ```bash
-codex plugin marketplace add https://github.com/XIYO/plug-hole.git
+codex plugin marketplace add https://github.com/bunny-holes/plug-hole.git
 codex plugin add sherpa@plug-hole
 ```
 

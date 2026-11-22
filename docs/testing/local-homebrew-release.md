@@ -41,7 +41,7 @@ Keep these objects distinct:
 2. It renders two Formulas from one template. They differ only in the `url`
    line:
    - `target/dist/Formula/sherpa.rb` names the archive as the release asset of
-     the public `XIYO/sherpa` repository for tag `v<version>`. It is the file
+     the public `bunny-holes/sherpa` repository for tag `v<version>`. It is the file
      the public tap `XIYO/homebrew-tap` carries as `Formula/sherpa.rb`.
    - `target/dist/local-tap/Formula/sherpa.rb` names the archive through a
      `file://` URL, so it installs before anything is published. The release
@@ -90,7 +90,7 @@ uploaded the archive; a Formula from any other run pins a different checksum.
    ```
 
 3. Tag the release commit `v<version>`, push the tag, and create the GitHub
-   release for that tag on `XIYO/sherpa`. `scripts/package.sh --publish` stops
+   release for that tag on `bunny-holes/sherpa`. `scripts/package.sh --publish` stops
    with `release_tag_missing` when the release does not exist.
 4. Package, upload, and read back:
 
