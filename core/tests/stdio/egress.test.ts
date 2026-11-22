@@ -7,8 +7,9 @@ import { BINARY, cleanHomes, launch, scratchHome } from "./launch.ts";
 // no internet socket and listens on nothing while it serves MCP, a model list for an origin the
 // egress refuses never connects, one for an origin whose certificate the core does not trust gets
 // no request through, one for an origin whose certificate it trusts holds a connection to that
-// origin only, and a redirect from there is refused before it is followed. The servers here belong
-// to the test process; the rule they check is the core's.
+// origin only, and a redirect from there is refused before it is followed. The built core trusts the
+// macOS system store as well as the authorities Bun bundles. The servers here belong to the test
+// process; the rule they check is the core's.
 const apps: FakeApp[] = [];
 afterEach(() => {
   for (const app of apps.splice(0)) app.stop();
@@ -199,6 +200,38 @@ test("a command other than app serve starts with the global fetch and WebSocket 
   });
   expect(child.exitCode).toBe(0);
   expect(child.stderr.toString()).toContain(INSTALLED);
+});
+
+/** Writes the certificate stores of the process it runs in to standard error as one JSON line. */
+const STORES = `const tls = require("node:tls");
+const stores = ["default", "bundled", "system", "extra"].map((store) => [store, tls.getCACertificates(store)]);
+console.error(JSON.stringify({ execArgv: process.execArgv, ...Object.fromEntries(stores) }));
+`;
+
+test("the built core trusts the macOS system store as well as the authorities Bun bundles", async () => {
+  // ADR-0012 위험 9 and §7.1: the app clears the environment NODE_USE_SYSTEM_CA would come in, so
+  // the build passes --use-system-ca through --compile-exec-argv. Bun's standalone executables read
+  // BUN_OPTIONS, which preloads the probe into the built core, started in / as the app starts it.
+  // The same Bun without the flag keeps its bundled store alone; where the system store adds no
+  // root to it, only execArgv tells the two apart.
+  const dir = scratchHome();
+  const probe = join(dir, "stores.js");
+  await Bun.write(probe, STORES);
+  const env = { HOME: dir, PATH: "/usr/bin:/bin:/usr/sbin:/sbin" };
+  const core = Bun.spawnSync([BINARY, "--version"], {
+    cwd: "/",
+    env: { ...env, BUN_OPTIONS: `--preload=${probe}` },
+  });
+  expect(core.exitCode).toBe(0);
+  expect(core.stdout.toString()).toMatch(/^sherpa \d+\.\d+\.\d+\n$/);
+  const inside = JSON.parse(core.stderr.toString());
+  expect(inside.execArgv).toContain("--use-system-ca");
+  expect(inside.extra).toEqual([]);
+  expect(new Set(inside.default)).toEqual(new Set([...inside.bundled, ...inside.system]));
+  const plain = Bun.spawnSync([process.execPath, probe], { cwd: "/", env });
+  const outside = JSON.parse(plain.stderr.toString());
+  expect(outside.execArgv).not.toContain("--use-system-ca");
+  expect(new Set(outside.default)).toEqual(new Set(outside.bundled));
 });
 
 /**
