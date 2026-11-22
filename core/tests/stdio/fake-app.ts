@@ -45,8 +45,9 @@ export class FakeApp {
     return this.child.pid;
   }
 
-  static launch(binary: string, env: Record<string, string>): FakeApp {
+  static launch(binary: string, env: Record<string, string>, cwd?: string): FakeApp {
     const child = Bun.spawn([binary, "app", "serve"], {
+      cwd,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",

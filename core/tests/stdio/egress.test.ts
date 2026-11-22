@@ -1,3 +1,4 @@
+import { mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, expect, test } from "vite-plus/test";
 import type { CoreFrame, FakeApp } from "./fake-app.ts";
@@ -7,9 +8,13 @@ import { BINARY, cleanHomes, launch, scratchHome } from "./launch.ts";
 // no internet socket and listens on nothing while it serves MCP, a model list for an origin the
 // egress refuses never connects, one for an origin whose certificate the core does not trust gets
 // no request through, one for an origin whose certificate it trusts holds a connection to that
-// origin only, and a redirect from there is refused before it is followed. The built core trusts the
-// macOS system store as well as the authorities Bun bundles. The servers here belong to the test
-// process; the rule they check is the core's.
+// origin only, and a redirect from there is refused before it is followed. A turn for an origin
+// the egress refuses connects nowhere and loads no AI SDK. One for a trusted origin streams its
+// answer from there through the AI SDK, which the built core loads with its first turn, the AI
+// Gateway and its Vercel OIDC code included, and leaves the Vercel CLI's files as they were, which
+// the real OIDC code given the same files empties. The built core trusts the macOS system store as
+// well as the authorities Bun bundles. The servers here belong to the test process; the rule they
+// check is the core's.
 const apps: FakeApp[] = [];
 afterEach(() => {
   for (const app of apps.splice(0)) app.stop();
@@ -433,4 +438,295 @@ test("a model list whose trusted origin redirects ends with egress_denied, and t
   } finally {
     await Promise.all([collect.stop(true), provider.stop(true)]);
   }
+});
+
+/** The files under a directory, by their path in it, each with its bytes and when it last changed. */
+async function tree(dir: string): Promise<Record<string, { bytes: Uint8Array; modified: number }>> {
+  const paths = readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name));
+  const files = await Promise.all(
+    paths.map(async (path) => ({
+      bytes: await Bun.file(path).bytes(),
+      modified: statSync(path).mtimeMs,
+    })),
+  );
+  return Object.fromEntries(
+    paths.map((path, index) => [path.slice(dir.length + 1), files[index]!]),
+  );
+}
+
+/**
+ * The Vercel CLI's login with a token that has expired, in a scratch HOME, and a linked project
+ * to run in: what the AI Gateway's OIDC code reads, and rewrites on such a token.
+ */
+async function vercelLogin(): Promise<{ home: string; data: string; project: string }> {
+  const home = scratchHome();
+  const data = join(home, "Library/Application Support");
+  await Bun.write(
+    join(data, "com.vercel.cli/auth.json"),
+    JSON.stringify({ token: "vercel-cli-marker", expiresAt: 1 }),
+  );
+  const project = scratchHome();
+  mkdirSync(join(project, ".vercel"));
+  await Bun.write(
+    join(project, ".vercel/project.json"),
+    JSON.stringify({ projectId: "prj_marker", orgId: "team_marker" }),
+  );
+  return { home, data, project };
+}
+
+/** The time zone this Mac is set to, which a process without TZ reads: where /etc/localtime links. */
+function macTimeZone(): string {
+  const target = Bun.spawnSync(["/usr/bin/readlink", "/etc/localtime"]).stdout.toString().trim();
+  const zone = target.split("/zoneinfo/")[1];
+  if (!zone) throw new Error(`/etc/localtime links to ${target}`);
+  return zone;
+}
+
+const LOADED = /debug \[core:chat:load\] success ms=\d+\n/g;
+
+test("a turn for a plain http loopback origin is refused before it connects, and loads no AI SDK", async () => {
+  const connections = { accepted: 0 };
+  const listener = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      open: (socket) => {
+        connections.accepted++;
+        socket.end();
+      },
+      data: () => {},
+    },
+  });
+  try {
+    const app = launch({ LOG_LEVEL: "debug" });
+    apps.push(app);
+    await app.handshake();
+    app.frame(1, "open", { kind: "chat" });
+    app.frame(1, "data", {
+      type: "turn",
+      provider: "openai-compatible",
+      base_url: `http://127.0.0.1:${listener.port}/v1`,
+      api_key: KEY,
+      model: "m-1",
+      text: "stdio-refused-text",
+    });
+    expect((await app.next(isChat(1))).body).toEqual({
+      type: "error",
+      in_reply_to: "turn",
+      code: "egress_denied",
+      retryable: false,
+      status: null,
+    });
+    app.closeInput();
+    expect(await app.exited).toBe(0);
+    expect(connections.accepted).toBe(0);
+    const stderr = app.stderr.join("");
+    expect(stderr).toContain("warn [core:egress:base-url] refused reason=not_https");
+    expect(stderr).toContain("warn [core:chat:turn] refused channel=1 reason=egress_denied\n");
+    expect(stderr).not.toContain("[core:egress:fetch] start");
+    expect(stderr).not.toMatch(LOADED);
+    for (const secret of [KEY, "stdio-refused-text"]) expect(stderr).not.toContain(secret);
+  } finally {
+    listener.stop(true);
+  }
+});
+
+test("a turn for an https loopback origin the core trusts streams its answer from that server through the AI SDK the first turn loads, and leaves the Vercel CLI's files as they were", async () => {
+  const { ca, ...tls } = await trustedCertificate();
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
+  const seen: {
+    method: string;
+    path: string;
+    authorization: string | null;
+    body: Record<string, unknown> | null;
+  }[] = [];
+  const encoder = new TextEncoder();
+  const event = (data: unknown) => encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
+  const chunk = (fields: Record<string, unknown>) =>
+    event({ id: "c1", object: "chat.completion.chunk", created: 1, model: "m-1", ...fields });
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    tls,
+    fetch: async (request) => {
+      const path = new URL(request.url).pathname;
+      const body =
+        request.method === "POST" ? ((await request.json()) as Record<string, unknown>) : null;
+      seen.push({
+        method: request.method,
+        path,
+        authorization: request.headers.get("authorization"),
+        body,
+      });
+      if (path === "/v1/models") return Response.json({ data: [{ id: "m-1" }] });
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const delta = (value: Record<string, unknown>, finish: string | null = null) =>
+            chunk({ choices: [{ index: 0, delta: value, finish_reason: finish }] });
+          controller.enqueue(delta({ role: "assistant", content: "sherpa-answer-" }));
+          await held;
+          controller.enqueue(delta({ content: "marker" }));
+          controller.enqueue(delta({}, "stop"));
+          controller.enqueue(
+            chunk({
+              choices: [],
+              usage: { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 },
+            }),
+          );
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(stream, { headers: { "content-type": "text/event-stream" } });
+    },
+  });
+  const { home, data, project } = await vercelLogin();
+  const before = { data: await tree(data), project: await tree(project) };
+  const TEXT = "stdio-turn-text-marker";
+  const SECOND = "stdio-second-text-marker";
+  const base_url = `https://127.0.0.1:${server.port}/v1`;
+  try {
+    const app = launch(
+      { HOME: home, LOG_LEVEL: "debug", NODE_EXTRA_CA_CERTS: ca },
+      undefined,
+      project,
+    );
+    apps.push(app);
+    await app.handshake();
+    app.frame(1, "open", { kind: "chat" });
+    // The chat lists the models without the AI SDK: the first turn loads it.
+    app.frame(1, "data", {
+      type: "list_models",
+      provider: "openai-compatible",
+      base_url,
+      api_key: KEY,
+    });
+    expect((await app.next(isChat(1))).body).toEqual({
+      type: "models",
+      models: ["m-1"],
+      truncated: false,
+    });
+    expect(app.stderr.join("")).not.toMatch(LOADED);
+    const message = {
+      type: "turn",
+      provider: "openai-compatible",
+      base_url,
+      api_key: KEY,
+      model: "m-1",
+      text: TEXT,
+    };
+    app.frame(1, "data", message);
+    // The first piece of the answer reaches the app while the server holds the rest.
+    expect((await app.next(isChat(1))).body).toEqual({ type: "delta", text: "sherpa-answer-" });
+    release();
+    expect((await app.next(isChat(1))).body).toEqual({ type: "delta", text: "marker" });
+    const done = { type: "done", reason: "stop", input_tokens: 11, output_tokens: 3 };
+    expect((await app.next(isChat(1))).body).toEqual(done);
+    // The next turn goes on the same conversation, with the AI SDK already loaded.
+    app.frame(1, "data", { ...message, text: SECOND });
+    const answer: string[] = [];
+    for (let frame = await app.next(isChat(1)); ; frame = await app.next(isChat(1))) {
+      const body = frame.body as { type: string; text?: string };
+      if (body.type !== "delta") {
+        expect(body).toEqual(done);
+        break;
+      }
+      answer.push(body.text!);
+    }
+    expect(answer.join("")).toBe("sherpa-answer-marker");
+    expect(seen.map((request) => `${request.method} ${request.path}`)).toEqual([
+      "GET /v1/models",
+      "POST /v1/chat/completions",
+      "POST /v1/chat/completions",
+    ]);
+    const [first, second] = seen.slice(1);
+    for (const request of [first!, second!]) {
+      expect(request).toMatchObject({
+        authorization: `Bearer ${KEY}`,
+        body: { model: "m-1", stream: true },
+      });
+    }
+    // The person's text follows the time on this Mac, in the time zone it is set to: the app
+    // starts the core without TZ, and so does this test.
+    const zone = macTimeZone().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const messages = first!.body!.messages as { role: string; content: string }[];
+    expect(messages.map((message) => message.role)).toEqual(["system", "user"]);
+    expect(messages[1]!.content).toMatch(
+      new RegExp(
+        `^\\[Current time: \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[+-]\\d{2}:\\d{2} \\(\\w+day\\), time zone: ${zone}\\]\\n\\n${TEXT}$`,
+      ),
+    );
+    const next = second!.body!.messages as { role: string; content: string }[];
+    expect(next.map((message) => message.role)).toEqual(["system", "user", "assistant", "user"]);
+    expect(next[2]!.content).toBe("sherpa-answer-marker");
+    app.closeInput();
+    expect(await app.exited).toBe(0);
+    // Not a byte of the Vercel CLI's login or the project changed, nor when they last did.
+    expect({ data: await tree(data), project: await tree(project) }).toEqual(before);
+    const stderr = app.stderr.join("");
+    expect(stderr.match(LOADED)).toHaveLength(1);
+    expect(stderr).toContain("info [core:chat:turn] start channel=1 provider=openai-compatible\n");
+    expect(
+      stderr.match(
+        /info \[core:chat:turn\] success channel=1 provider=openai-compatible reason=stop steps=1 input_tokens=11 output_tokens=3 ms=\d+\n/g,
+      ),
+    ).toHaveLength(2);
+    // Nothing reached the global fetch, the default provider or the gateway's WebSocket.
+    expect(stderr).not.toMatch(/\] refused reason=/);
+    expect(stderr).not.toContain("[core:chat:sdk-warning]");
+    for (const secret of [KEY, TEXT, SECOND, "sherpa-answer-", "vercel-cli-marker"]) {
+      expect(stderr).not.toContain(secret);
+    }
+    expect(JSON.stringify(app.log)).not.toContain(KEY);
+  } finally {
+    release();
+    await server.stop(true);
+  }
+});
+
+/**
+ * Calls the real Vercel OIDC code as the AI Gateway does, with fetch refused, and prints what
+ * came of it. It stops before that unless the home it reads is the scratch HOME it was given, so
+ * it never reaches this Mac's own Vercel login.
+ */
+const OIDC_CONTROL = `import { homedir } from "node:os";
+if (homedir() !== process.env.HOME || process.env.XDG_DATA_HOME !== undefined) process.exit(2);
+let fetches = 0;
+globalThis.fetch = Object.assign(
+  async () => {
+    fetches++;
+    throw new Error("refused");
+  },
+  { preconnect() {} },
+);
+const { getVercelOidcToken } = await import(process.argv[2]);
+let outcome = "token";
+try {
+  await getVercelOidcToken();
+} catch (error) {
+  outcome = error.name;
+}
+console.log(JSON.stringify({ outcome, fetches }));
+`;
+
+test("the same login and project make the real Vercel OIDC code empty auth.json, which the built core left as it was", async () => {
+  // The control of the turn above: what the core's seal keeps from happening (ADR-0012 "제공자
+  // 면"). It runs in a child with the scratch HOME and nothing else, never in the test process.
+  const { home, data, project } = await vercelLogin();
+  const script = join(scratchHome(), "oidc-control.mjs");
+  await Bun.write(script, OIDC_CONTROL);
+  const before = await tree(project);
+  const child = Bun.spawnSync(
+    [process.execPath, script, Bun.resolveSync("@vercel/oidc", import.meta.dirname)],
+    { cwd: project, env: { HOME: home, PATH: "/usr/bin:/bin:/usr/sbin:/sbin" } },
+  );
+  expect(child.exitCode).toBe(0);
+  expect(JSON.parse(child.stdout.toString())).toEqual({
+    outcome: "VercelOidcTokenError",
+    fetches: 0,
+  });
+  expect(await Bun.file(join(data, "com.vercel.cli/auth.json")).json()).toEqual({});
+  expect(await tree(project)).toEqual(before);
 });

@@ -1,20 +1,25 @@
 /**
  * The chat channels of one app connection (app-connection-v1 §7.11, ADR-0012 "앱과 코어 사이
- * 채널"): at most four open at once, each answering the messages of its own channel. A message
- * that fails ends in an `error` on its channel and a log line; none ends the channel or the core.
+ * 채널"): at most four open at once, each answering the messages of its own channel and keeping
+ * its own conversation. A message that fails ends in an `error` on its channel and a log line;
+ * none ends the channel or the core.
  */
 import { log } from "../log.ts";
+import { type ChatIdentity, Conversation } from "./conversation.ts";
 import { type AllowedOrigin, allowedOrigin, type Egress, EgressDeniedError } from "./egress.ts";
 import { ChatFailure } from "./errors.ts";
 import { listModels, type ModelSource } from "./models.ts";
+import { systemTimeZone, timeNote } from "./now.ts";
 import {
   type ChatEvent,
   chatLimits,
   errorEvent,
   type ListModelsRequest,
   readMessage,
+  type TurnRequest,
 } from "./protocol.ts";
 import { FIXED_BASE_URLS } from "./providers.ts";
+import { ChatTurn, type TurnLimits } from "./turn.ts";
 
 /** What a chat needs of its channel: one JSON message per `data` frame each way. */
 export interface ChatChannel {
@@ -30,24 +35,33 @@ export interface ChatChannel {
 export interface ChatOptions {
   /** How long one `list_models` may take, every page included (§7.11: 30 s). */
   listMs?: number;
+  /** The limits of a turn (§7.11). */
+  turn?: Partial<TurnLimits>;
+  /** The time a turn's text was sent; tests fix it. */
+  clock?: () => Date;
+  /** The IANA time zone it was sent in, read for each turn; tests fix it. */
+  timeZone?: () => string;
 }
 
 const errorType = (error: unknown) => (error instanceof Error ? error.name : typeof error);
 
 /**
- * Where a `list_models` goes: the origin the egress lets out and the base its path joins. The
- * person's base URL is refused here, before anything leaves, unless the egress allows it.
+ * Where a `list_models` or a `turn` goes: the origin the egress lets out and the base its paths
+ * join. The person's base URL is refused here, before anything leaves, unless the egress allows it.
  */
-function modelSource(request: ListModelsRequest): ModelSource & { origin: AllowedOrigin } {
+function destination(request: ListModelsRequest | TurnRequest): {
+  origin: AllowedOrigin;
+  base: string;
+} {
   const raw =
     request.provider === "openai-compatible" ? request.base_url : FIXED_BASE_URLS[request.provider];
   const origin = allowedOrigin(raw);
-  return {
-    provider: request.provider,
-    base: URL.parse(raw)!.href.replace(/\/+$/, ""),
-    apiKey: request.api_key,
-    origin,
-  };
+  return { origin, base: URL.parse(raw)!.href.replace(/\/+$/, "") };
+}
+
+function modelSource(request: ListModelsRequest): ModelSource & { origin: AllowedOrigin } {
+  const { origin, base } = destination(request);
+  return { provider: request.provider, base, apiKey: request.api_key, origin };
 }
 
 /** What a failed `list_models` ends with; anything unforeseen is a core defect. */
@@ -58,12 +72,17 @@ function failureOf(error: unknown): ChatFailure {
 
 class ChatSession {
   private readonly ended = new AbortController();
+  private readonly conversation = new Conversation();
   private listing = false;
+  private turn: ChatTurn | null = null;
 
   constructor(
     private readonly channel: ChatChannel,
     private readonly egress: Egress,
     private readonly listMs: number,
+    private readonly turnLimits: TurnLimits,
+    private readonly clock: () => Date,
+    private readonly timeZone: () => string,
     onEnd: () => void,
   ) {
     channel.onmessage = (body) => this.receive(body);
@@ -80,6 +99,15 @@ class ChatSession {
         `[core:chat:message] refused channel=${this.channel.id} reason=${message.reason} bytes=${body.byteLength}`,
       );
       this.reply(errorEvent(message.inReplyTo, "invalid_message"));
+      return;
+    }
+    if (message.type === "turn") {
+      this.startTurn(message.request);
+      return;
+    }
+    if (message.type === "cancel") {
+      // A cancel that meets no turn, one that just ended included, has nothing to stop.
+      this.turn?.cancel();
       return;
     }
     if (this.listing) {
@@ -129,6 +157,62 @@ class ChatSession {
     }
   }
 
+  /**
+   * Starts a turn, or refuses it at once: one runs already, the base URL is not allowed, the turn
+   * is for another chat, or the conversation is full. A refused turn sends nothing and leaves the
+   * conversation as it was.
+   */
+  private startTurn(request: TurnRequest): void {
+    const id = this.channel.id;
+    const refuse = (reason: string, event: ChatEvent) => {
+      log.warn(`[core:chat:turn] refused channel=${id} reason=${reason}`);
+      this.reply(event);
+    };
+    if (this.turn) {
+      refuse("busy", errorEvent("turn", "busy"));
+      return;
+    }
+    let where: { origin: AllowedOrigin; base: string };
+    try {
+      where = destination(request);
+    } catch (error) {
+      if (!(error instanceof EgressDeniedError)) throw error;
+      refuse("egress_denied", errorEvent("turn", "egress_denied"));
+      return;
+    }
+    const identity: ChatIdentity = {
+      provider: request.provider,
+      baseURL: where.base,
+      model: request.model,
+    };
+    const note = timeNote(this.clock(), this.timeZone());
+    const start = this.conversation.start(identity, request.text, note);
+    if (start.type === "refused") {
+      const code = start.reason === "other_chat" ? "invalid_message" : "conversation_limit";
+      refuse(start.reason, errorEvent("turn", code));
+      return;
+    }
+    const turn = new ChatTurn({
+      channel: id,
+      provider: request.provider,
+      fetch: (signal) => this.egress.turnFetch(where.origin, signal),
+      send: (event) => this.reply(event),
+      ended: this.ended.signal,
+      limits: this.turnLimits,
+    });
+    this.turn = turn;
+    void turn
+      .run(
+        { target: { ...identity, apiKey: request.api_key }, messages: start.messages },
+        (messages) => this.conversation.keep(messages),
+      )
+      .then((end) => {
+        // The next turn is taken once this one is answered, as the next list is.
+        this.turn = null;
+        if (end) this.reply(end);
+      });
+  }
+
   private reply(event: ChatEvent): void {
     this.channel.send(JSON.stringify(event)).catch((error: unknown) => {
       log.error(
@@ -137,6 +221,14 @@ class ChatSession {
     });
   }
 }
+
+const TURN_LIMITS: TurnLimits = {
+  firstOutputMs: chatLimits.firstOutputMs,
+  chunkMs: chatLimits.chunkMs,
+  deltaMs: chatLimits.deltaMs,
+  deltaBytes: chatLimits.deltaBytes,
+  failureBodyBytes: chatLimits.failureBodyBytes,
+};
 
 /** The chat channels of one app connection, which share its egress. */
 export class ChatSessions {
@@ -164,6 +256,9 @@ export class ChatSessions {
       channel,
       this.egress,
       this.options.listMs ?? chatLimits.listMs,
+      { ...TURN_LIMITS, ...this.options.turn },
+      this.options.clock ?? (() => new Date()),
+      this.options.timeZone ?? systemTimeZone,
       () => this.open.delete(session),
     );
     this.open.add(session);

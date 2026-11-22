@@ -1,53 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { type Fetch, installEgress } from "../src/chat/egress.ts";
 import { chatLimits } from "../src/chat/protocol.ts";
-import { type ChatChannel, type ChatOptions, ChatSessions } from "../src/chat/session.ts";
+import { type ChatOptions, ChatSessions } from "../src/chat/session.ts";
+import { FakeChannel } from "./support/chat.ts";
 import { tick } from "./support/pipes.ts";
 
 // app-connection-v1 §7.11 on a channel of its own: what a chat channel reads, what it answers,
 // its limits, and how it ends. The runtime fetch behind the egress is a fake that records what
 // reaches it and answers as a provider would.
 const KEY = "sk-sherpa-session-key";
-
-class FakeChannel implements ChatChannel {
-  onmessage?: (body: Uint8Array) => void;
-  onclose?: () => void;
-  readonly sent: Record<string, unknown>[] = [];
-  closed: string | null = null;
-  private taken = 0;
-  private waiter: ((message: Record<string, unknown>) => void) | null = null;
-
-  constructor(readonly id: number) {}
-
-  async send(body: string): Promise<void> {
-    this.sent.push(JSON.parse(body) as Record<string, unknown>);
-    const wake = this.waiter;
-    this.waiter = null;
-    wake?.(this.sent[this.taken++]!);
-  }
-
-  async close(reason: string): Promise<void> {
-    this.closed = reason;
-  }
-
-  /** The app writes one `data` body. */
-  write(message: unknown): void {
-    const text = typeof message === "string" ? message : JSON.stringify(message);
-    this.onmessage?.(new TextEncoder().encode(text));
-  }
-
-  writeBytes(bytes: Uint8Array): void {
-    this.onmessage?.(bytes);
-  }
-
-  /** The first message the core wrote that the test has not taken, waiting for it if need be. */
-  next(): Promise<Record<string, unknown>> {
-    if (this.taken < this.sent.length) return Promise.resolve(this.sent[this.taken++]!);
-    return new Promise((resolve) => {
-      this.waiter = resolve;
-    });
-  }
-}
 
 interface Reached {
   url: string;
@@ -269,7 +230,7 @@ describe("a message the channel cannot read", () => {
     ["not JSON", "list_models", "not_json"],
     ["an array", "[]", "unknown_type"],
     ["an object without a type", "{}", "unknown_type"],
-    ["a type this edition does not read", '{"type":"turn","text":"hello"}', "unknown_type"],
+    ["a type only the core writes", '{"type":"models","models":[]}', "unknown_type"],
   ])(
     "%s is invalid_message answering nothing, and the channel goes on",
     async (_name, body, reason) => {

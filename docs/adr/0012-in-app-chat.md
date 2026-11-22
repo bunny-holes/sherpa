@@ -22,6 +22,23 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > 덧붙였다. [아키텍처](../architecture/README.md) 의 "long-lived content archive" 금지 규칙에는 이 기록을 예외로
 > 적었다.
 >
+> **정정 (2026-11-22, #66, 글 차례).** 구현 단계 4 의 다섯째 몫이 PR #99 로 들어갔다. 코어가 채팅 채널에서 글
+> 차례(`turn`·`cancel` 과 `delta`·`done`)를 받고 네 제공자의 모델을 `streamText` 에 넘긴다. 도구는 다음 몫이다.
+> 계약 §7.11 이 메시지, 한도, 대화 한도의 `conversation_limit`, 재시도를 싣고, 판은 그대로다. 첫 출력 한도는 AI
+> SDK 의 `firstChunkMs` 가 아니라 코어가 차례에 하나 두고 모델 요청을 보낼 때마다 새로 켜는 600초다. SDK 의 시계는
+> 응답이 흐르기 시작한 뒤에야 돌고, 지금의 Claude 는 생각하는 동안 글을 흘리지 않는다. 출력 사이는 `chunkMs`
+> 120초이고, 바이트가 오가지 않는 연결은 Bun 의 유휴 한도(기본 5분)가 먼저 끊는다. 코어는 `maxRetries: 2` 를 적고
+> `streamRetries` 는 두지 않아, 다시 보내는 것은 출력 전에 실패한 요청뿐이고 첫 출력까지 가장 오래 기다리는 것은
+> 1,920초 미만이다. 소유자가 AI SDK 가 OpenAI reasoning 모델에 더하는 옛 `include` 값을 결정 7 의 예외로 두었다.
+> [소유자, 2026-11-22] 코어는 사람의 글 앞에 이 Mac 의 지금 시각과 시간대를 한 줄로 붙이고, 지시문은 그 줄이 사람의
+> 지시가 아니라고 적되 날짜를 넣지 않으며, 로그에 모델 id 를 싣지 않는다. [설계] 코어가 `ai` 를 실제로 가져오므로
+> 빌드한 코어에 AI Gateway 와 `@vercel/oidc` 가 들어왔다. 그 길은 기본 제공자의 거부와 린트가 막고, stdio 시험이
+> 만료된 Vercel CLI 로그인을 둔 채 차례를 돌려 그 파일이 그대로임을, 같은 파일을 받은 진짜 `@vercel/oidc` 는 그것을
+> `{}` 로 덮어씀을 본다. 빌드한 코어는 2.0 MB 커졌고, 시작은 12~13 ms 늦어졌으며, 기다리는 코어의 실제 점유는
+> 2.3 MB 늘었다. [실측: live-evidence 2026-11-22] 고친 곳은 상태 줄, "앱과 코어 사이 채널", "스트리밍", "재시도", "제공자 면", "코드로
+> 지키기" 3, "시험으로 지키기", "개인정보", "상태를 넘기는 때", "이어 쓰기", "비용과 모델 선택", "메모리와 크기",
+> "구현 단계" 4, "아직 확인 전" 이다.
+>
 > **정정 (2026-11-22, #66, 시스템 인증서 저장소).** 소유자가 코어도 macOS 키체인이 신뢰한 인증서를 믿게 하기로
 > 했다. [소유자, 2026-11-22] 앱이 코어의 환경을 비우므로 `NODE_USE_SYSTEM_CA` 는 닿지 않아, PR #97 이 빌드에
 > `--compile-exec-argv=--use-system-ca` 를 넣었다. 빌드한 코어의 기본 저장소는 Bun 에 든 인증 기관과 시스템 저장소를
@@ -92,10 +109,10 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 PR #74 로, 단계 1 중 #63 의 몫(mux 2, `open` 의 채널 종류, MCP 스위치가 `mcp` 채널만 닫는 것)은 PR #72 로,
 단계 4(#66) 중 호출 수명 모듈 분리와 전역 `WebSocket` 거부는 PR #86 으로, 확인이 그 호출의 채널을 싣는 계약
 3판(mux 3)은 PR #87 로, 채팅 채널과 모델 목록은 PR #89 로, AI SDK 의 판 고정과 그 울타리는 PR #91 로, 코어가
-macOS 시스템 인증서 저장소를 믿는 빌드는 PR #97 로 들어갔다.
+macOS 시스템 인증서 저장소를 믿는 빌드는 PR #97 로, 글 차례는 PR #99 로 들어갔다.
 나머지는 구현 전이다(정정 2026-11-22, #64: 처음에는 "구현 전이다" 로 적었다. 정정 2026-11-22, #63: 단계 1 의 몫을
 더했다. 정정 2026-11-22, #66: 단계 4 의 첫 몫을 더했고, 같은 날 확인의 채널, 채팅 채널, AI SDK 의 울타리, 시스템
-인증서 저장소를 더했다).
+인증서 저장소, 글 차례를 더했다).
 이 결정은
 [ADR-0010](0010-menu-bar-app-and-mcp.md) 결정 2 의 "Bun 은 소켓을 열지 않고 앱과의 표준 입출력 파이프만 읽는다"
 를 고친다. 앱이 코어 하나를 띄우는 구조, 중계, MCP 는 2026-07-28 만 받는
@@ -197,6 +214,14 @@ macOS 시스템 인증서 저장소를 믿는 빌드는 PR #97 로 들어갔다.
 닫힌 목록이다. 차례가 더할 코드는 차례를 넣는 작업이 같은 절에 싣는다. 코어는 채팅 채널을 넷까지 두고 다섯째를
 `chat_limit` 로 닫는다. [설계; 계약 §7.11])
 
+(정정 2026-11-22, #66, 글 차례: 계약 §7.11 이 `turn`·`cancel`·`delta`·`done` 을 정했다. `turn` 의 `model` 은
+1~256 바이트, `text` 는 64 KiB 까지다. 채팅의 첫 차례가 그 채팅의 제공자, base URL, 모델을 정하고, 다른 것을 실은
+`turn` 은 요청 없이 `invalid_message` 다. 제공자가 다음 요청에서 되돌려 받는 값이 대화에 들어 있기 때문이다.
+`delta` 는 답의 글만 싣고, 50 ms 까지 모아 UTF-8 4 KiB 를 넘지 않게 문자 사이에서 자른다. `done` 의 까닭은
+`stop`·`length`·`content-filter`·`aborted`·`other` 이고, 토큰 수는 `input_tokens`·`output_tokens` 이며 알리지
+않았으면 `null` 이다. `step-limit` 은 도구를 넣는 작업이 더한다. 대화가 2 MiB 를 넘으면 `error`
+`conversation_limit` 이다. [설계; 계약 §7.11])
+
 - 대화(모델 메시지 목록)는 채팅 동안 그 채널의 코어 메모리에 있고, 코어는 바뀔 때마다 그 사본을 `state` 로 앱에
   넘긴다(정정 2026-11-22: 처음에는 "코어 메모리에만 있다" 로 적었다. "대화 기록" 을 보라). 앱은 차례마다 새 글만
   보낸다. 제공자, 출처, 모델은 채팅의 첫 차례에 정해지고, 바꾸면 새 채팅이다. Anthropic 의 thinking 서명처럼
@@ -220,7 +245,11 @@ macOS 시스템 인증서 저장소를 믿는 빌드는 PR #97 로 들어갔다.
 - 글 part 는 `delta`, 도구 part(`tool-call`·`tool-result`·`tool-error`)는 `tool`, `finish` 는 `done`,
   `error`·`abort` 는 `error` 나 `done`(`aborted`)이 된다. reasoning part 는 앱에 넘기지 않고 대화 안에만 둔다.
   대화 안의 reasoning 은 `state` 에 실려 앱의 암호화한 기록에 들어가지만, 앱은 `state` 를 해석하지 않으므로
-  화면에 나오지 않는다(정정 2026-11-22). [설계]
+  화면에 나오지 않는다(정정 2026-11-22). [설계] (정정 2026-11-22, #66, 글 차례: `finish` 의 까닭이
+  `interrupted`(제공자 패키지가 흐름이 끝을 알리기 전에 닫혔다고 알렸다)이면 `error` `network` 이고, `finish` 가
+  없거나 그 까닭이 `error` 면 `error` `provider_invalid_response` 다. 일찍 닫힌 흐름이 어느 쪽인지는 패키지마다
+  다르다. 제공자가 흐름 안에 보낸 오류는 그 종류가 뜻하는 HTTP 상태의 코드가 된다. [설계; 계약 §7.11 "오류"; 실측:
+  `core/tests/chat-turn.test.ts`])
 - 모의 Anthropic 서버로 잰 도구 왕복의 part 순서는 `start`, `start-step`, `custom`, `reasoning-*`,
   `tool-input-*`, `tool-call`, `tool-result`, `finish-step`, `text-start`·`text-delta`·`text-end`, `finish`
   였다. [실측]
@@ -243,16 +272,29 @@ macOS 시스템 인증서 저장소를 믿는 빌드는 PR #97 로 들어갔다.
   둔다. 이미 앱에 보낸 글과 도구 호출이 되풀이될 수 있기 때문이다. [문서: [Error
   handling](https://ai-sdk.dev/docs/ai-sdk-core/error-handling),
   [streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text), `ai` 7.0.179
-  `src/util/retry-with-exponential-backoff.ts`] [설계]
+  `src/util/retry-with-exponential-backoff.ts`] [설계] (정정 2026-11-22, #66, 글 차례: 코어는 `maxRetries: 2` 를
+  적어 SDK 의 기본값이 바뀌어도 그대로이게 하고, `streamRetries` 는 두지 않는다. 0 이라도 두면 `onError` 가 한
+  단계를 다시 돌릴 수 있기 때문이다. [문서: `ai` 7.0.179 `src/generate-text/stream-text.ts`] 다시 보내는 것은 응답이
+  흐르기 전에 실패한 요청뿐이다. OpenAI 와 Anthropic 패키지는 첫 출력 전에 흐름이 보낸 오류를 요청의 실패로 바꾸므로
+  그것도 다시 보낸다. 누가 몇 번 다시 보내는지, 기다림, 첫 출력 한도와 겹친 가장 긴 기다림(1,920초 미만)은 계약 §7.11
+  의 "재시도" 다. 모델 목록은 코어가 다시 보내지 않는다. 차례만 다시 보내는 까닭은 같은 곳에 [설계] 로 적었다.)
 - 차례 전체는 저절로 다시 돌리지 않는다. 도구가 이미 보내기나 삭제를 했을 수 있다. `error.retryable` 이 참이면
-  앱이 "다시" 를 보이고, 누르면 새 차례다. [설계]
+  앱이 "다시" 를 보이고, 누르면 새 차례다. [설계] (정정 2026-11-22, #66, 글 차례: 같은 글로 새 차례를 보내면 그 글이
+  대화에 두 번 남으므로, 도구를 넣는 작업이 `text` 없는 `turn` 을 더한다. 새 글 없이 대화를 그대로 다시 보내고,
+  대화의 마지막 메시지가 사람의 글이나 도구 결과일 때만 받는다. [설계; 계약 §7.11 "재시도"])
 - 도구 루프의 단계 한도는 `stopWhen: isStepCount(N)` 으로 둔다. v7 의 `streamText` 기본은 `isStepCount(1)` 이라
   정하지 않으면 도구 결과 뒤에 답이 없다. `ToolLoopAgent` 의 기본은 20 이다. N 은 구현 이슈에서 정한다. [문서:
   [streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text) 의 `stopWhen`, `ai` 7.0.179
   `docs/07-reference/01-ai-sdk-core/16-tool-loop-agent.mdx`] [설계]
 - 멈춘 스트림은 `timeout` 의 `firstChunkMs`·`chunkMs` 로 끊는다. `toolMs` 는 핸들러 자신의 한도(확인 30초,
   미리보기 읽기 마감 5초)보다 짧게 두지 않는다. 값은 구현 이슈에서 정한다. [문서:
-  [Settings](https://ai-sdk.dev/docs/ai-sdk-core/settings)] [설계]
+  [Settings](https://ai-sdk.dev/docs/ai-sdk-core/settings)] [설계] (정정 2026-11-22, #66, 글 차례: `firstChunkMs` 는 쓰지
+  않는다. 그 시계는 `doStream` 이 돌아온 뒤에야 돌아, 머리말을 기다리는 동안과 OpenAI·Anthropic 패키지가 흐름의 첫
+  조각을 미리 읽는 동안을 재지 않는다. [문서: `ai` 7.0.179 `src/generate-text/stream-text.ts`] 그래서 코어가
+  차례에 한도 하나를 두고, 모델 요청을 보낼 때마다 새로 켜서 첫 출력까지 600초를 잰다. 지금의 Claude 는 thinking 의
+  `display` 기본이 `omitted` 여서 생각하는 동안 출력이 없기 때문이다. 출력 사이는 `chunkMs` 120초다. 바이트가
+  오가지 않는 연결은 Bun 의 유휴 한도(기본 5분)가 그보다 먼저 끊는다. `toolMs` 는 도구를 넣는 작업이 정한다.
+  [설계; 추론; 계약 §7.11])
 
 ### 코어가 끝나거나 다시 뜰 때
 
@@ -345,10 +387,19 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   CLI 의 `~/Library/Application Support/com.vercel.cli/auth.json` 을 읽어 지난 토큰을 `vercel.com` 에 갱신하며,
   갱신하지 못하면 그 파일을 `{}` 로 덮어쓴다. 그 뒤 `api.vercel.com` 에 묻는다. 둘 다 전역 `fetch` 로 나가므로 시작
   때의 거부가 연결은 막지만 파일 읽기와 덮어쓰기는 막지 못한다. [문서: `@ai-sdk/gateway` 4.0.152 `dist/index.js` 의
-  `getGatewayAuthToken`, `@vercel/oidc` 3.2.0 `dist/token.js`·`dist/token-util.js`·`dist/auth-config.js`; 실행하지
-  않았다] 그래서 코어는 시작 때 기본 제공자를 모든 모델을 거부하는 제공자로 두고, 린트는 `@ai-sdk/gateway` 와 `ai`
+  `getGatewayAuthToken`, `@vercel/oidc` 3.2.0 `dist/token.js`·`dist/token-util.js`·`dist/auth-config.js`; 덮어쓰기는
+  실측: Bun 1.4.5 에서 부른 `@vercel/oidc` 3.2.0 이, 만료되고 갱신 토큰이 없는 로그인과 연결된 프로젝트를 두고 네트워크
+  없이(`fetch` 를 막았다), `fetch` 를 부르지 않은 채 그 파일을 `{}` 로 덮어썼다. live-evidence 2026-11-22. 처음에는
+  "실행하지 않았다" 로 적었다] 그래서 코어는 시작 때 기본 제공자를 모든 모델을 거부하는 제공자로 두고, 린트는 `@ai-sdk/gateway` 와 `ai`
   의 `gateway`·`createGateway` 를 어디서도 가져오지 않게 한다("코드로 지키기" 3). 처음에는 Gateway 가 `ai` 의
-  의존으로 설치되지만 가져오지 않는다고 적었다.)
+  의존으로 설치되지만 가져오지 않는다고 적었다.) (정정 2026-11-22, #66, 글 차례: 코어가 `ai` 를 가져오므로 Gateway
+  와 `@vercel/oidc` 가 이제 빌드한 코어에 들어 있다. 단위 시험 `dependency-network.test.ts` 는 파일 모듈을 허용하므로
+  이 길을 막지 않는다. 막는 것은 시작 때의 기본 제공자 거부와 린트다. stdio 시험은 코어의 `HOME` 에 만료된 로그인을,
+  작업 폴더에 `.vercel/project.json` 을 두고 빌드한 코어로 차례 둘을 돌려, 두 파일의 바이트와 수정 시각이 그대로이고
+  서버가 받은 요청이 모델 목록 하나와 차례 둘뿐이며 거부 줄이 없음을 본다. 대조로, 같은 두 파일을 둔 임시 `HOME` 의
+  자식 프로세스에서 `fetch` 를 막고 진짜 `getVercelOidcToken` 을 부르면 `VercelOidcTokenError` 를 던지고 `fetch`
+  없이 로그인을 `{}` 로 덮어쓴다. 그러므로 빌드한 코어가 그 파일을 그대로 둔 것은 위의 막음이 그 길을 막은 결과다.
+  [실측: `core/tests/stdio/egress.test.ts`])
 - **원격 측정:** v7 은 통합을 등록할 때만 원격 측정을 내고, OpenTelemetry 는 `@ai-sdk/otel` 로 옮겼다. [문서:
   [Telemetry](https://ai-sdk.dev/docs/ai-sdk-core/telemetry)] 코어는 통합을 등록하지 않는다. [설계]
 - **경고:** AI SDK 의 경고는 `globalThis.AI_SDK_LOG_WARNINGS` 가 `false` 나 함수가 아니면 기본 기록기로 나간다.
@@ -357,7 +408,12 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   쓰거나 재정의하지 못하게 한다. 함수는 경고마다 `warn [core:chat:sdk-warning] type=… subject=… provider=…` 한 줄을
   쓰고, 요청에서 온 값을 담을 수 있는 `details` 와 `message` 는 싣지 않는다(계약 §12). `ai` 7.0.179 의
   `generateText` 는 경고를 이 함수에만 넘기고 `process.emitWarning`·`console.warn` 은 부르지 않았다. [실측:
-  `core/tests/chat-sdk-globals.test.ts`] 폐기 예정 경고로 실패하는 시험은 차례를 넣는 작업이 더한다.)
+  `core/tests/chat-sdk-globals.test.ts`] 폐기 예정 경고로 실패하는 시험은 차례를 넣는 작업이 더한다.) (정정
+  2026-11-22, #66, 글 차례: `chat-turn.test.ts` 의 모든 시험은 기대하지 않은 `sdk-warning` 줄이 하나라도 나오면
+  실패한다. 폐기 예정 경고(종류 `deprecated`)도 이 함수로 오고, 코어가 보낸 설정이 먹지 않았다는 `unsupported`·
+  `compatibility` 도 잡는다. 그래서 시험은 패키지가 아는 모델 id 를 쓴다. `@ai-sdk/anthropic` 4.0.107 이 모르는
+  모델 id 에 내는 compatibility 경고(`maxOutputTokens`, 출력 한도를 묶었다는 것)는 그것을 기대하는 시험만 받는다.
+  [문서: `ai` 7.0.179 `dist/index.js` 의 `logWarnings`; 실측: 같은 시험])
 - **판 고정:** `ai` 와 `@ai-sdk/*` 는 정확한 판으로 고정하고(`^` 없음), 올릴 때 이행 안내와 이 절을 다시 본다.
   [설계]
 
@@ -476,6 +532,8 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
    못한다. 알려진 길은 시작 때의 세 거부가 막는다. 시험을 돌리는 Bun 1.4.5 에는 `fetch`·`WebSocket` 밖의 네트워크
    전역(`EventSource`, `RTCPeerConnection`, `WebTransport`, `XMLHttpRequest`, `navigator.sendBeacon`)이 없어,
    `ai` 의 브라우저 실시간 세션이 만드는 `RTCPeerConnection` 은 연결이 아니라 오류가 된다. [실측: 같은 시험])
+   (정정 2026-11-22, #66, 글 차례: 형식 검사가 들어갔다. `core/src/chat/sdk/provider.ts` 가 만든 모델의 형식이
+   `Exclude<LanguageModel, string>` 이고, `turn.ts` 는 그 모델만 `streamText` 에 넘긴다.)
 
 ### 시험으로 지키기
 
@@ -497,7 +555,13 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   믿는다. 앱은 코어에 `HOME`·`TMPDIR`·`PATH`·`LOG_LEVEL` 만 넘기므로 이 변수는 시험이 띄운 코어에만 닿는다(계약
   §7.1). 같은 파일이 시험마다 만든 인증 기관으로 모델 목록의 허용 경로를 끝까지 본다. 서버가 답을 잡고 있는 동안
   코어의 인터넷 소켓은 모두 그 서버로 가는 연결이고 듣는 Unix 소켓은 없으며, 키는 그 요청의 `authorization`
-  머리말에만 있다. 차례로 하는 같은 시험은 차례를 넣는 작업이 더한다.)
+  머리말에만 있다. 차례로 하는 같은 시험은 차례를 넣는 작업이 더한다.) (정정 2026-11-22, #66, 글 차례: 같은 파일이
+  차례로도 이 시험을 한다. 평문 http 루프백 출처로 보낸 차례는 `egress_denied` 이고, 그 포트에서 듣는 시험 프로세스는
+  연결을 하나도 받지 않으며, 코어는 AI SDK 를 싣지 않는다. 시험이 믿게 한 출처로 보낸 차례는 서버가 답의 나머지를
+  잡고 있는 동안 첫 `delta` 를 앱에 내고 `done` 으로 끝나며, 서버가 받은 요청은 모델 목록 하나와 차례 둘이고 키는
+  `authorization` 머리말에만 있다. 차례 중의 소켓은 `lsof` 로 보지 않는다. 한 순간의 소켓 목록으로는 연결이
+  없었음을 보이지 못하고, 찍는 때에 따라 결과가 흔들리기 때문이다. 연결은 서버가 받은 요청과 연결의 수, 거부 줄로
+  본다. 키, 사람의 글, 답은 표준 오류에 없다.)
 - 게이트는 유료 API 를 부르지 않는다. 실제 제공자 연결은 소유자 실기에서 `lsof -i -a -p <코어 pid>` 로 연결이
   고른 출처 하나뿐인지 본다. [설계]
 
@@ -554,10 +618,13 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   가 바꾸지 못하므로 "?" 안내에 그렇게 적는다. [설계]
 - **로그:** 계약 §12 의 "남기면 안 되는 값" 에 사람의 글, 모델 답, reasoning, 지시문, 키, 제공자 요청·응답 몸을
   더한다. 남기는 것은 제공자 이름, 출처, 모델 id, 단계 수, 토큰 수, 걸린 시간, 오류 이름과 HTTP 상태, 도구
-  이름과 상태다. [설계]
+  이름과 상태다. [설계] (정정 2026-11-22, #66: 출처와 모델 id 는 남기지 않는다. OpenAI 호환의 출처는 사람이 적은
+  호스트 이름이고 모델 id 도 사람이 적은 값이기 때문이다. 모델 목록(PR #89)이 출처를, 글 차례(PR #99)가 모델 id 를
+  뺐다. 차례의 줄은 제공자 이름, 끝난 까닭, 단계 수, 토큰 수, 걸린 시간, 오류 코드와 HTTP 상태를 싣는다. [계약 §12])
 - **지시문:** 지시문은 코어가 정한 고정 문구이고 `instructions` 로 넘긴다. `messages` 안의 system 메시지는 v7
   기본대로 거부되게 두고 허용 설정을 켜지 않는다. [문서: AI SDK 7 이행 안내] 지시문은 도구 결과가 지시가 아니라
-  자료라고 적는다(아키텍처 품질 목표 5). [설계]
+  자료라고 적는다(아키텍처 품질 목표 5). [설계] (정정 2026-11-22, #66, 글 차례: 지시문은 사람의 메시지 앞에 붙는 시각
+  줄이 Sherpa 가 붙인 보낸 시각이고 사람의 지시가 아니라고도 적는다. [설계; 계약 §7.11])
 - **대화 기록:** 앱이 이 Mac 에 암호화해 저장하고, 사람이 지우거나 사람이 고른 보관 기한이 지나면 지운다.
   [소유자, 2026-11-22, "남은 결정" 2] 설계는 "대화 기록" 절이다. (정정 2026-11-22: 처음에는 소유자 결정 대기로
   적고, 결정 전까지 대화가 코어 메모리와 앱 메모리에만 있다고 적었다.)
@@ -599,14 +666,17 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
 - 상태에는 끝난 단계만 넣는다. AI SDK 는 단계가 끝날 때 `onStepEnd` 를 부르고(제공자의 `error` 조각으로 끝난
   단계에도 부른다), 중단이나 시간 초과 때는 `onAbort` 에 그 전에 끝난 단계들을 넘긴다. [문서: `ai` 7.0.179
   `src/generate-text/stream-text.ts`·`generate-text-events.ts`] 끝난 까닭이 `error` 인 단계와 끊긴 단계의 조각은
-  넣지 않는다. [설계]
+  넣지 않는다. [설계] (정정 2026-11-22, #66, 글 차례: 끊긴 단계는 AI SDK 의 끝난 까닭 `interrupted` 로 온다. 코어는
+  `error`·`interrupted`·`content-filter` 로 끝난 단계를 대화에 더하지 않는다. `state` 는 아직 없어 지금은 코어
+  메모리의 대화가 이 규칙을 따른다. [실측: `core/tests/chat-turn.test.ts`; 계약 §7.11])
 - 거절(`content-filter`)로 끝난 단계는 넣지 않는다. Anthropic 은 거절 앞의 부분 출력을 끝나지 않은 것으로 보고
   버리라고 적는다. [문서: [Refusals and
   fallback](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback), "treat any partial
   output as incomplete and discard it"] 사람의 글은 남기고, 보이는 대화에는 거절을 보인다. [설계]
 - 그래서 차례가 중간에 끝난 상태는 사람의 글이나 도구 결과로 끝나고, 다음 사람 글이 그 뒤에 붙는다. Anthropic
   변환은 이어진 사람 메시지와 도구 결과를 user 블록 하나로 묶는다. [문서: `@ai-sdk/anthropic` 4.0.107
-  `groupIntoBlocks`] 다른 세 제공자가 이어진 사람 메시지를 받는지는 확인 전이다("아직 확인 전").
+  `groupIntoBlocks`] 다른 세 제공자가 이어진 사람 메시지를 받는지는 확인 전이다("아직 확인 전"). (정정 2026-11-22,
+  #66, 글 차례: 실패한 차례 뒤의 Anthropic 요청이 두 글을 user 블록 하나로 보내는 것을 `chat-turn.test.ts` 가 본다.)
 - 상태 하나는 `data` 하나(4 MiB, 계약 §7.4)에 들어가야 한다. "메모리와 크기" 의 대화 크기 한도는 이 값 아래로
   두고, 닿기 전에 채팅을 끝내고 새 채팅을 권한다. [설계]
 
@@ -647,7 +717,10 @@ API](https://aistudio.google.com/docs/interactions-overview) 의 interaction-sco
   `reasoning.encrypted_content` 는 호환으로만 받는 옛 값이라고 적는다. [문서: Reasoning models] AI SDK 는
   `store: false` 이고 카탈로그가 reasoning 모델로 아는 모델에 그 옛 값을 저절로 더한다. [문서: `@ai-sdk/openai`
   4.0.122 `src/responses/openai-responses-language-model.ts`] 결정 7 에 비추어 끌 수 있는지는 #66 이 본다.
-  [설계]
+  [설계] (정정 2026-11-22, #66, 글 차례: 끌 수 없다. `@ai-sdk/openai` 4.0.122 는 `store: false` 이고 reasoning 모델이면
+  그 값을 조건 없이 더하고, 끄는 설정이 없다. [문서: 같은 패키지 `dist/index.js`] 소유자가 이것을 결정 7 의 예외로
+  두었다. [소유자, 2026-11-22] 시험은 reasoning 모델에만 그 값이 붙음을 본다. [실측: `core/tests/chat-turn.test.ts`;
+  계약 §7.11])
 
 ### 누가 저장하나
 
@@ -798,7 +871,10 @@ API](https://aistudio.google.com/docs/interactions-overview) 의 interaction-sco
   때문이다. [설계]
 - `done` 의 토큰 수를 차례마다 보인다. 가격은 보이지 않는다. Sherpa 가 사람의 요금제를 알 길이 없다. [설계]
 - Anthropic 에는 지시문과 도구 정의에 캐시 제어(`cacheControl`)를 단다. 둘은 차례마다 같다. 모의 서버가 받은
-  요청 몸에 캐시 제어가 실렸다. [실측] 한 차례의 비용 상한은 단계 한도 N 이 정한다. [설계]
+  요청 몸에 캐시 제어가 실렸다. [실측] 한 차례의 비용 상한은 단계 한도 N 이 정한다. [설계] (정정 2026-11-22, #66, 글
+  차례: 지시문은 Anthropic 요청의 `system` 에 `cache_control: {"type":"ephemeral"}` 과 함께 나간다. 지시문이 차례마다
+  같도록 지금 시각은 지시문이 아니라 사람의 글 앞의 한 줄로 보낸다. 도구 정의의 캐시 제어는 도구를 넣는 작업이 단다.
+  [실측: `core/tests/chat-turn.test.ts`; 계약 §7.11])
 
 ## 메모리와 크기
 
@@ -815,11 +891,21 @@ API](https://aistudio.google.com/docs/interactions-overview) 의 interaction-sco
 | 같은 빌드, 실은 뒤 | — | +9.6 MB | +7 MB |
 
 - 코어는 `ai` 와 그 차례의 제공자를 첫 요청 때 `import()` 로 싣는다. 채팅을 쓰지 않는 사람의 대기 예산은 실제
-  점유 +2 MB, 실행 파일 +2 MB 다. 실행 파일은 `sherpa` 명령과 같은 파일이므로 명령도 2 MB 커진다. [설계]
+  점유 +2 MB, 실행 파일 +2 MB 다. 실행 파일은 `sherpa` 명령과 같은 파일이므로 명령도 2 MB 커진다. [설계] (정정
+  2026-11-22, #66, 글 차례: 코어는 첫 차례 때 `ai` 와 네 제공자를 함께 싣는다. 한 모듈이 네 제공자의 모델을 만든다.
+  Bun 의 단일 실행 파일은 그 모듈을 한 번들 안에 두고 첫 차례에 평가한다. 빌드한 코어는 92,198,274 바이트로 AI SDK
+  를 고정하기 전(`ee8c29d`)보다 1,997,952 바이트 컸다. 인사 뒤 기다리는 `app serve` 의 RSS 는 38.7 → 43.5 MB, 실제
+  점유(physical footprint)는 17.5 → 19.8 MB 였고, `--version` 과 `app serve` 의 인사까지는 12~13 ms 늦어졌다(80번의
+  중앙값 29.7 → 42.8 ms, 29.3 → 42.5 ms. 마지막 코드 `f471d80` 으로 다시 재면 29.0 → 41.2 ms, 28.5 → 40.6 ms). [실측:
+  live-evidence 2026-11-22] 늦어진 것은 번들이 2 MB 커져 시작 때 읽을 코드가 늘었기 때문으로 본다. [추론])
 - 대화는 채널마다 코어 메모리에 쌓인다. 채팅마다 대화 크기 한도를 두고, 넘으면 그 채팅을 끝내고 새 채팅을
-  권한다. 값은 구현 이슈에서 정한다. [설계]
+  권한다. 값은 구현 이슈에서 정한다. [설계] (정정 2026-11-22, #66, 글 차례: 한도는 다음 차례가 보낼 메시지 전체(지시문은
+  빼고)를 JSON 으로 적어 2 MiB 다. 넘으면 요청 없이 `conversation_limit` 이고 그 채팅은 뒤의 차례도 받지 않는다. 대화
+  상태가 4 MiB `data` 에 들어가게 하는 값이다. 한도는 차례를 시작할 때 보므로, 차례 하나가 받는 답은 출력 토큰 한도
+  말고는 막지 않는다. [설계; 계약 §7.11])
 - hardened runtime 은 JIT 를 막아 MCP 탐침의 실제 점유를 22.7 → 16.5 MB 로 낮췄다(ADR-0010 실측). 채팅 빌드의
-  hardened runtime 값, Bun 1.4.5 값, 긴 대화의 증가는 재지 않았다. [미확인]
+  hardened runtime 값, Bun 1.4.5 값, 긴 대화의 증가는 재지 않았다. [미확인] (정정 2026-11-22, #66: Bun 1.4.5 의 크기와
+  대기 메모리는 위 정정이 쟀다. hardened runtime 의 값, 첫 차례 뒤의 값, 긴 대화의 증가는 아직 재지 않았다.)
 
 ## 실측
 
@@ -960,7 +1046,9 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
    확인(계약 3판, mux 3)도 먼저 들어갔다(정정 2026-11-22, #66). 채팅 채널, 모델 목록, §7.1 의 소켓 문장, §12 의
    모델 목록 줄은 PR #89 가 넣었다(정정 2026-11-22, #66). AI SDK 의 판 고정, 기본 제공자와 경고의 전역, `sdk/` 의
    린트, 번들하는 패키지의 패턴 검사, 믿는 인증서로 허용 경로를 보는 stdio 시험과 문자열 모델 id 검사의 린트·실행 때
-   겹은 PR #91 이 넣었다(정정 2026-11-22, #66).
+   겹은 PR #91 이 넣었다(정정 2026-11-22, #66). 글 차례(네 제공자, `turn`·`cancel`·`delta`·`done`, 첫 출력과
+   출력 사이의 한도, 재시도, 지금 시각 줄, 대화 한도), 모델의 형식 검사, 차례를 보내는 stdio 시험, 경고가 없음을 보는
+   시험, Bun 1.4.5 의 크기와 대기 메모리 재기는 PR #99 가 넣었다(정정 2026-11-22, #66).
 5. **앱 채팅 화면:** 첫 화면의 두 타일, 동의, 제공자·모델 고르기, 원격 자원 없는 마크다운, 한글 입력, 확인
    창과의 포커스. 계약 §2 의 첫 화면도 이 단계가 싣는다(정정 2026-11-22, #63: 단계 1 에서 옮겼다). MCP 를 끈 동안 채팅 호출의
    확인 창이 뜨는지와 스위치를 끌 때 그 창이 남는지를 끝까지 보는 시험도 이 단계가 더한다. 단계 4 의 앱은 채팅
@@ -988,9 +1076,14 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
   판(2023-06-01)으로 물러설지 소유자에게 묻고, 답을 이 ADR 에 정정으로 단다.
 - 네 제공자의 실제 모델 목록 응답이 계약 §7.11 이 문서에서 옮긴 모양과 같은지, Anthropic 의 `/v1/models` 가
   `anthropic-version: 2026-10-21` 을 받는지, Google 이 `pageSize=1000` 을 받는지(정정 2026-11-22, #66).
+- 네 제공자의 실제 API 가 코어의 차례 요청을 받는지, 실제 흐름과 흐름 안 오류의 모양이 시험의 손으로 쓴 응답과
+  같은지, 실패한 차례 뒤 잇달아 놓인 사람의 글을 OpenAI·Google·OpenAI 호환이 받는지(계약 §16). (정정 2026-11-22, #66)
+- 지금의 모델이 첫 출력 전에 얼마나 생각하는지와, 그동안 제공자가 바이트(Anthropic 의 `ping` 등)를 보내는지. 보내지
+  않으면 코어의 600초보다 먼저 Bun 의 유휴 한도가 차례를 끊는다(계약 §7.11, §16). (정정 2026-11-22, #66)
 - 프로필이 없을 때 data protection keychain 이 -34018 로 거부하는지.
 - 코어와 중계가 앱의 App ID 그룹 항목을 읽지 못하는지(문서에서 끌어냈고 재현하지 않았다).
-- hardened runtime 과 Bun 1.4.5 에서의 크기와 메모리, 긴 대화의 메모리.
+- hardened runtime 과 Bun 1.4.5 에서의 크기와 메모리, 긴 대화의 메모리. (정정 2026-11-22, #66: Bun 1.4.5 의 크기와 대기
+  메모리는 "메모리와 크기" 가 쟀다. 남은 것은 hardened runtime, 첫 차례 뒤, 긴 대화다.)
 - 35개 도구 정의의 실제 토큰 수.
 - 시스템 프록시와 사람이 더한 루트 인증서, 이름 풀이가 시스템 해석기를 거치는지. (정정 2026-11-22, #64: 처음에는
   Bun 1.4.5 의 `redirect: "error"` 도 적었다. "코드로 지키기" 2 에서 닫았다.) (정정 2026-11-22, #66: 빌드한 코어의
@@ -1008,7 +1101,8 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
   받는지, OpenAI·Google·OpenAI 호환이 이어진 사람 메시지를 받는지.
 - 대화 기록: 화면이 잠긴 동안 `WhenUnlockedThisDeviceOnly` 기록 키를 읽을 수 있는지(앱은 처음 읽은 키를 메모리에
   둔다).
-- 대화 기록: AI SDK 가 OpenAI 요청에 더하는 옛 `include` 값을 끌 수 있는지.
+- 대화 기록: AI SDK 가 OpenAI 요청에 더하는 옛 `include` 값을 끌 수 있는지. (정정 2026-11-22, #66: 끌 수 없고,
+  소유자가 결정 7 의 예외로 두었다. "이어 쓰기" 를 보라.)
 
 ## 검토한 대안
 

@@ -9,6 +9,68 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — Bun's fetch idle timeout against a loopback server that goes quiet (bunny-holes/sherpa#66)
+
+This Mac (macOS 27.3 26C5035r, Bun 1.4.5), run by the bunny-holes/sherpa#66
+worker between 14:00Z and 14:07Z. A Bun script served plain http on
+127.0.0.1 with `idleTimeout: 0`, so the server never closed a connection
+first, and fetched two paths with Bun's own `fetch`: one the server never
+answered, and one that sent its headers and one comment line and then
+nothing. The script ran with only `HOME` and `PATH=/usr/bin:/bin`, so
+`BUN_CONFIG_HTTP_IDLE_TIMEOUT` was unset. Nothing left the loopback
+interface.
+
+- Without a `timeout` option both requests failed after 360,127 ms, the one
+  waiting for its headers and the one waiting in its body alike, with a
+  `DOMException` named `TimeoutError`, code 23, message "The operation timed
+  out.". bun-types 1.4.5 documents the default as five minutes.
+- With `timeout: 3000` both failed after 8,005 ms with the same error.
+- The core's egress drops Bun's `timeout` option, so a turn's request gets
+  the default. `core/tests/chat-turn.test.ts` feeds this error to a turn
+  before the headers, in the body and after output, and pins `timeout` with
+  one request (contract §7.11).
+
+## 2026-11-22 — The core that answers text turns: its size, start time and idle memory, and the AI Gateway's OIDC code it now carries (bunny-holes/sherpa#66)
+
+This Mac (macOS 27.3 26C5035r, Bun 1.4.5), run by the bunny-holes/sherpa#66
+worker between 13:05Z and 13:27Z, with `ai` 7.0.179, `@ai-sdk/gateway`
+4.0.152 and `@vercel/oidc` 3.2.0. No model call was made and nothing left
+the loopback interface. The cores were built with `bun run build` from
+`ee8c29d` (before the AI SDK was pinned), `main` `89976a9` and the
+text-turn commit `1bc7539`, and each ran in `/` with only `HOME` (a
+scratch directory) and `PATH=/usr/bin:/bin`, as the app starts the core.
+
+- Sizes: 90,200,322 bytes for `ee8c29d` and `89976a9`, and 92,198,274 for
+  `1bc7539` (+1,997,952). Bun bundled 161, 162 and 204 modules, and
+  `bun build src/main.ts --target=bun` grew from 1,046,549 bytes on
+  `89976a9` to 3,022,266 on `1bc7539`. There the `import()` of the turn
+  module became `Promise.resolve().then(() => (init_turn(), exports_turn))`,
+  so the AI SDK sits in the same bundle and is evaluated on the first turn.
+- `--version`, and `app serve` until its hello, 80 runs of each core
+  interleaved after 5 warm-ups, median (p90): `ee8c29d` 29.73 (32.51) and
+  29.29 (31.28) ms, `89976a9` 29.91 (32.21) and 29.31 (31.84) ms,
+  `1bc7539` 42.76 (46.20) and 42.49 (44.90) ms. A run of 40 just before
+  gave differences of 12.5 and 11.9 ms over `89976a9`. That parsing the
+  larger bundle is the cost is inferred, not measured.
+- Idle after its hello, 5 runs of each, median: RSS 38.7, 38.8 and 43.5 MB,
+  and physical footprint (`vmmap --summary`) 17.5, 17.5 and 19.8 MB.
+- The same two measurements again between 14:21Z and 14:23Z, with the core
+  built from `f471d80`, the pull request's last code change (92,198,274
+  bytes, as `1bc7539`), in place of `1bc7539`: `--version` and hello
+  medians (p90) `ee8c29d` 29.08 (30.19) and 28.42 (29.44) ms, `89976a9`
+  29.02 (30.28) and 28.45 (29.92) ms, `f471d80` 41.22 (42.91) and 40.64
+  (42.86) ms; idle RSS 38.8, 38.7 and 43.5 MB, and physical footprint 17.5,
+  17.4 and 19.7 MB.
+- `getVercelOidcToken` of `@vercel/oidc` 3.2.0, run by Bun with `fetch`
+  replaced by a counting function that throws, in a scratch directory
+  holding `.vercel/project.json`, with `HOME` at a scratch home whose
+  `Library/Application Support/com.vercel.cli/auth.json` held a token that
+  had expired and no refresh token: it threw `VercelOidcTokenError`, called
+  `fetch` 0 times, and rewrote that file to `{}`.
+- Not covered: memory once the first turn has loaded the AI SDK, the
+  hardened runtime of the core inside `Sherpa.app`, and a long
+  conversation.
+
 ## 2026-11-22 — The core built with `--use-system-ca`: its certificate stores, the trust settings they come from, and its start time (bunny-holes/sherpa#66)
 
 This Mac (macOS 27.3 26C5035r, Bun 1.4.5), run by the bunny-holes/sherpa#66

@@ -17,16 +17,18 @@ export function scratchHome(): string {
 
 /**
  * Starts `sherpa app serve` with a scratch HOME so no journal or store of this
- * Mac is touched; `prepare` may put fixture stores into it first.
+ * Mac is touched; `prepare` may put fixture stores into it first. It runs in
+ * `cwd`, or in the test process's working directory.
  */
 export function launch(
   env: Record<string, string> = {},
   prepare?: (home: string) => void,
+  cwd?: string,
 ): FakeApp {
   if (!existsSync(BINARY)) throw new Error("core/dist/sherpa is missing: run bun run build first");
   const home = scratchHome();
   prepare?.(home);
-  return FakeApp.launch(BINARY, { HOME: home, LOG_LEVEL: "info", ...env });
+  return FakeApp.launch(BINARY, { HOME: home, LOG_LEVEL: "info", ...env }, cwd);
 }
 
 export function cleanHomes(): void {
