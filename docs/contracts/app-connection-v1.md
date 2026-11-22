@@ -185,22 +185,28 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   위의 "릴리스 빌드는 실행 경로, 소켓 경로, 서명 요건을 바꾸는 환경 변수나 인자를 읽지 않는다" 는 앱이 다른 코드를
   실행하게 하는 값에 대한 규칙이고, 이 스위치는 그런 값이 아니다. [계약; 실행 인자는 실측: 2026-11-22
   `UserDefaults.standard` 를 읽는 시험 프로그램이 `-mcpEnabled YES` 로 true, 인자 없이 false 를 읽었다]
-- 스위치는 메뉴 막대 메뉴(체크 항목 "MCP Server")와 상태 창 맨 위에 있다. 앱은 첫 실행과, MCP 가 꺼진 채 뜰 때마다
+- 스위치는 메뉴 막대 메뉴(체크 항목 "MCP Server")와 상태 창의 MCP 줄에 있다. 앱은 첫 실행과, MCP 가 꺼진 채 뜰 때마다
   상태 창을 연다. 스위치가 없던 판에서 올린 앱은 첫 실행 표시가 이미 남아 있어도 꺼진 채 시작하기 때문이다. [계약]
 - 꺼져 있으면 앱은 중계의 서명을 확인한 뒤 머리말 `unavailable`·`mcp_disabled` 로 돌려보낸다(§5). 켜 있다가 끄면
   열린 중계 연결을 모두 닫고(§7.6), 떠 있는 확인 창을 답 없이 닫는다(§9). 꺼져 있는 동안에도 코어는 돈다. [계약]
-- 상태 창은 켜짐과 꺼짐, 지금 연결된 중계 수, 에이전트 연결 방법을 보인다. 연결 방법은 이 앱으로 잰 클라이언트인
-  Claude Code 와 Codex 만 적는다. 명령은 앱의 실제 중계 경로(`Bundle.main` 의 `Contents/MacOS/sherpa-relay`)로
-  만들고, 경로에 셸이 특별히 읽는 글자가 있으면 작은따옴표로 감싼다. 명령과 중계 경로는 줄을 바꿔 전부 보이고
-  "…" 로 자르지 않으며(bunny-holes/sherpa#52), 선택할 수 있고, 저마다 복사 단추가 그 글을 그대로 복사한다. 앱은
-  에이전트의 설정 파일을 고치지 않는다. [계약; 구현은 `SherpaAppServer` 의 `AgentSetup`, `App/StatusSections.swift`]
+- 상태 창의 본문은 머리(아이콘, 버전, 코어 상태), MCP 줄, 권한 목록만 둔다. MCP 줄은 스위치와 짧은 상태(`Off`, 또는
+  `On · <연결된 중계 수> connected`)만 보인다. 켜고 끌 때 일어나는 일과 메뉴 막대 아이콘을 찾는 안내는 그 줄과 머리의
+  툴팁(SwiftUI `.help`)에 둔다. [계약; 소유자 결정 2026-11-22: "화면을 설명으로 덮어버리지마라"]
+- 에이전트 연결 방법은 MCP 가 켜져 있을 때 MCP 줄에 보이는 macOS 표준 도움말 단추("?", SwiftUI `HelpLink`, macOS 14
+  이상)를 눌러 여는 팝오버에만 있다. 끄면 단추와 팝오버가 함께 사라진다. [계약; 소유자 결정 2026-11-22: "mcp를 활성화
+  하면 연결 방법은 ?를 통해서 직접 보게해라"]
+- 연결 방법은 이 앱으로 잰 클라이언트인 Claude Code 와 Codex 만 적는다. 명령은 앱의 실제 중계 경로(`Bundle.main` 의
+  `Contents/MacOS/sherpa-relay`)로 만들고, 경로에 셸이 특별히 읽는 글자가 있으면 작은따옴표로 감싼다. 명령과 중계
+  경로는 줄을 바꿔 전부 보이고 "…" 로 자르지 않으며(bunny-holes/sherpa#52), 선택할 수 있고, 저마다 복사 단추가 그 글을
+  그대로 복사한다. 앱은 에이전트의 설정 파일을 고치지 않는다. [계약; 구현은 `SherpaAppServer` 의 `AgentSetup`,
+  `App/StatusSections.swift`]
 
-| 에이전트 | 상태 창의 명령 | 근거 |
+| 에이전트 | 연결 방법의 명령 | 근거 |
 | --- | --- | --- |
 | Claude Code | `claude mcp add --scope user sherpa -- <중계 경로>` | 문서: [Claude Code MCP](https://code.claude.com/docs/en/mcp), "Option 3"(`--` 뒤는 서버 명령 그대로)와 "User scope". 실측(live-evidence 2026-11-22 "Agent registration commands"): 2.1.326 의 `claude mcp add --help`. 빈 임시 `CLAUDE_CONFIG_DIR` 의 `.claude.json` 에 `"sherpa": {"type":"stdio","command":"<중계 경로>","args":[],"env":{}}` 를 썼다 |
 | Codex | `codex features enable mcp_2026_07_28`, 이어 `codex mcp add --env CODEX_MCP_PROTOCOL_VERSION=2026-07-28 sherpa -- <중계 경로>` | 실측(같은 기록): 0.171.0 의 `codex mcp add --help`, `codex features enable --help`. 빈 임시 `CODEX_HOME` 의 `config.toml` 에 `[mcp_servers.sherpa]` 의 `command`, `[mcp_servers.sherpa.env]` 의 `CODEX_MCP_PROTOCOL_VERSION = "2026-07-28"`, `[features]` 의 `mcp_2026_07_28 = true` 를 썼다. 기능과 env 의 근거는 ADR-0011 |
 
-- 플러그인(`sherpa@plug-hole`)의 등록은 상태 창에 "플러그인을 쓰면 서버를 등록해 준다" 한 줄만 둔다. 그 방식은
+- 플러그인(`sherpa@plug-hole`)의 등록은 연결 방법 팝오버에 "플러그인을 쓰면 서버를 등록해 준다" 한 줄만 둔다. 그 방식은
   bunny-holes/sherpa#55 가 정한다. [계약]
 
 ## 3. 소켓
@@ -998,10 +1004,15 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
   `app-server` 가 띄운 중계(앞에 tee)가 내보낸 앱의 기본 소켓에 붙었다. [실측: live-evidence 2026-11-22]
 - 앱이 띄운 코어의 `osascript` 보내기가 앱의 Apple Events 권한으로 판정되는지.
 - 오래 켜 둔 앱과 코어의 메모리. 시험 빌드는 8분 동안 코어 13.6 MB, 호스트 5.2 MB 로 고정됐다.
-- MCP 스위치와 상태 창(bunny-holes/sherpa#54, #52, §2): 첫 실행과 꺼진 채 뜬 앱에서 상태 창이 저절로 열리는지, 메뉴와
-  창의 켜기·끄기, 켜진 채 끌 때 연결된 Claude Code·Codex 가 보이는 것, 꺼진 동안 붙으려는 에이전트가 보이는 오류,
-  복사한 명령을 그대로 넣어 붙는지. `/Applications/Sherpa.app` 보다 긴 설치 경로에서 명령과 경로가 잘리지 않고, 선택해
-  복사한 값과 복사 단추의 값이 `Contents/MacOS/sherpa-relay` 로 끝나는 전체 경로인지.
+- MCP 스위치와 상태 창(bunny-holes/sherpa#54, #52, §2). 2026-11-22 메인 세션이 이 작업의 `e0e2670` 을 내보낸 앱으로
+  쟀다. 첫 실행에 MCP 가 꺼진 채 상태 창이 저절로 열렸다. 꺼진 동안 중계는 75 와 remedy 로 끝났고 Codex 는 서버를
+  `failed` 로 두었다. 창의 스위치로 켜자 Codex 가 붙어 도구 35개를 보았고 호출은 `succeeded` 였다. 창의 중계 경로는
+  잘리지 않았다. [실측: live-evidence 2026-11-22 "The MCP switch in the exported app"] 남은 것은 다음과 같다.
+  - 연결 방법을 "?" 팝오버로 옮긴 뒤의 창: 높이, 도움말 단추, 팝오버, 툴팁.
+  - 메뉴의 켜기·끄기, 켜진 채 끌 때 연결된 Claude Code·Codex 가 보이는 것, 꺼진 동안 Claude Code 가 보이는 오류.
+  - 복사한 명령을 그대로 넣어 붙는지.
+  - `/Applications/Sherpa.app` 보다 긴 설치 경로에서 명령과 경로가 잘리지 않고, 선택해 복사한 값과 복사 단추의 값이
+    `Contents/MacOS/sherpa-relay` 로 끝나는 전체 경로인지.
 
 ## 14. 시험 벡터
 
@@ -1101,8 +1112,8 @@ not json\n                                                                      
 - 내보낸 앱의 메뉴 막대 아이콘이 보이는지와 미리보기 앱에서 보이지 않은 원인, 메뉴의 Quit, 오래 켜 둔 앱과 코어의
   메모리. 2026-11-21 의 #29 실기에서 재지 않았다.
 - 도구별 결과 스키마. Swift 와 ObjC 응답의 null 키 차이가 정리된 뒤 정한다.
-- MCP 스위치와 상태 창의 실기(§13.4): 첫 실행 창, 켜고 끄기, 끌 때 에이전트가 보이는 것, 복사한 명령, 긴 설치
-  경로에서 #52 가 고쳐졌는지. 게이트는 서버의 동작과 명령 글만 보고, 창의 배치는 보지 않는다.
+- MCP 스위치와 상태 창의 실기(§13.4): "?" 팝오버로 바꾼 창, 메뉴의 켜고 끄기, 끌 때 에이전트가 보이는 것, 복사한
+  명령, 긴 설치 경로에서 #52 가 고쳐졌는지. 게이트는 서버의 동작과 명령 글만 보고, 창의 배치는 보지 않는다.
 
 닫힌 것: 2026-11-21 #29 실기는 내보낸 앱에서 삭제 확인 창의 내용·허용·거부·30초와 1초 무장, 상태 창의 권한
 표시를 쟀다(§9). 같은 실기에서 상태 창이 중계 경로를 "…" 로 자른 결함은 bunny-holes/sherpa#52 다. 2026-11-22 Codex
@@ -1110,7 +1121,9 @@ not json\n                                                                      
 코어를 담은 내보낸 앱으로 Claude Code 의 2026-07-28 연결과 기본 설정 Codex 의 거부(서버 `failed`, 도구 호출 -32603,
 다시 묻지 않음)를 쟀다(§10.1). `main` `8de36c6` 을 처음부터 빌드해 내보낸 앱으로 Claude Code 2.1.326 이 `claude -p`
 에서 `server/discover`·`tools/list`·`tools/call` 을 모두 2026-07-28 봉투로 보내 `reminder_authorization_status` 를
-불렀다(결과 `succeeded`). 이로써 내보낸 앱 경로의 Claude Code 도구 호출이 닫혔다(ADR-0011).
+불렀다(결과 `succeeded`). 이로써 내보낸 앱 경로의 Claude Code 도구 호출이 닫혔다(ADR-0011). 같은 날 `e0e2670` 을
+내보낸 앱으로 첫 실행 창, 꺼진 동안의 거부(중계 75, Codex `failed`), 창의 스위치로 켠 뒤의 Codex 연결과 호출을
+쟀다(§13.4).
 
 ## Related
 

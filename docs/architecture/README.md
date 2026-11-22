@@ -96,9 +96,9 @@ app's MCP switch is on. The switch is off at the first launch and lives in the
 app's defaults as a same-user consent mark, not a security boundary. While it
 is off the app turns every relay away with the preface reason `mcp_disabled`,
 and turning it off closes the open sessions. The status window holds the
-switch and the commands that register the bundled relay with Claude Code and
-Codex; it copies them and never writes an agent's configuration (contract §2
-"MCP 켜기와 연결 안내"). The app and relay are not released yet (notarized cask,
+switch; while it is on, the switch's help button opens the commands that
+register the bundled relay with Claude Code and Codex. The app copies them and
+never writes an agent's configuration (contract §2 "MCP 켜기와 연결 안내"). The app and relay are not released yet (notarized cask,
 bunny-holes/sherpa#31), and the CLI keeps the helper path above until then.
 
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of

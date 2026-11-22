@@ -9,6 +9,28 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — The MCP switch in the exported app built from `e0e2670` (bunny-holes/sherpa#54)
+
+This Mac, run by the main session on `Sherpa.app` exported from the
+bunny-holes/sherpa#54 branch at `e0e2670`; that session keeps the
+screenshots. Recorded from its report, which gave no Codex version or command
+line.
+
+- At the first launch the status window opened by itself, with MCP off.
+- While MCP was off, the relay ended with exit 75 and its remedy line, and
+  Codex showed the server as `failed`.
+- Turned on with the window's switch, Codex connected, listed 35 tools, and a
+  tool call `succeeded`.
+- The relay path in the window was shown whole.
+- The owner then asked that the connection guide not fill the window: "mcp를
+  활성화 하면 연결 방법은 ?를 통해서 직접 보게해라. 화면을 설명으로
+  덮어버리지마라". The window now holds the header, the MCP row and the
+  permissions, and the guide opens from the MCP row's help button while MCP is
+  on (app-connection-v1 §2). That layout is not measured yet.
+- Not in the report: the menu's switch, turning MCP off under a connected
+  agent, Claude Code while MCP is off, a copied command, and an install path
+  longer than `/Applications/Sherpa.app` (app-connection-v1 §13.4).
+
 ## 2026-11-22 — Agent registration commands written into empty configuration homes (bunny-holes/sherpa#54)
 
 This Mac, run by the worktree session of bunny-holes/sherpa#54 to fix the
