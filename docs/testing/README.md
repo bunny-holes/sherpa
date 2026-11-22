@@ -49,9 +49,29 @@ Anything not listed here is not proven by the gate.
     and KakaoTalk key derivation against kakaocli's published test vectors.
     Sends run against a fake `osascript`; no test sends a real message.
   - `chat-egress.test.ts` (ADR-0012) proves without a socket that the global
-    `fetch` and `WebSocket` refuse every call and connection and cannot be
-    put back, that a turn fetch lets out only HTTPS to its origin with
-    `redirect: "error"` and the turn's signal, and which base URLs are refused.
+    `fetch` and `WebSocket` refuse every call and connection and the AI SDK's
+    default provider every model, that none of them can be put back, that a
+    turn fetch lets out only HTTPS to its origin with `redirect: "error"` and
+    the turn's signal, and which base URLs are refused. Started as the app
+    starts the core, the declared Bun trusts only its bundled certificate
+    authorities; the system store joins only with `--use-system-ca` or
+    `NODE_USE_SYSTEM_CA=1`.
+  - `chat-sdk-globals.test.ts` (ADR-0012) runs the AI SDK itself on the
+    globals the core's entry point leaves, in a process of its own: a model id
+    given as a string to `generateText`, `streamText` or `embed` is refused
+    before any request, neither the default provider nor the warning log can
+    be put back, and the SDK's warnings reach the Sherpa log without their
+    details and never reach `process.emitWarning` or `console.warn`.
+  - `dependency-network.test.ts` (ADR-0012) reads every JavaScript file of the
+    packages the core bundles with Bun's transpiler: no network module the
+    lint refuses, no Node module beyond files, paths, the OS, crypto and
+    process, no `bun` import, no Bun API, Worker, native binding or module
+    named at run time, and no network global in the declared Bun beyond
+    `fetch` and `WebSocket`. It reads patterns: code made with `eval` or
+    `Function` and names put together at run time stay unseen.
+  - `egress-lint.test.ts` (ADR-0012) lints fixtures that break the egress and
+    AI SDK rules of `core/vite.config.ts` on purpose and expects each form
+    caught and nothing else, so a rule that stops matching fails the gate.
   - `chat-session.test.ts` and `chat-models.test.ts` (contract §7.11) prove
     a chat channel on a fake runtime fetch behind the egress: the message
     shapes and limits, `invalid_message` and what it answers, each provider's
@@ -84,14 +104,18 @@ Anything not listed here is not proven by the gate.
     the test process's own listener and the core's descriptors 0–2, sees no
     internet socket and no listening Unix socket in the core from the hello
     through two MCP sessions and a delete waiting for the person; `--version`
-    starts with the global `fetch` and `WebSocket` refused too. Its redirect
-    test runs `core/src/chat/egress.ts` on the test's own Bun, the declared one,
-    against local servers: `redirect: "error"` refuses a 307 and a 302 that a
-    turn fetch forwards, and the redirect target sees no request. A chat
-    channel's model list for a plain-HTTP loopback origin ends with
-    `egress_denied` and no connection while `lsof` sees no socket, and one
-    for an HTTPS loopback server with a self-signed certificate ends with
-    `provider_certificate` before the server's handler sees a request.
+    starts with the global `fetch`, `WebSocket` and AI SDK default provider
+    refused too. A chat channel's model list for a plain-HTTP loopback origin
+    ends with `egress_denied` and no connection while `lsof` sees no socket,
+    and one for an HTTPS loopback server with a self-signed certificate ends
+    with `provider_certificate` before the server's handler sees a request.
+    With a certificate authority made per test and passed in
+    `NODE_EXTRA_CA_CERTS`, which the app never passes, a model list for a
+    loopback server it signed gets its models; while the server holds its
+    answer, every internet socket of the core is a connection to that server
+    and the key is only in that request's `authorization` header. A 307 to
+    another origin and a 302 to the same one from there end with
+    `egress_denied`, and the redirect target sees no request.
   - `waits.test.ts`: the 30 s confirmation and 5 s discovery waits on the real
     clock.
   - `cli.test.ts`: the built CLI checks every argument before it opens a store.

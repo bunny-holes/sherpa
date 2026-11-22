@@ -14,8 +14,9 @@ manner: "경계마다 규칙을 먼저 쓰고 근거를 괄호로 붙인다. 시
 구현 단계 1 이다. `open` 이 채널 종류를 싣고(§7.3) MCP 스위치는 `mcp` 채널만 닫는다(§7.6, §9). 3판은 같은 ADR 의
 구현 단계 4 의 몫이다. `confirm` 이 그 호출이 온 채널을 싣고, 앱은 확인의 출처를 그 채널의 종류로 가리며, 스위치는
 `mcp` 채널의 확인만 거둔다(§9). 그래서 인사의 `mux` 가 3 이 되고 1 과 2 는 받지 않는다(§7.5). 같은 3판에 단계 4 의
-다음 몫이 채널 종류 `chat` 과 그 첫 메시지인 모델 목록(§7.11)을 더했다. 종류를 더한 것이라 `mux` 는 3 그대로다. 그
-밖의 규칙은 앞 판 그대로이고, 본문에 "1판" 으로 적은 범위(작업자, 도구 목록, 믿는 범위 등)도 3판에 그대로 이어진다.
+다음 몫이 채널 종류 `chat` 과 그 첫 메시지인 모델 목록(§7.11)을 더했다. 종류를 더한 것이라 `mux` 는 3 그대로다. 같은
+판에서 단계 4 의 AI SDK 울타리가 시작 때의 셋째 거부(§7.1)와 그 로그 줄(§12)을 더했다. 그 밖의 규칙은 앞 판
+그대로이고, 본문에 "1판" 으로 적은 범위(작업자, 도구 목록, 믿는 범위 등)도 3판에 그대로 이어진다.
 링크와 시험이 이 경로를 읽으므로 파일 이름은 바꾸지 않는다.
 MCP 는 2026-07-28 만 받는다(소유자 결정 2026-11-22, [ADR-0011](../adr/0011-mcp-2026-07-28-only.md), §10.1). ADR-0010 2단계의
 두 작업, 코어 MCP 서버(bunny-holes/sherpa#27)와 `Sherpa.app`·`sherpa-relay`(bunny-holes/sherpa#28)는 이 문서만 보고
@@ -461,16 +462,23 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 - 앱은 코어 하나를 `Contents/MacOS/sherpa-core app serve` 로 띄우고 표준 입력·출력·오류를 파이프로 잇는다.
   코어는 앱과 이 파이프로만 주고받고 듣는 소켓을 열지 않는다. 코어가 여는 연결은 채팅 채널(§7.11)이 사람이 고른
   제공자의 출처로 내는 HTTPS 요청뿐이다. [소유자, ADR-0012 결정 3 이 ADR-0010 결정 2 를 고쳤다] 코어는 어느 명령이든 시작할 때
-  `globalThis.fetch` 를 모든 호출을 거부하는 함수로, `globalThis.WebSocket` 을 모든 연결을 거부하는 생성자로
-  바꾸고(`core/src/chat/egress.ts`), 둘 다 다시 쓰거나 재정의하지 못하게 한다. 코어 린트 규칙은
-  소켓·HTTP·WebSocket·이름 풀이 API 를 `core/src` 어디서나, `fetch` 를 그 모듈 밖에서 막는다. 린트는 코어가
-  번들하는 패키지를 보지 않으므로, 그 패키지가 전역 `fetch`·`WebSocket` 으로 가는 길은 시작 때의 거부가
-  막는다. [계약; ADR-0012 "코드로 지키기"] 빌드한 코어는 MCP 연결을 받는 동안 인터넷 소켓도 듣는 Unix 소켓도
-  쥐지 않는다. 나가는 길이 막는 출처(평문 http 루프백)의 모델 목록은 연결 없이 `egress_denied` 로 끝나고, 그 뒤에도
-  소켓이 없다. 자체 서명 인증서의 https 루프백 출처에는 연결하지만 TLS 확인이 거부해 그 서버의 처리기에 요청이
-  닿지 않는다. [실측: `core/tests/stdio/egress.test.ts`]
+  `globalThis.fetch` 를 모든 호출을 거부하는 함수로, `globalThis.WebSocket` 을 모든 연결을 거부하는 생성자로,
+  `globalThis.AI_SDK_DEFAULT_PROVIDER` 를 모든 모델을 거부하는 제공자로 바꾸고(`core/src/chat/egress.ts`), 셋 다 다시
+  쓰거나 재정의하지 못하게 한다. AI SDK 는 문자열로 받은 모델 id 를 그 전역이 비었을 때만 Vercel AI Gateway 로
+  푼다. 코어 린트 규칙은 소켓·HTTP·WebSocket·이름 풀이 API 를 `core/src` 어디서나, `fetch` 를 그 모듈 밖에서
+  막는다. 린트는 코어가 번들하는 패키지를 보지 않으므로 그 패키지는 단위 시험이 패턴으로 읽고(§13.1), 그 패키지가
+  전역 `fetch`·`WebSocket`·기본 제공자로 가는 길은 시작 때의 거부가 막는다. [계약; ADR-0012 "코드로 지키기"]
+  빌드한 코어는 MCP 연결을 받는 동안 인터넷 소켓도 듣는 Unix 소켓도 쥐지 않는다. 나가는 길이 막는 출처(평문 http
+  루프백)의 모델 목록은 연결 없이 `egress_denied` 로 끝나고, 그 뒤에도 소켓이 없다. 자체 서명 인증서의 https
+  루프백 출처에는 연결하지만 TLS 확인이 거부해 그 서버의 처리기에 요청이 닿지 않는다. 시험이 넘긴 인증 기관(아래)이
+  서명한 https 루프백 출처의 모델 목록은 그 서버에 닿고, 서버가 답을 잡고 있는 동안 코어의 인터넷 소켓은 모두 그
+  서버로 가는 연결이며, 그 출처가 보낸 리디렉트는 따르지 않는다. [실측: `core/tests/stdio/egress.test.ts`]
 - 환경은 물려주지 않는다. `HOME`, `TMPDIR`, `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, `LOG_LEVEL` 만 넘긴다.
-  [계약]
+  [계약] 그래서 Bun 이 시작 때 읽는 `NODE_EXTRA_CA_CERTS` 는 앱이 띄운 코어에 닿지 않는다. Bun 1.4.5 로 빌드한 코어는
+  그 변수가 가리킨 인증 기관을 믿고, 시험만 이것으로 믿을 수 있는 로컬 TLS 서버를 만든다. [실측:
+  `core/tests/stdio/egress.test.ts`] 그 밖에 코어가 믿는 인증 기관은 Bun 에 든 것뿐이다. macOS 의 시스템 저장소는
+  `--use-system-ca` 나 `NODE_USE_SYSTEM_CA=1` 이 있을 때만 더해지고 빌드도 앱도 그것을 주지 않으므로, 키체인에서
+  신뢰한 루트 인증서는 코어가 믿지 않는다. [실측: `core/tests/chat-egress.test.ts`; 추론: 끝까지는 재지 않았다(§16)]
 - 앱이 띄운 자식은 앱의 전체 디스크 접근 권한으로 판정된다. [실측] 코어가 띄우는 `osascript` 의 Apple Events
   가 앱의 권한과 hardened runtime 항목으로 판정되는지는 재지 않았다. [미확인]
 
@@ -733,8 +741,8 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   코어는 그 이름들과 `ERR_TLS_CERT_ALTNAME_INVALID` 를 `provider_certificate` 로, 그 밖의 연결 실패를 `network` 로
   읽는다. 자체 서명 인증서의 https 루프백 서버에는 연결하지만 그 처리기에 요청이 닿지 않는다. [실측:
   `core/tests/stdio/egress.test.ts`; 문서: Node.js [OpenSSL error
-  codes](https://nodejs.org/api/errors.html#openssl-error-codes)] 사람이 더한 루트 인증서를 빌드한 코어가 믿는지는
-  재지 않았다(§16). [미확인]
+  codes](https://nodejs.org/api/errors.html#openssl-error-codes)] 시험이 `NODE_EXTRA_CA_CERTS` 로 넘긴 인증 기관은
+  믿고, 키체인에서 신뢰한 루트 인증서는 코어의 저장소에 들지 않는다(§7.1). 그 뒤의 출처는 받을지 정하지 않았다(§16).
 
 보기(`→` 는 앱, `←` 는 코어가 쓴다):
 
@@ -1153,12 +1161,14 @@ result         object | null
   `warn [core:mux:open] refused channel=N kind=<종류> reason=unsupported_kind` 다. [계약]
 - 코어 나가는 길(§7.1, `core/src/chat/egress.ts`)의 줄은 아래와 같다. URL, 요청 헤더와 본문, 키, URL 을 담는 오류
   메시지는 싣지 않는다. [계약; 줄은 `core/src/chat/egress.ts`]
-  - `debug [core:egress:install] success global_fetch=refused global_websocket=refused`: 어느 명령이든 시작할 때
-    전역 `fetch` 와 `WebSocket` 을 거부로 바꾼 뒤.
+  - `debug [core:egress:install] success global_fetch=refused global_websocket=refused ai_sdk_default_provider=refused`:
+    어느 명령이든 시작할 때 전역 `fetch`·`WebSocket` 과 AI SDK 의 기본 제공자를 거부로 바꾼 뒤.
   - `warn [core:egress:fetch] refused reason=<사유>`: 나가기 전에 막은 요청과 따르지 않은 리디렉트. 사유는
     `global_fetch`, `invalid_url`, `not_https`, `userinfo`, `other_origin`, `preconnect`, `redirect` 다.
   - `warn [core:egress:websocket] refused reason=global_websocket`: 전역 `WebSocket` 으로 열려던 연결. 연결은
     열리지 않는다.
+  - `warn [core:egress:default-provider] refused reason=string_model_id`: AI SDK 에 문자열로 준 모델 id. 요청은
+    나가지 않는다.
   - `warn [core:egress:base-url] refused reason=<사유>`: 받지 않은 제공자 base URL. 사유는 `invalid_url`,
     `not_https`, `userinfo`, `query`, `fragment` 다.
   - `warn [core:egress:fetch] dropped options=<이름,…>`: 요청에서 뺀 Bun 확장 선택지의 이름.
@@ -1178,10 +1188,15 @@ result         object | null
   - `warn [core:chat:list-models] refused channel=N reason=busy`
   - `warn [core:chat:message] refused channel=N reason=<not_json|unknown_type|schema> bytes=<바이트 수>`
   - `warn [core:chat:open] refused channel=N reason=chat_limit chats=4`
+- AI SDK 의 경고(`core/src/chat/warnings.ts`)는 경고마다
+  `warn [core:chat:sdk-warning] type=<unsupported|compatibility|deprecated|other> subject=<기능이나 설정의 이름|none> provider=<AI SDK 의 제공자 id|none>`
+  한 줄이다. `subject` 는 `unsupported`·`compatibility` 의 `feature`, `deprecated` 의 `setting` 이다. 요청에서 온
+  값을 담을 수 있는 경고의 `details` 와 `message` 는 싣지 않는다. 값은 낱말 문자와 `.`·`:`·`/`·`-` 만 남기고
+  나머지는 `_` 로 바꾸며 64자에서 자른다. [계약; ADR-0012 "제공자 면"]
 - 남겨도 되는 값: 채널 번호와 종류, 도구와 capability 이름, `operation_id`, 작업 요청 `id`, 상태와 HTTP 상태, 오류
   코드와 오류 이름, 거부 사유, 뺀 `fetch` 선택지의 이름, `retry`, 걸린 시간, 바이트 수, 종료 코드와 신호, 상대의
   pid 와 서명 식별자, mux·앱·코어 버전, 확인 결과 낱말, 요청 봉투 `clientInfo` 의 이름과 버전, 채팅 제공자의 이름,
-  모델 수와 요청 수. [계약]
+  모델 수와 요청 수, AI SDK 경고의 종류와 그것이 가리키는 기능·설정 이름, AI SDK 의 제공자 id. [계약]
 - 남기면 안 되는 값: MCP 메시지 본문, 도구 인자와 결과, 확인 미리보기, 제목·이름·전화번호·메일 주소·대화
   id·`native_locator`, 메시지와 메일 본문, 홈 경로와 사용자 이름이 든 경로(소켓 절대 경로 포함), API 키, 채팅
   메시지 본문, 제공자 요청·응답 몸, OpenAI 호환의 `base_url` 과 그 출처. [계약;
@@ -1207,6 +1222,14 @@ result         object | null
   Google 에 `?key=` 가 없음), 쪽 넘김과 Anthropic 의 active 거르기, id·요청·응답 한도와 `truncated`, HTTP 상태·인증서
   ·연결 실패의 코드와 `retryable`, `busy`, `timeout`, 닫힘의 중단, 다섯째 채널의 `chat_limit`, 로그(debug 포함)와
   다른 프레임에 키가 없음. 런타임 `fetch` 는 나가는 길 뒤의 가짜다.
+- AI SDK 의 울타리: `ai` 7.0.179 의 `generateText`·`streamText`·`embed` 에 문자열 모델 id 를 주면 기본 제공자가
+  요청 전에 `egress_denied` 로 거부하고, 그 전역과 경고의 전역은 다시 쓰지 못하며, SDK 의 경고는 `details`·`message`
+  없이 Sherpa 로그로만 간다(`chat-sdk-globals.test.ts`; 시험 파일마다 프로세스가 따로라 진짜 전역을 바꾼다). 코어가
+  번들하는 패키지(`core/package.json` 의 의존과 그 의존, 선택이 아닌 peer)의 JavaScript 를 Bun 의 transpiler 로 읽어
+  린트와 같은 네트워크 모듈, 파일·경로·OS·암호·process 밖의 Node 모듈, `bun`, `Bun`·`Worker`·네이티브 바인딩, 이름을
+  실행 때 짓는 모듈 읽기가 없음을 보고, 시험을 돌리는 Bun 에 `fetch`·`WebSocket` 밖의 네트워크 전역이 없음을 본다
+  (`dependency-network.test.ts`). 코어 린트 규칙은 일부러 어긴 시험 파일에 돌려 형태마다 잡는지 본다
+  (`egress-lint.test.ts`).
 - 작업 요청: `id` 상관, 늦은 응답 버림, 시간 초과에서 읽기와 변경의 구분, `report` 모양 옮기기.
 - 확인: `approved`·`declined`·`unavailable`·30초 초과, 취소와 연결 끊김의 `withdraw`, `withdraw` 뒤 답 무시,
   실행이 원래 호출 안에서만 일어남. `confirm` 본문은 앱이 읽는 여덟 키만 가지고 `channel` 은 그 호출의 채널임.
@@ -1240,12 +1263,14 @@ stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). �
 - 나가는 길(§7.1, `egress.test.ts`): 인사부터 두 MCP 연결, 읽기 호출, 사람을 기다리는 삭제 호출까지 코어에 인터넷
   소켓(`lsof -i`)도 듣는 Unix 소켓(`lsof -U`)도 없다. `lsof` 는 소켓 없는 프로세스와 끝난 pid 에 똑같이 아무것도
   내지 않으므로 시험 프로세스의 듣는 소켓과 코어의 fd 0–2 를 먼저 보는 양성 대조를 둔다. `--version` 도 전역
-  `fetch` 와 `WebSocket` 을 거부로 바꾼 줄(§12)을 남긴다. 리디렉트 회귀: 차례 `fetch` 가 넘긴 요청의 307·302 를 Bun 의
-  `redirect: "error"` 가 따르지 않아 `redirect` 로 거부되고, 리디렉트 대상에는 요청이 가지 않는다. 이 시험만 빌드한
-  코어 대신 시험을 돌리는 Bun(선언한 판) 위에서 `core/src/chat/egress.ts` 를 로컬 서버에 돌린다. 채팅 채널의 모델
-  목록: 평문 http 루프백 출처는 `egress_denied` 이고 그 서버에 연결이 오지 않으며 코어에 소켓이 없다. 자체 서명
-  인증서의 https 루프백 출처는 `provider_certificate` 이고 그 서버의 처리기에 요청이 닿지 않는다. 두 경우 모두 키가
-  표준 오류와 프레임에 없다.
+  `fetch`·`WebSocket` 과 AI SDK 의 기본 제공자를 거부로 바꾼 줄(§12)을 남긴다. 채팅 채널의 모델 목록: 평문 http
+  루프백 출처는 `egress_denied` 이고 그 서버에 연결이 오지 않으며 코어에 소켓이 없다. 자체 서명 인증서의 https 루프백
+  출처는 `provider_certificate` 이고 그 서버의 처리기에 요청이 닿지 않는다. 시험마다 `/usr/bin/openssl` 로 만든 인증
+  기관을 `NODE_EXTRA_CA_CERTS` 로 넘긴 코어에서, 그 기관이 서명한 https 루프백 출처는 `models` 로 끝나고 서버는
+  `GET /v1/models` 하나를 `authorization: Bearer <키>` 와 함께 받는다. 서버가 답을 잡고 있는 동안 코어의 인터넷
+  소켓은 모두 그 서버로 가는 연결이고 듣는 Unix 소켓은 없다. 리디렉트 회귀: 그 출처가 다른 출처로 보낸 307 과 같은
+  출처로 보낸 302 는 `egress_denied` 로 끝나고 리디렉트 대상에는 요청이 가지 않는다. 어느 경우든 키가 표준 오류와
+  프레임에 없다.
 - 실제 시계(`waits.test.ts`): 답 없는 확인은 30초에 `withdraw` 되고 호출은 `confirmation.timed_out` 으로 실패하며
   늦은 승인은 아무것도 돌리지 않는다. 답 없는 발견은 5초 뒤 core 도구만 남기고 늦은 답은 버린다. planner 작업자가
   없는 앱은 core 도구를 곧바로 받는다.
@@ -1480,8 +1505,11 @@ not json\n                                                                      
 - 도구별 결과 스키마. Swift 와 ObjC 응답의 null 키 차이가 정리된 뒤 정한다.
 - 채팅 채널의 모델 목록(§7.11): 네 제공자의 실제 목록 응답이 문서의 모양과 같은지, Anthropic 의 `/v1/models` 가
   `anthropic-version: 2026-10-21` 을 받는지, Google 이 `pageSize=1000` 을 받는지. 목록은 유료 호출이 아니지만
-  소유자의 키가 있어야 하므로 소유자 실기(bunny-holes/sherpa#68)에서 잰다. 사람이 더한 루트 인증서나 시스템 프록시
-  뒤의 https 출처를 빌드한 코어가 믿는지도 재지 않았다(ADR-0012 "아직 확인 전").
+  소유자의 키가 있어야 하므로 소유자 실기(bunny-holes/sherpa#68)에서 잰다. 시스템 프록시 뒤의 https 출처에 빌드한
+  코어가 닿는지도 재지 않았다. 키체인에서 신뢰한 루트 인증서는 코어의 저장소에 들지 않는다(§7.1). 그런 루트 뒤의
+  출처(회사가 TLS 를 가로채는 망 등)를 받으려면 빌드에 `--compile-exec-argv=--use-system-ca` 를 넣어야 하고, 넣을지와
+  넣은 코어의 `fetch` 가 그 출처를 받는지는 정하지도 재지도 않았다(ADR-0012 위험 9, "아직 확인 전"). 끝까지 재려면
+  키체인을 바꿔야 한다.
 - MCP 스위치와 상태 창의 실기(§13.4): "?" 팝오버로 바꾼 창, 메뉴의 켜고 끄기, 복사한 명령, 긴 설치 경로에서 #52 가
   고쳐졌는지. 게이트는 서버의 동작과 명령 글만 보고, 창의 배치는 보지 않는다.
 
