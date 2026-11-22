@@ -39,6 +39,11 @@ xcode_version="$(xcodebuild -version 2>/dev/null | awk 'NR == 1 { v = $2 } NR ==
 swift_version="$(swift --version 2>&1 | sed -nE 's/.*Swift version ([0-9.]+).*/\1/p')" || swift_version=unknown
 log info "check:environment:success" "bun=$actual_bun xcode=$xcode_version swift=${swift_version:-unknown}"
 
+# 새 릴리스 알림. 바깥 릴리스로 같은 커밋의 결과가 바뀌면 안 되므로 warn 만 내고 게이트를 실패시키지 않는다.
+# 출처와 한도는 스크립트에 적었다.
+python3 "$REPO_ROOT/scripts/checks/notify_new_releases.py" "$REPO_ROOT" "$declared_bun" \
+  || log warn "check:currency:failure" "reason=notifier_exit_$? — new releases are UNCHECKED"
+
 # 0. Swift 서식(bunny-holes/sherpa#70). 기준은 저장소 루트의 .swift-format 하나다. swift-format 은 파일의 폴더에서
 #    위로 올라가며 가장 가까운 .swift-format 을 읽으므로 이 파일이 저장소의 모든 Swift 파일에 걸린다. Git 이 보는
 #    Swift 파일(추적한 것과 무시하지 않은 새 파일) 전부를 Xcode 도구 사슬의 swift format 으로 본다. 도구 사슬이
