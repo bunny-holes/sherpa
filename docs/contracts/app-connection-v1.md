@@ -424,7 +424,11 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 ### 7.1 코어 실행
 
 - 앱은 코어 하나를 `Contents/MacOS/sherpa-core app serve` 로 띄우고 표준 입력·출력·오류를 파이프로 잇는다.
-  코어는 소켓을 열지 않고 이 파이프만 읽는다. [소유자, ADR-0010 결정 2]
+  코어는 소켓을 열지 않고 이 파이프만 읽는다. [소유자, ADR-0010 결정 2] 코어는 어느 명령이든 시작할 때
+  `globalThis.fetch` 를 모든 호출을 거부하는 함수로 바꾼다(`core/src/chat/egress.ts`). 코어 린트 규칙은
+  소켓·HTTP·WebSocket·이름 풀이 API 를 코어 어디서나, `fetch` 를 그 모듈 밖에서 막는다. [계약; ADR-0012 "코드로
+  지키기"] 빌드한 코어는 MCP 연결을 받는 동안 인터넷 소켓도 듣는 Unix 소켓도 쥐지 않는다. [실측:
+  `core/tests/stdio/egress.test.ts`]
 - 환경은 물려주지 않는다. `HOME`, `TMPDIR`, `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, `LOG_LEVEL` 만 넘긴다.
   [계약]
 - 앱이 띄운 자식은 앱의 전체 디스크 접근 권한으로 판정된다. [실측] 코어가 띄우는 `osascript` 의 Apple Events

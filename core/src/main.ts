@@ -1,5 +1,6 @@
 import { proxyAppleRequest } from "./apple/helper.ts";
 import { serveApp } from "./app/serve.ts";
+import { installEgress } from "./chat/egress.ts";
 import { integer, optionalValue, requireConfirmation, unsigned, value } from "./cli/args.ts";
 import { codes, invalidRequest, SherpaError } from "./cli/errors.ts";
 import { help } from "./cli/help.ts";
@@ -164,5 +165,7 @@ export async function main(args: readonly string[]): Promise<number> {
 }
 
 if (import.meta.main) {
+  // Every command runs with the global fetch refusing (ADR-0012 "네트워크").
+  installEgress();
   process.exitCode = await main(process.argv.slice(2));
 }
