@@ -45,8 +45,7 @@ manner: "규칙만 적고 근거는 ADR·live-evidence·스크립트 주석으�
   with the owner's Developer ID Application certificate in the keychain. The
   plugin version lives in both plugin manifests and `plugins/sherpa/CHANGELOG.md`
   and gets no tag. Bump it whenever `plugins/sherpa/` changes, because Claude
-  Code compares only that version. `minimumVersion` in `cli-contract.json`
-  follows the rule in its own `note`.
+  Code compares only that version.
 - Sherpa supports macOS only, and the repository has no CI (owner decision,
   2026-11-20: Windows support and its hook job were removed). The gate is the
   macOS run of `bash scripts/check-all.sh` — the core's `vp check`, tests and

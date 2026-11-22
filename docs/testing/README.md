@@ -44,11 +44,13 @@ Anything not listed here is not proven by the gate.
   the journal store's single terminal transition, and the in-process Mail and
   ReminderKit shims answering `capabilities` without a worker.
 - **CLI contract probes** in `scripts/check-all.sh`: the `--version` shape the
-  plugin guard parses, and that an invalid planner request ends in the named
+  Formula test parses, and that an invalid planner request ends in the named
   error `protocol.invalid_envelope` through the core and the helper.
-- **Plugin checks** (`plugins/sherpa/scripts/check.sh`): manifests, guard,
-  skill set, that every `sherpa …` command a skill names exists in
-  `sherpa --help`, script references, descriptions, and the SessionStart hook.
+- **Plugin checks** (`plugins/sherpa/scripts/check.sh`): manifests, the
+  `.mcp.json` registration (contract §2 "플러그인의 MCP 등록"), skill set, that
+  every MCP tool a skill names is in the core's tool registry and that no skill
+  calls the CLI, that the one `sherpa …` command a skill asks the person to run
+  exists in `sherpa --help`, script references, and descriptions.
 - **Document checks**: structure and relative links
   (`scripts/checks/verify_docs.py`), and that every `sherpa …` command in the
   READMEs and `docs/testing/` exists in `sherpa --help`

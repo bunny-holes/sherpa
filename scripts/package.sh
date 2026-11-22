@@ -36,7 +36,7 @@ readonly HELPER="$HELPER_PACKAGE/.build/release/sherpa-apple"
 [ -x "$BINARY" ] || fail failure "reason=binary_missing path=${BINARY#"$REPO_ROOT/"}"
 [ -x "$HELPER" ] || fail failure "reason=helper_missing path=${HELPER#"$REPO_ROOT/"}"
 
-# 버전의 단일 진실 원천은 빌드된 코어다. 가드(require-cli.sh)와 Formula 가 같은
+# 버전의 단일 진실 원천은 빌드된 코어다. Formula 의 test 가 이
 # 문자열에 기대므로 형식부터 검증하고, 헬퍼가 같은 판인지 대조한다.
 raw_version="$("$BINARY" --version)"
 version="$(printf '%s' "$raw_version" | sed -n 's/^sherpa \([0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}\)$/\1/p')"
@@ -164,7 +164,7 @@ class Sherpa < Formula
   end
 
   test do
-    # 스킬의 버전 가드가 이 출력 형식에 기댄다. version 은 Homebrew 가 url 에서 읽은 값이다.
+    # --version 출력 형식은 계약이다(scripts/check-all.sh). version 은 Homebrew 가 url 에서 읽은 값이다.
     assert_equal "sherpa #{version}", shell_output("#{bin}/sherpa --version").strip
     assert_match "sherpa kakaotalk archive", shell_output("#{bin}/sherpa --help")
     helper = libexec/"SherpaHelper.app/Contents/MacOS/sherpa-apple"

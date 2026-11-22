@@ -153,7 +153,7 @@ export SHERPA_APPLE_BIN="$REPO_ROOT/apple/eventkit-service/.build/debug/sherpa-a
 # 30초 확인 대기와 5초 발견 대기를 실제 시계로 돌아 40초쯤 걸린다.
 (cd "$CORE" && bun run test:stdio >/dev/null) || fail "reason=core_stdio_test_failed"
 
-# --version 출력 형식은 계약이다. 스킬의 가드와 Formula 의 test 가 이 모양을 파싱한다.
+# --version 출력 형식은 계약이다. Formula 의 test 가 이 모양을 파싱한다.
 binary="$CORE/dist/sherpa"
 raw="$("$binary" --version)"
 printf '%s' "$raw" | grep -Eq '^sherpa [0-9]+\.[0-9]+\.[0-9]+$' \
@@ -292,10 +292,18 @@ done
   || fail "reason=bundled_relay_version_mismatch cli=$cli_version"
 log info "check:app-bundle:success" "version=$cli_version configuration=Release signed=developer_id"
 
-# 3. 에이전트 플러그인. 방금 빌드한 바이너리를 넘겨 스킬이 부르는 명령이 실제로
-#    존재하는지까지 확인시킨다.
-SHERPA_BINARY="$binary" bash "$REPO_ROOT/plugins/sherpa/scripts/check.sh" \
-  || fail "reason=plugin_check_failed"
+# 3. 에이전트 플러그인. 스킬은 Sherpa.app 의 MCP 도구를 부른다. 코어의 도구 등록부에서 이름을 뽑아
+#    넘겨 스킬이 적은 도구가 서버에 실제로 있는지 확인시키고, 방금 빌드한 바이너리를 넘겨 스킬이
+#    사용자에게 안내하는 명령(kakaotalk setup)이 있는지 확인시킨다.
+mcp_tools="$(mktemp "${TMPDIR:-/tmp}/sherpa-mcp-tools.XXXXXX")"
+(cd "$CORE" && bun -e '
+const { plannerEntries } = await import("./src/mcp/registry.ts");
+const { coreEntries } = await import("./src/mcp/core-tools.ts");
+for (const entry of [...plannerEntries, ...coreEntries]) console.log(entry.name);
+' > "$mcp_tools") || { rm -f "$mcp_tools"; fail "reason=mcp_tool_list_failed"; }
+SHERPA_BINARY="$binary" SHERPA_MCP_TOOLS="$mcp_tools" bash "$REPO_ROOT/plugins/sherpa/scripts/check.sh" \
+  || { rm -f "$mcp_tools"; fail "reason=plugin_check_failed"; }
+rm -f "$mcp_tools"
 
 # 4. 자체 카탈로그가 다시 생기면 같은 플러그인이 두 목록에 보인다.
 for catalog in "$REPO_ROOT/.claude-plugin/marketplace.json" "$REPO_ROOT/.agents/plugins/marketplace.json"; do
@@ -303,18 +311,7 @@ for catalog in "$REPO_ROOT/.claude-plugin/marketplace.json" "$REPO_ROOT/.agents/
 done
 log info "check:marketplace:success" "source=plug-hole"
 
-# 5. 스킬이 요구하는 최소 CLI 버전이 이 체크아웃의 CLI 로 만족되는가.
-#    같은 저장소에서 나가는 둘이 서로 모순인 채 릴리스되는 것을 막는다.
-minimum="$(python3 -c "import json;print(json.load(open('$REPO_ROOT/plugins/sherpa/cli-contract.json'))['minimumVersion'])")"
-python3 - "$cli_version" "$minimum" <<'PY' || fail "reason=cli_older_than_contract"
-import sys
-installed, minimum = (tuple(int(x) for x in v.split(".")) for v in sys.argv[1:3])
-if installed < minimum:
-    raise SystemExit(f"cli {'.'.join(map(str, installed))} < contract {'.'.join(map(str, minimum))}")
-PY
-log info "check:contract:success" "cli=$cli_version minimum=$minimum"
-
-# 6. 문서 구조. 제목 앞에 본문이 오면 렌더러가 제목 없는 문서로 읽는다.
+# 5. 문서 구조. 제목 앞에 본문이 오면 렌더러가 제목 없는 문서로 읽는다.
 python3 "$REPO_ROOT/scripts/checks/verify_docs.py" "$REPO_ROOT" || fail "reason=doc_structure_invalid"
 # 사용 문서가 안내하는 명령이 실제로 있는가. 0.7.1 의 live-validation.md 가 없는 명령을 안내했다.
 help_snapshot="$(mktemp "${TMPDIR:-/tmp}/sherpa-help.XXXXXX")"
@@ -324,7 +321,7 @@ python3 "$REPO_ROOT/scripts/checks/verify_doc_commands.py" "$REPO_ROOT" "$help_s
 rm -f "$help_snapshot"
 log info "check:docs:success" "structure, links and commands"
 
-# 7. 릴리스 경로. brew 가 없으면 건너뛰되 건너뛴 사실을 남긴다.
+# 6. 릴리스 경로. brew 가 없으면 건너뛰되 건너뛴 사실을 남긴다.
 #    SHERPA_SKIP_RELEASE=1 로 명시적으로 끌 수 있다 — 반복 실행에서 느리기 때문이다.
 if [ "${SHERPA_SKIP_RELEASE:-0}" = "1" ]; then
   log warn "check:release:skipped" "reason=explicitly_disabled — release path is UNVERIFIED"

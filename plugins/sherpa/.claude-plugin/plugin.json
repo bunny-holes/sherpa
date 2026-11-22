@@ -1,7 +1,7 @@
 {
   "name": "sherpa",
-  "version": "0.8.4",
-  "description": "Agent workflows for the deterministic Sherpa macOS orchestration CLI.",
+  "version": "0.9.0",
+  "description": "Agent workflows for the MCP server of Sherpa.app: Apple Calendar, Reminders, Mail, iMessage and local KakaoTalk on macOS.",
   "author": {
     "name": "XIYO",
     "url": "https://github.com/XIYO"
@@ -11,6 +11,7 @@
   "license": "MIT",
   "keywords": [
     "agent",
+    "mcp",
     "calendar",
     "reminders",
     "mail",
