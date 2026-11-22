@@ -9,6 +9,70 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — The instance lock outlived its close while another thread spawned a child (bunny-holes/sherpa#78)
+
+This Mac (macOS 27.3 `26C5035r`, kernel `xnu-13432.60.57`, 14 cores, Xcode
+27.2 `27B52`, Swift 6.4.2, Swift Testing 2403), worker session on
+`fix/instance-lock-flake` from `main` `3fda0e2`, between 04:46Z and 05:28Z.
+The probe below is a C program built with Xcode's clang; no Bun, model or agent
+was involved. Other worktrees' gates and builds ran at the same time; the load
+averages below are `uptime`'s one-minute values at the start and end of each
+batch.
+
+- The process: `swift test --package-path apple/sherpa-app` built one bundle
+  per test target and ran each in its own `swiftpm-testing-helper` process.
+  The `SherpaAppServerTests` process holds 28 tests, and its only child
+  processes come from `quotedPathsReachTheShellAsOneUnchangedWord`, whose
+  three cases started together with `takesTheLockOnceAndCreatesTheFolderPrivate`
+  and `posix_spawn` their shell four times each.
+- Narrowed: the lock test alone, `--maximum-repetitions 5000 --repeat-until
+  fail`, passed 5000 times. With the shell test in the same `--filter`
+  (`--maximum-repetitions 3000 --repeat-until fail`) 10 of 10 invocations
+  failed with `lock not released`, at the lock test's repetition 3 to 60.
+  With the outcome added to the message, the third `acquire` returned
+  `.heldByAnotherProcess` in 3 of 3, so `flock` refused the lock; no
+  `open` failed.
+- Normal runs, `swift test --skip-build --filter 'SherpaAppServerTests\.'`
+  (28 tests, default parallelism): 1 of 150 failed with `lock not released`
+  at `ServerUnitTests.swift:328`, the gate's line (load 10.75 to 6.16). With
+  two scratch `swift build` loops alongside (`eventkit-service` debug and
+  `foundation-models-service` release), 3 of 150 failed (load 5.96 to 11.29).
+- A C probe: one thread opened a lock file with
+  `O_CREAT|O_RDWR|O_CLOEXEC|O_NOFOLLOW`, took `flock(LOCK_EX|LOCK_NB)`,
+  closed it, opened it again and asked for the lock again, 20,000 times, while
+  four threads started `/usr/bin/true` in a loop and waited for it. The second
+  lock was refused with `EWOULDBLOCK` 0 times without the spawning threads, 71
+  times with `posix_spawn` and default attributes (free again after about
+  70 µs, at most 267 µs), 74 times with `POSIX_SPAWN_CLOEXEC_DEFAULT` (at most
+  1.2 ms), and 41 times with `fork` and `execve` (0.7 to 2.5 ms). With
+  `flock(LOCK_UN)` before the close it was refused 0 times in each of the three
+  spawning modes.
+- Source: in `xnu-12377.121.6`, the newest published XNU (the running
+  kernel's source is not published), `posix_spawn` without
+  `POSIX_SPAWN_SETEXEC` makes the child through `fork1(PROC_CREATE_SPAWN)`,
+  and `fdt_fork` in `bsd/kern/kern_descrip.c` leaves out a close-on-exec
+  descriptor only on the `execve` path (`in_exec`). The child's copy closes
+  in `fdt_exec`, which image activation calls (`bsd/kern/kern_exec.c`).
+  `man 2 close` releases a lock on the last close of the file; `man 2 flock`
+  says descriptors duplicated by `dup` or `fork` are references to one lock
+  and an explicit unlock through any of them releases it.
+- The change: `InstanceLock.release()` unlocks with `flock(LOCK_UN)` before it
+  closes. The regression `releasesTheLockWhileACopyOfItsDescriptorIsStillOpen`
+  holds an `F_DUPFD_CLOEXEC` copy of the lock's descriptor across
+  `release()`; it failed 50 of 50 repetitions with `.heldByAnotherProcess`
+  before the change and passed 1000 of 1000 after it.
+- After the change: the lock test, the shell test and the regression together,
+  10 invocations of 3000 repetitions, had no failure. Normal runs: 0 of 150
+  (load 8.68 to 9.83) and 0 of 150 with the two build loops (load 9.32 to
+  11.38).
+- Not measured: whether the gate's failure of 2026-11-22 04:29Z on `cabfc97`
+  had this cause, since that run did not record the outcome; its line, its
+  test process and the concurrent build match. The app's own shutdown while it
+  starts a child: `AppServer.shutdown()` stops the core before it releases
+  the lock. `O_CLOFORK`, which the macOS 27.2 SDK defines and which `fdt_fork`
+  leaves out of fork and spawn children, was not tried: the package targets
+  macOS 14, and the flag's support there was not checked.
+
 ## 2026-11-22 — Claude Code 2.1.330 after a relay that ended with `mcp_disabled` or `app_not_running`: the `/mcp` page, Reconnect, and what the model is told (bunny-holes/sherpa#69)
 
 This Mac (macOS 27.3 26C5035r, Swift 6.4.2), run by the bunny-holes/sherpa#69
