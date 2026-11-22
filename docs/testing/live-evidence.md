@@ -12,20 +12,22 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 ## 2026-11-22 — Claude Code and Codex after a relay that ended with `mcp_disabled` or `app_not_running`, in plugin and user scope (bunny-holes/sherpa#69)
 
 This Mac, run by the bunny-holes/sherpa#69 worker between 03:23Z and 03:47Z.
-No model was called and no agent setting was edited by hand. Claude Code
-2.1.326 ran interactively in a pty with `--debug=mcp --debug-file` and no
-prompt. Plugin scope used the profile this session runs under, with
-`--plugin-dir` copies of `plugins/sherpa/` whose plugin and server names
-were fresh (`sherpapin11221222<tag>`), so that no cached failure could attach
-to the installed `sherpa`. User scope used a scratch `CLAUDE_CONFIG_DIR`,
-not logged in, with `claude mcp add --scope user`; the interactive session
-still started the servers. Codex 0.171.0 ran `codex app-server` with a
-scratch `CODEX_HOME` and `-c mcp_servers.<name>.command=…` and
+No model was called and no agent setting was edited by hand. Every Claude Code
+run's startup banner read v2.1.326, and the Codex app-server logged
+`app.version=0.171.0`. Claude Code ran interactively in a pty with
+`--debug=mcp --debug-file` and no prompt. Plugin scope used the profile this
+session runs under, with `--plugin-dir` copies of `plugins/sherpa/` whose
+plugin and server names were fresh (`sherpapin11221222<tag>`), so that no
+cached failure could attach to the installed `sherpa`. User scope used a
+scratch `CLAUDE_CONFIG_DIR`, not logged in, with
+`claude mcp add --scope user`; the interactive session still started the
+servers. Codex 0.171.0 ran `codex app-server` with a scratch `CODEX_HOME` and
+`-c mcp_servers.<name>.command=…` and
 `-c mcp_servers.<name>.env={CODEX_MCP_PROTOCOL_VERSION="2026-07-28"}`
-overrides. Every entry's command was one wrapper script that never changed;
-a mode file beside it chose what the next start ran, and a `tee` in a
-process substitution recorded the incoming lines without holding the
-agent's stdout or stderr.
+overrides. Every entry's command was one wrapper script that never changed; a
+mode file beside it chose what the next start ran, and a `tee` in a process
+substitution recorded the incoming lines without holding the agent's stdout or
+stderr.
 
 - Modes. `off`: the debug `sherpa-relay` built from `3ce5e60` against the
   test host (`sherpa-app-testhost --mcp off`); it exits 75 with the
