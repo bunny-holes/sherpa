@@ -101,6 +101,23 @@ register the bundled relay with Claude Code and Codex. The app copies them and
 never writes an agent's configuration (contract §2 "MCP 켜기와 연결 안내"). The app and relay are not released yet (notarized cask,
 bunny-holes/sherpa#31), and the CLI keeps the helper path above until then.
 
+Today no Sherpa process makes a network connection. The core reads only the
+pipes the app opened for it (contract §7.1); its source calls no `fetch` and
+opens no socket. The app listens only on its Unix socket for relays, and the
+relay connects only to that socket. [ADR-0012](../adr/0012-in-app-chat.md)
+(owner decision 2026-11-22, bunny-holes/sherpa#59) amends ADR-0010 decision 2
+for an in-app chat that is not built yet. When it lands, `sherpa app serve` runs
+the chat loop in a new `core/src/chat/` module on the Vercel AI SDK v7. The chat
+calls the same 35-tool registry as MCP, with the same app-window confirmation
+for deletes and sends, and sends each turn, with the tool results it reads, to
+the one provider the person chose. Outbound HTTPS to that provider's origin is
+then the only connection the core opens; every other outbound connection and
+every listening socket stays forbidden. The API key lives in the app's data
+protection keychain and reaches the core only inside the turn message on the
+pipe. Whether a chat transcript may be stored is an open owner decision, so the
+rule below against a long-lived content archive still binds. Until that work
+lands, the current behavior above and contract §7.1 stand.
+
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of
 truth for Calendar and Reminders; Messages, KakaoTalk, and Mail.app remain the
 source of truth for communication content. Sherpa reads their local stores
