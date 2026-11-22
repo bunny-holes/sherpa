@@ -9,6 +9,54 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — Plugin 0.9.0 from `plug-hole` reaches the app in `/Applications` with both agents' own configuration (bunny-holes/sherpa#55)
+
+This Mac, main session, on the owner's go-ahead to change both agents' own
+configuration. The app was built from `main` `b01470c` (Release archive and
+export, Developer ID, not notarized), copied with `ditto` to
+`/Applications/Sherpa.app` and opened from there. `codesign --verify --deep
+--strict` passed and the bundle reported version 0.8.5. The app and the core
+it started ran from `/Applications/Sherpa.app/Contents/MacOS/`. The MCP switch
+was on.
+
+- Grants: through the installed plugin, `reminder_authorization_status` and
+  `event_authorization_status` both returned `full_access`. The Calendar and
+  Reminders grants given to the exported copy held for the copy in
+  `/Applications`.
+- Catalog: `bunny-holes/plug-hole` `f6583d5` (description changed to the
+  MCP server of Sherpa.app). `claude plugin marketplace update plug-hole`
+  succeeded.
+- Claude Code 2.1.326:
+  - `claude plugin install sherpa@plug-hole` returned `outcome: ok`, scope
+    `user`. `claude plugin list --json` showed 0.9.0 with server `sherpa`,
+    command `/Applications/Sherpa.app/Contents/MacOS/sherpa-relay` and env
+    `CODEX_MCP_PROTOCOL_VERSION`.
+  - `claude mcp list` reported `plugin:sherpa:sherpa` `✔ Connected`. Its
+    MCP log: `Successfully connected (transport: stdio) in 50ms`,
+    `protocolEra` `modern`, `negotiatedProtocolVersion` `2026-07-28`.
+  - One `claude -p` with `--model haiku` and `--allowedTools
+    mcp__plugin_sherpa_sherpa__reminder_authorization_status` called the
+    tool once. The result was `succeeded`, in 3 turns, about 0.006 USD, with
+    no permission denials.
+- Codex 0.171.0:
+  - `codex features enable mcp_2026_07_28` wrote the feature to
+    `config.toml` and warned that an under-development feature is enabled.
+  - `codex plugin marketplace add https://github.com/bunny-holes/plug-hole.git`
+    followed by `codex plugin add sherpa@plug-hole` installed
+    `0.9.0+codex.20261122095024`, `installed, enabled`.
+  - `codex app-server` with no `-c` override: server `sherpa`
+    `runtimeStatus` `connected`, `serverInfo` sherpa 0.8.5, 35 tools.
+    `mcpServer/tool/call` of `reminder_authorization_status` returned
+    `succeeded`. The server refuses `initialize` (ADR-0011), so the
+    connection was a 2026-07-28 one.
+- Not measured:
+  - Whether a user-scope or plugin-scope Claude Code server stays pinned to the
+    old revision after an `mcp_disabled` failure.
+  - `/mcp` Reconnect.
+  - The menu bar toggle.
+  - The registration commands behind the status window's **?**, which the
+    plugin makes unnecessary.
+
 ## 2026-11-22 — The plugin's `.mcp.json` registers the app's relay with both agents (bunny-holes/sherpa#55)
 
 This Mac, run by the plugin worker. No model was called, and neither agent's
