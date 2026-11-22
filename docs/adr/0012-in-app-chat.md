@@ -397,9 +397,9 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   이 길을 막지 않는다. 막는 것은 시작 때의 기본 제공자 거부와 린트다. stdio 시험은 코어의 `HOME` 에 만료된 로그인을,
   작업 폴더에 `.vercel/project.json` 을 두고 빌드한 코어로 차례 둘을 돌려, 두 파일의 바이트와 수정 시각이 그대로이고
   서버가 받은 요청이 모델 목록 하나와 차례 둘뿐이며 거부 줄이 없음을 본다. 대조로, 같은 두 파일을 둔 임시 `HOME` 의
-  자식 프로세스에서 `fetch` 를 막고 진짜 `getVercelOidcToken` 을 부르면 `VercelOidcTokenError` 를 던지고 `fetch`
-  없이 로그인을 `{}` 로 덮어쓴다. 그러므로 빌드한 코어가 그 파일을 그대로 둔 것은 위의 막음이 그 길을 막은 결과다.
-  [실측: `core/tests/stdio/egress.test.ts`])
+  자식 프로세스에서 preload 로 `fetch` 를 막고 진짜 `getVercelOidcToken` 을 부르면 `VercelOidcTokenError` 를 던지고
+  `fetch` 없이 로그인을 `{}` 로 덮어쓴다. 그러므로 빌드한 코어가 그 파일을 그대로 둔 것은 위의 막음이 그 길을 막은
+  결과다. [실측: `core/tests/stdio/egress.test.ts`])
 - **원격 측정:** v7 은 통합을 등록할 때만 원격 측정을 내고, OpenTelemetry 는 `@ai-sdk/otel` 로 옮겼다. [문서:
   [Telemetry](https://ai-sdk.dev/docs/ai-sdk-core/telemetry)] 코어는 통합을 등록하지 않는다. [설계]
 - **경고:** AI SDK 의 경고는 `globalThis.AI_SDK_LOG_WARNINGS` 가 `false` 나 함수가 아니면 기본 기록기로 나간다.
@@ -557,11 +557,11 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   코어의 인터넷 소켓은 모두 그 서버로 가는 연결이고 듣는 Unix 소켓은 없으며, 키는 그 요청의 `authorization`
   머리말에만 있다. 차례로 하는 같은 시험은 차례를 넣는 작업이 더한다.) (정정 2026-11-22, #66, 글 차례: 같은 파일이
   차례로도 이 시험을 한다. 평문 http 루프백 출처로 보낸 차례는 `egress_denied` 이고, 그 포트에서 듣는 시험 프로세스는
-  연결을 하나도 받지 않으며, 코어는 AI SDK 를 싣지 않는다. 시험이 믿게 한 출처로 보낸 차례는 서버가 답의 나머지를
-  잡고 있는 동안 첫 `delta` 를 앱에 내고 `done` 으로 끝나며, 서버가 받은 요청은 모델 목록 하나와 차례 둘이고 키는
-  `authorization` 머리말에만 있다. 차례 중의 소켓은 `lsof` 로 보지 않는다. 한 순간의 소켓 목록으로는 연결이
-  없었음을 보이지 못하고, 찍는 때에 따라 결과가 흔들리기 때문이다. 연결은 서버가 받은 요청과 연결의 수, 거부 줄로
-  본다. 키, 사람의 글, 답은 표준 오류에 없다.)
+  연결을 하나도 받지 않으며, 그 뒤 코어에 소켓이 없고, 코어는 AI SDK 를 싣지 않는다. 시험이 믿게 한 출처로 보낸 차례는
+  서버가 답의 나머지를 잡고 있는 동안 첫 `delta` 를 앱에 내고 `done` 으로 끝난다. 그동안 코어의 인터넷 소켓은 모두 그
+  서버로 가는 연결이고 듣는 Unix 소켓은 없다. 서버가 답을 잡고 있는 동안 보므로 그 목록은 모델 목록의 시험처럼
+  흔들리지 않는다. 서버가 받은 요청은 모델 목록 하나와 차례 둘이고, 키는 `authorization` 머리말에만 있으며, 키,
+  사람의 글, 답은 표준 오류에 없다.)
 - 게이트는 유료 API 를 부르지 않는다. 실제 제공자 연결은 소유자 실기에서 `lsof -i -a -p <코어 pid>` 로 연결이
   고른 출처 하나뿐인지 본다. [설계]
 

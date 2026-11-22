@@ -86,7 +86,7 @@ Anything not listed here is not proven by the gate.
     and the four provider packages against hand-written server-sent events
     behind the egress, with model ids the packages know: each provider's
     request (the URL, the key only in its header, Anthropic's version, cached
-    instructions without sampling settings and the model's 128,000
+    instructions without sampling or thinking settings and the model's 128,000
     `max_tokens`, OpenAI's `store: false` and the old `include` only for
     reasoning models, Google's Interactions, OpenAI-compatible's
     `stream_options`) and the tokens of `done`; the `max_tokens` Anthropic's
@@ -105,11 +105,13 @@ Anything not listed here is not proven by the gate.
     again after 2 s and 4 s; a stream error before output three requests on
     OpenAI and Anthropic, after output one despite `onError`); the
     first-output and between-output limits made short (a request past the
-    first-output limit sent once, the wait after a failure status outside it,
-    and a request sent again after OpenAI reported an error before output
-    starting it anew); Bun's idle-timeout `TimeoutError` before the headers,
-    in the body and after output, each sent once and ending with `timeout`;
-    the 2 MiB conversation limit; and no key, text or answer in a log line.
+    first-output limit sent once, and the wait after a failure status outside
+    it); the 600 s limit on a fake clock, which a request sent again after
+    OpenAI reported an error a second before it starts anew, so its answer
+    may come after the first request's limit; Bun's idle-timeout
+    `TimeoutError` before the headers, in the body and after output, each
+    sent once and ending with `timeout`; the 2 MiB conversation limit; and no
+    key, text or answer in a log line.
     A test fails on any AI SDK warning it does not expect.
   - `tools-call.test.ts` proves the tool call lifecycle
     (`core/src/tools/call.ts`): its start and end lines, the set of active
@@ -144,7 +146,8 @@ Anything not listed here is not proven by the gate.
     A chat channel's model list for a plain-HTTP loopback origin
     ends with `egress_denied` and no connection while `lsof` sees no socket;
     a turn for one ends with `egress_denied` while the port's listener in the
-    test process accepts no connection, and loads no AI SDK;
+    test process accepts no connection and `lsof` sees no socket, and loads
+    no AI SDK;
     and one for an HTTPS loopback server with a self-signed certificate ends
     with `provider_certificate` before the server's handler sees a request.
     With a certificate authority made per test and passed in
@@ -156,17 +159,17 @@ Anything not listed here is not proven by the gate.
     `egress_denied`, and the redirect target sees no request. On such a
     server a model list answers without the AI SDK, which the first text turn
     loads once (its debug line); that turn gives the app its first `delta`
-    while the server holds the rest and ends with `done`, the second carries
+    while the server holds the rest, when every internet socket of the core
+    is a connection to that server, and ends with `done`; the second carries
     the first answer, the server sees one model list and two turns, and the
     time line carries the time zone the Mac is set to (`/etc/localtime`),
-    which the core reads without `TZ`. The turn does not watch sockets with
-    `lsof`: one listing cannot show that no connection was made. The built
-    core carries the AI Gateway's OIDC code; the turns run with an expired
-    Vercel CLI login in the core's `HOME` and a `.vercel/project.json` in
-    its working directory, and both files keep their bytes and modification
-    times. As the control, the real `@vercel/oidc`, called in a child with a
-    scratch `HOME`, the same two files and `fetch` refused, rewrites that
-    login to `{}` without calling `fetch`.
+    which the core reads without `TZ`. The built core carries the AI
+    Gateway's OIDC code; the turns run with an expired Vercel CLI login in
+    the core's `HOME` and a `.vercel/project.json` in its working directory,
+    and both files keep their bytes and modification times. As the control,
+    the real `@vercel/oidc`, called in a child with a scratch `HOME`, the same
+    two files and `fetch` refused by a preload, rewrites that login to `{}`
+    without calling `fetch`.
   - `waits.test.ts`: the 30 s confirmation and 5 s discovery waits on the real
     clock.
   - `cli.test.ts`: the built CLI checks every argument before it opens a store,
