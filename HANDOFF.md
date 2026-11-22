@@ -1,4 +1,4 @@
-# sherpa HANDOFF — 2026-11-22 20:48 KST
+# sherpa HANDOFF — 2026-11-22 21:12 KST
 
 ## 목표
 
@@ -31,7 +31,9 @@ Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 
       코어의 첫 나가는 연결이다. 오류 코드와 한도는 닫힌 목록이고, 키는 그 요청의 머리말에만 있다.
     - #88(main `fa89152`): ADR-0012 의 Mux 2 문장 옆에 3판이 mux 를 3 으로 올렸다고 적었다.
     - #91(D1, main `fa370ef`): `ai` 7.0.179 와 `@ai-sdk/*` 넷을 고정하고 울타리(봉인, 린트, 의존 닫힘 검사, TLS
-      stdio 시험)를 쳤다. 빌드한 코어는 Bun 에 든 루트 118개와 `NODE_EXTRA_CA_CERTS` 만 믿는다(실측).
+      stdio 시험)를 쳤다.
+    - #97(main `f3ca09a`): 빌드가 `--compile-exec-argv=--use-system-ca` 를 넣어 코어가 시스템 저장소도 믿는다.
+      Bun 1.4.5 의 그 저장소는 관리자 신뢰 설정의 인증서만 넣고 사용자 신뢰 설정의 것은 넣지 않는다(실측).
   - #92 보안 결함: 0.8.0~0.8.5 의 CLI 가 실행한 폴더의 `.env`·`bunfig.toml` 을 읽었다. 앱의 코어는 cwd 가 `/` 라
     막혀 있었다. #93 이 빌드의 자동 읽기 넷을 끄고 회귀 시험과 `scripts/package.sh` 의 확인을 넣었고, #95 가 깃발 넷의
     단위 시험과 `XDG_CONFIG_HOME` 을 더했다. #94 로 0.8.6 을 냈다(태그 `v0.8.6`, tap `3ee4e2b`). 이 Mac 의
@@ -40,7 +42,8 @@ Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 
   - OpenAI 의 옛 `include: reasoning.encrypted_content` 는 ADR-0012 결정 7 의 예외로 둔다. D2 가 싣는다.
   - https 루프백은 이름으로 막지 않는다. 규칙은 https 와 코어가 믿는 인증서다. #89 가 실었다.
   - 한 차례의 단계 한도는 20이다. D3 이 싣는다.
-  - 코어는 키체인이 신뢰한 인증서도 믿는다. 빌드에 `--use-system-ca` 를 넣는다. 신뢰 PR 이 싣는다.
+  - 코어는 키체인이 신뢰한 인증서도 믿는다(#97). 사용자 신뢰 설정에서만 믿게 한 루트까지는 지금 넓히지 않고, 그런
+    출처가 실제로 막히면 그때 넓힌다(ADR-0012 정정 "사용자 신뢰 설정").
 - 다른 저장소: plug-hole #13·#14·#15(main `c826044`), toolbox 0.46.2(태그 `toolbox-v0.46.2` → `2baffc5`),
   swift-arch 0.9.6(태그 `swift-arch-v0.9.6`).
 - 이 Mac 의 판(2026-11-22): Bun 1.4.5(Homebrew 와 `~/.bun/bin` 두 벌), Claude Code 2.1.330, Codex 0.171.0, vp 1.7.0,
@@ -49,10 +52,7 @@ Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 
 ## 진행 중
 
 - 단계 4(#66): 작업자 chat-core, 워크트리 `.claude/worktrees/chat-core`. 각 PR 을 병합한 뒤 다음 것을 시작한다.
-  - 지금 신뢰 PR: 빌드를 `--compile-exec-argv=--use-system-ca` 로 바꾸고(앱이 환경을 비우므로 환경 변수로는 닿지
-    않는다), 빌드한 코어의 기본 저장소에 system 이 드는지 시험한다. `--version` 의 시작 시간도 잰다. 계약 §7.1·
-    §7.11·§16 과 ADR 의 "정하지 않았다" 를 소유자 결정으로 바꾼다.
-  - D2 글 차례: 네 제공자, `turn`·`cancel`·`delta`·`done`·`error`, 첫 조각과 조각 사이 120초, 결정 1. 재시도는 누가·
+  - 지금 D2 글 차례: 네 제공자, `turn`·`cancel`·`delta`·`done`·`error`, 첫 조각과 조각 사이 120초, 결정 1. 재시도는 누가·
     몇 번·최악 대기를 계약에 적고, 도구는 다시 하지 않는다. `ai` 를 실제로 읽으면 Gateway 가 빌드한 코어에 들어오므로
     봉인과 의존 닫힘 검사가 그 길을 막는지 다시 본다.
   - D3 도구: 레지스트리를 AI SDK 도구로 넘긴다. 상태 일곱, 단계 한도 20, `toolCallConcurrency` 1, 채팅 확인의 채널 번호.
@@ -103,8 +103,8 @@ Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 
 - 미확인:
   - 네 제공자의 실제 모델 목록 응답 모양, Anthropic 목록이 `anthropic-version: 2026-10-21` 과 `lifecycle` 을 문서대로
     다루는지, Google 이 `pageSize=1000` 을 받는지. 소유자의 키가 있어야 해서 #68 실기에서 잰다.
-  - 키체인이 신뢰한 루트 뒤의 출처를 코어의 `fetch` 가 끝까지 받는지. 신뢰 PR 뒤에도 키체인을 바꾸지 않고는 재지
-    못하므로 #68 실기에서 본다.
+  - 관리자 신뢰 설정의 루트 뒤 출처를 코어의 `fetch` 가 끝까지 받는지, 회사 MDM 이 넣은 루트가 어느 신뢰 설정에
+    드는지. 키체인을 바꾸지 않고는 재지 못하므로 #68 실기에서 본다.
   - 2026-11-22 04:29Z 게이트 실패(#78)가 잠금 원인이었는지. 그 실행은 outcome 을 남기지 않았고, 줄과 조건은 재현과 같다.
   - 게이트가 3.1 의 실패 이유 줄을 내는지 보는 결정적 시험이 없다. 증거는 #72 의 변이 실행 기록뿐이다.
   - `vp install` 이 `onFail: "download"` 일 때 Bun 1.4.5 를 받는지.
@@ -133,8 +133,8 @@ Sherpa 를 SwiftUI 메뉴 막대 앱(`Sherpa.app`, 권한 주체)으로 내고, 
   - 원격: `bunny-holes/sherpa`(공개)
   - Formula: `XIYO/homebrew-tap`(공개, 옮기지 않았다). `3ee4e2b` 가 0.8.6 을 가리킨다.
   - 마켓플레이스: `bunny-holes/plug-hole`(비공개). sherpa 항목은 `git-subdir` `plugins/sherpa` 이고 ref 가 없다.
-- `main` 은 `fe7f444`(#95)와 그 뒤 이 파일을 고친 문서 PR 이다.
-- 작업자 워크트리: `.claude/worktrees/chat-core`(chat-core, `feat/chat-sdk`). 그 밖에는 없다.
+- `main` 은 `f3ca09a`(#97)와 그 뒤 이 파일을 고친 문서 PR 이다.
+- 작업자 워크트리: `.claude/worktrees/chat-core`(chat-core). 브랜치는 지금 하는 PR 의 것이다. 그 밖에는 없다.
 - 이 Mac 의 CLI: Homebrew `sherpa` 0.8.6(2026-11-22 11:33Z 에 올렸다).
 - 떠 있는 앱: `/Applications/Sherpa.app` 은 main `cc82033` 빌드다. main 의 앱 판은 이제 0.8.6 이다.
   - 0.8.5, Mux 2, Developer ID, 공증 전
