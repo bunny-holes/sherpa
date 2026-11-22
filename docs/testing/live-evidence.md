@@ -9,6 +9,44 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — Agent registration commands written into empty configuration homes (bunny-holes/sherpa#54)
+
+This Mac, run by the worktree session of bunny-holes/sherpa#54 to fix the
+commands the status window shows (app-connection-v1 §2 "MCP 켜기와 연결 안내").
+Each agent wrote into an empty temporary folder, so `~/.claude` and
+`~/.codex` did not change. No relay started and no model was called. The
+relay path in both commands held a space and was single-quoted by the shell,
+as the app quotes it.
+
+- Claude Code 2.1.326: `claude mcp add --help` gives
+  `claude mcp add [options] <name> <commandOrUrl> [args...]` with
+  `-s, --scope <scope>` (`local`, `user` or `project`). With
+  `CLAUDE_CONFIG_DIR` set to the empty folder,
+  `claude mcp add --scope user sherpa -- '<path>/sherpa-relay'` printed
+  `Added stdio MCP server sherpa with command: <path>/sherpa-relay  to user
+  config`. That folder's `.claude.json` then held
+  `"mcpServers": {"sherpa": {"type": "stdio", "command": "<path>/sherpa-relay",
+  "args": [], "env": {}}}`.
+- Codex 0.171.0: `codex mcp add --help` gives
+  `codex mcp add [OPTIONS] <NAME> (--url <URL> | -- <COMMAND>...)` with
+  `--env <KEY=VALUE>`. With `CODEX_HOME` set to the empty folder,
+  `codex features enable mcp_2026_07_28` printed that it enabled the feature
+  in `config.toml`, with a warning that under-development features are
+  enabled.
+  `codex mcp add --env CODEX_MCP_PROTOCOL_VERSION=2026-07-28 sherpa -- '<path>/sherpa-relay'`
+  printed `Added global MCP server 'sherpa'.` The folder's `config.toml`
+  then held `[mcp_servers.sherpa]` with that `command`,
+  `[mcp_servers.sherpa.env]` with `CODEX_MCP_PROTOCOL_VERSION = "2026-07-28"`,
+  and `[features]` with `mcp_2026_07_28 = true`.
+- A program that reads `UserDefaults.standard` read `mcpEnabled` as false
+  without arguments and true when started with `-mcpEnabled YES` (the
+  argument domain). The app's MCP switch is a consent mark, not a security
+  boundary (app-connection-v1 §2).
+- Not measured: the app's MCP switch, its status window and menu, whether a
+  copied command connects, and the relay path under a long install path
+  (bunny-holes/sherpa#52). They are the owner-operated checks of
+  app-connection-v1 §13.4.
+
 ## 2026-11-22 — The exported app with the 2026-07-28-only core serves both agents' 2026-07-28 opening and refuses Codex's default `initialize` (bunny-holes/sherpa#51)
 
 This Mac, run by the main session. Branch `feat/mcp-2026-07-28` at `233ee48`
