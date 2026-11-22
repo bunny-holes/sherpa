@@ -9,12 +9,12 @@ import { BINARY, cleanHomes, launch, scratchHome } from "./launch.ts";
 // egress refuses never connects, one for an origin whose certificate the core does not trust gets
 // no request through, one for an origin whose certificate it trusts holds a connection to that
 // origin only, and a redirect from there is refused before it is followed. A turn for an origin
-// the egress refuses connects nowhere and loads no AI SDK. One for a trusted origin streams its
-// answer from there through the AI SDK, which the built core loads with its first turn, the AI
-// Gateway and its Vercel OIDC code included, and leaves the Vercel CLI's files as they were, which
-// the real OIDC code given the same files empties. The built core trusts the macOS system store as
-// well as the authorities Bun bundles. The servers here belong to the test process; the rule they
-// check is the core's.
+// the egress refuses connects nowhere and loads no AI SDK. One for a trusted origin holds a
+// connection to that origin only and streams its answer from there through the AI SDK, which the
+// built core loads with its first turn, the AI Gateway and its Vercel OIDC code included, and
+// leaves the Vercel CLI's files as they were, which the real OIDC code given the same files
+// empties. The built core trusts the macOS system store as well as the authorities Bun bundles.
+// The servers here belong to the test process; the rule they check is the core's.
 const apps: FakeApp[] = [];
 afterEach(() => {
   for (const app of apps.splice(0)) app.stop();
@@ -487,6 +487,7 @@ function macTimeZone(): string {
 const LOADED = /debug \[core:chat:load\] success ms=\d+\n/g;
 
 test("a turn for a plain http loopback origin is refused before it connects, and loads no AI SDK", async () => {
+  expect(sockets(process.pid).internet).toContain(`TCP 127.0.0.1:${control.port} (LISTEN)`);
   const connections = { accepted: 0 };
   const listener = Bun.listen({
     hostname: "127.0.0.1",
@@ -519,6 +520,7 @@ test("a turn for a plain http loopback origin is refused before it connects, and
       retryable: false,
       status: null,
     });
+    expect(sockets(app.pid)).toEqual(QUIET);
     app.closeInput();
     expect(await app.exited).toBe(0);
     expect(connections.accepted).toBe(0);
@@ -618,8 +620,15 @@ test("a turn for an https loopback origin the core trusts streams its answer fro
       text: TEXT,
     };
     app.frame(1, "data", message);
-    // The first piece of the answer reaches the app while the server holds the rest.
+    // The first piece of the answer reaches the app while the server holds the rest, and every
+    // internet socket of the core is a connection to that server.
     expect((await app.next(isChat(1))).body).toEqual({ type: "delta", text: "sherpa-answer-" });
+    const peers = fields(lsof(app.pid, "-i", "-F", "n"), "n");
+    expect(peers.length).toBeGreaterThan(0);
+    for (const peer of peers) {
+      expect(peer).toMatch(new RegExp(`^127\\.0\\.0\\.1:\\d+->127\\.0\\.0\\.1:${server.port}$`));
+    }
+    expect(sockets(app.pid).unixListeners).toEqual([]);
     release();
     expect((await app.next(isChat(1))).body).toEqual({ type: "delta", text: "marker" });
     const done = { type: "done", reason: "stop", input_tokens: 11, output_tokens: 3 };
@@ -687,11 +696,11 @@ test("a turn for an https loopback origin the core trusts streams its answer fro
 });
 
 /**
- * Calls the real Vercel OIDC code as the AI Gateway does, with fetch refused, and prints what
- * came of it. It stops before that unless the home it reads is the scratch HOME it was given, so
- * it never reaches this Mac's own Vercel login.
+ * Preloaded before the control below: it stops the child unless the home it reads is the scratch
+ * HOME it was given, so it never reaches this Mac's own Vercel login, and refuses every fetch,
+ * counting them.
  */
-const OIDC_CONTROL = `import { homedir } from "node:os";
+const REFUSE_FETCH = `import { homedir } from "node:os";
 if (homedir() !== process.env.HOME || process.env.XDG_DATA_HOME !== undefined) process.exit(2);
 let fetches = 0;
 globalThis.fetch = Object.assign(
@@ -701,6 +710,14 @@ globalThis.fetch = Object.assign(
   },
   { preconnect() {} },
 );
+globalThis.refusedFetches = () => fetches;
+`;
+
+/**
+ * Calls the real Vercel OIDC code as the AI Gateway does and prints what came of it. Without the
+ * preload above it stops before that.
+ */
+const OIDC_CONTROL = `if (typeof globalThis.refusedFetches !== "function") process.exit(3);
 const { getVercelOidcToken } = await import(process.argv[2]);
 let outcome = "token";
 try {
@@ -708,18 +725,28 @@ try {
 } catch (error) {
   outcome = error.name;
 }
-console.log(JSON.stringify({ outcome, fetches }));
+console.log(JSON.stringify({ outcome, fetches: globalThis.refusedFetches() }));
 `;
 
 test("the same login and project make the real Vercel OIDC code empty auth.json, which the built core left as it was", async () => {
   // The control of the turn above: what the core's seal keeps from happening (ADR-0012 "제공자
-  // 면"). It runs in a child with the scratch HOME and nothing else, never in the test process.
+  // 면"). It runs in a child with the scratch HOME and nothing else, never in the test process,
+  // and with fetch refused from before its first module loads.
   const { home, data, project } = await vercelLogin();
-  const script = join(scratchHome(), "oidc-control.mjs");
+  const scripts = scratchHome();
+  const preload = join(scripts, "refuse-fetch.js");
+  const script = join(scripts, "oidc-control.js");
+  await Bun.write(preload, REFUSE_FETCH);
   await Bun.write(script, OIDC_CONTROL);
   const before = await tree(project);
   const child = Bun.spawnSync(
-    [process.execPath, script, Bun.resolveSync("@vercel/oidc", import.meta.dirname)],
+    [
+      process.execPath,
+      "--preload",
+      preload,
+      script,
+      Bun.resolveSync("@vercel/oidc", import.meta.dirname),
+    ],
     { cwd: project, env: { HOME: home, PATH: "/usr/bin:/bin:/usr/sbin:/sbin" } },
   );
   expect(child.exitCode).toBe(0);

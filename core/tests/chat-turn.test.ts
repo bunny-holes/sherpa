@@ -339,6 +339,9 @@ describe("a turn on each provider", () => {
     ]);
     for (const setting of ["temperature", "top_p", "top_k"])
       expect(body).not.toHaveProperty(setting);
+    // Nor any thinking: today's Claude thinks by its own default, its thinking omitted from the
+    // stream (contract §7.11).
+    expect(body).not.toHaveProperty("thinking");
     // The core sets no output limit: the package sends the most its model takes (4.0.107).
     expect(body.max_tokens).toBe(128_000);
   });
@@ -1053,24 +1056,39 @@ describe("time limits", () => {
   });
 
   test("an OpenAI answer that reports an error before its output is sent again, and the next request starts the limit anew", async () => {
-    // The first answer is 2xx, so its limit runs on while the AI SDK waits 200 ms to send again.
-    // The second request starts it anew, and its output at about 500 ms comes within that limit
-    // but after the first request's would have run out.
-    const { sent, open } = turns(
-      (request, n) => {
-        if (n === 1) return sse([openai([]).at(0)!, serverError], { "retry-after-ms": "200" });
-        const stream = openStream(request.signal);
-        stream.send(openai([]).at(0)!);
-        setTimeout(() => {
-          stream.send(...openai(["ok"]).slice(1));
-          stream.end();
-        }, 300);
-        return stream.response;
-      },
-      { turn: { firstOutputMs: 400, deltaMs: 60_000 } },
-    );
+    vi.useFakeTimers();
+    // Waiting with `vi.waitFor` would move the fake clock as well.
+    const requests = [
+      Promise.withResolvers<ReturnType<typeof openStream>>(),
+      Promise.withResolvers<ReturnType<typeof openStream>>(),
+    ];
+    const { sent, open } = turns((request, n) => {
+      // The first answer is 2xx, so its limit runs on until the AI SDK sends again 100 ms after it.
+      const stream = openStream(
+        request.signal,
+        n === 1
+          ? { headers: { "content-type": "text/event-stream", "retry-after-ms": "100" } }
+          : {},
+      );
+      stream.send(openai([]).at(0)!);
+      requests[n - 1]!.resolve(stream);
+      return stream.response;
+    });
     const channel = open();
     channel.write(turn("openai", "gpt-5.1"));
+    const first = await requests[0]!.promise;
+    // The OpenAI package reads on for an output or an error until a second before the limit.
+    await vi.advanceTimersByTimeAsync(chatLimits.firstOutputMs - 1_000);
+    expect(channel.sent).toEqual([]);
+    first.send(serverError);
+    first.end();
+    await vi.advanceTimersByTimeAsync(100);
+    const second = await requests[1]!.promise;
+    // Past the first request's limit and within the second's.
+    await vi.advanceTimersByTimeAsync(1_900);
+    expect(channel.sent).toEqual([]);
+    second.send(...openai(["ok"]).slice(1));
+    second.end();
     expect(await channel.untilEnd()).toEqual([{ type: "delta", text: "ok" }, done()]);
     expect(sent).toHaveLength(2);
   });
