@@ -535,6 +535,218 @@ describe("the conversation", () => {
   });
 });
 
+// §7.11 "다시 보내기": a turn without text sends the conversation again as it is, when it ends with
+// what a model answers. A test for each row of the contract's table without a tool in it; the rows
+// with tools are in tests/chat-tools.test.ts.
+describe("a turn without text", () => {
+  /** JSON leaves out a key whose value is undefined. */
+  const again = (extra: Record<string, unknown> = {}) => compatible({ text: undefined, ...extra });
+  /** What a request sends of a conversation that holds the person's text alone. */
+  const asked = [
+    { role: "system", content: INSTRUCTIONS },
+    { role: "user", content: said(TEXT) },
+  ];
+  const hello = [{ type: "delta", text: "Hello" }, done()];
+  const nothing = "warn [core:chat:turn] refused channel=1 reason=nothing_to_retry\n";
+
+  test("in a chat that has taken no turn has nothing to send, and fixes nothing of the chat", async () => {
+    const { sent, open } = turns(() => sse(chat(["Hello"])));
+    const channel = open();
+    channel.write(again({ model: "m-2" }));
+    expect(await channel.next()).toEqual(error("invalid_message"));
+    expect(lines).toContain(nothing);
+    expect(sent).toEqual([]);
+    channel.write(compatible());
+    expect(await channel.untilEnd()).toEqual(hello);
+  });
+
+  test.each([
+    ["stop", "stop"],
+    ["length", "length"],
+    ["other", "eos"],
+  ])(
+    "after an answer that ends with done %s has nothing to send again, and the chat goes on",
+    async (reason, finish) => {
+      const { sent, open } = turns((_sent, n) => sse(chat(["Hello"], n === 1 ? finish : "stop")));
+      const channel = open();
+      channel.write(compatible());
+      expect(await channel.untilEnd()).toEqual([{ type: "delta", text: "Hello" }, done(reason)]);
+      channel.write(again());
+      expect(await channel.next()).toEqual(error("invalid_message"));
+      expect(lines).toContain(nothing);
+      channel.write(compatible({ text: "그리고?" }));
+      expect(await channel.untilEnd()).toEqual(hello);
+      expect(sent).toHaveLength(2);
+      expect(sent[1]!.body!.messages).toEqual([
+        ...asked,
+        { role: "assistant", content: "Hello" },
+        { role: "user", content: said("그리고?") },
+      ]);
+    },
+  );
+
+  test.each([
+    ["stop", "stop"],
+    ["length", "length"],
+    ["other", "eos"],
+  ])(
+    "after an answer with nothing in it, done %s, sends the person's text again: the AI SDK keeps no message of it",
+    async (reason, finish) => {
+      const { sent, open } = turns((_sent, n) => sse(n === 1 ? chat([], finish) : chat(["Hello"])));
+      const channel = open();
+      channel.write(compatible());
+      expect(await channel.untilEnd()).toEqual([done(reason)]);
+      channel.write(again());
+      expect(await channel.untilEnd()).toEqual(hello);
+      expect(sent[1]!.body!.messages).toEqual(asked);
+    },
+  );
+
+  test("after an answer of reasoning alone has nothing to send again, though the app saw nothing of it", async () => {
+    const { sent, open } = turns(() =>
+      sse([chunk({ role: "assistant", reasoning_content: "Let me see" }), ...chat([])]),
+    );
+    const channel = open();
+    channel.write(compatible());
+    expect(await channel.untilEnd()).toEqual([done()]);
+    channel.write(again());
+    expect(await channel.next()).toEqual(error("invalid_message"));
+    expect(lines).toContain(nothing);
+    expect(sent).toHaveLength(1);
+  });
+
+  test("after done content-filter sends the person's text again, and nothing of the answer refused", async () => {
+    const { sent, open } = turns((_sent, n) =>
+      sse(n === 1 ? chat(["Nope"], "content_filter") : chat(["Hello"])),
+    );
+    const channel = open();
+    channel.write(compatible());
+    expect(await channel.untilEnd()).toEqual([
+      { type: "delta", text: "Nope" },
+      done("content-filter"),
+    ]);
+    channel.write(again());
+    expect(await channel.untilEnd()).toEqual(hello);
+    expect(sent[1]!.body!.messages).toEqual(asked);
+  });
+
+  test("after done aborted sends the person's text again, and nothing of the answer the cancel cut", async () => {
+    let stream: ReturnType<typeof openStream> | undefined;
+    const { sent, open } = turns(
+      (request, n) => {
+        if (n > 1) return sse(chat(["Hello"]));
+        stream = openStream(request.signal);
+        return stream.response;
+      },
+      { turn: { deltaMs: 1 } },
+    );
+    const channel = open();
+    channel.write(compatible());
+    await vi.waitFor(() => expect(stream).toBeDefined());
+    stream!.send(chunk({ role: "assistant", content: "par" }));
+    expect(await channel.next()).toEqual({ type: "delta", text: "par" });
+    channel.write({ type: "cancel" });
+    expect(await channel.untilEnd()).toEqual([done("aborted", null, null)]);
+    channel.write(again());
+    expect(await channel.untilEnd()).toEqual(hello);
+    expect(sent[1]!.body!.messages).toEqual(asked);
+  });
+
+  test.each([
+    {
+      name: "provider_rejected",
+      fail: () => failure(400),
+      requests: 1,
+      frames: [error("provider_rejected", false, 400)],
+    },
+    {
+      name: "provider_unavailable, which the AI SDK sent three times",
+      fail: () => failure(503),
+      requests: 3,
+      frames: [error("provider_unavailable", true, 503)],
+    },
+    {
+      name: "provider_invalid_response, after the text it had",
+      fail: () => sse(chat(["Hi"]).slice(0, 1)),
+      requests: 1,
+      frames: [{ type: "delta", text: "Hi" }, error("provider_invalid_response")],
+    },
+  ])(
+    "after error $name sends the person's text again, once, and nothing of the answer",
+    async ({ fail, requests, frames }) => {
+      const { sent, open } = turns((_sent, n) => (n <= requests ? fail() : sse(chat(["Hello"]))));
+      const channel = open();
+      channel.write(compatible());
+      expect(await channel.untilEnd()).toEqual(frames);
+      channel.write(again());
+      expect(await channel.untilEnd()).toEqual(hello);
+      expect(sent).toHaveLength(requests + 1);
+      expect(sent[requests]!.body!.messages).toEqual(asked);
+    },
+  );
+
+  test("after provider_auth goes with the key the app sends now", async () => {
+    const { sent, open } = turns((_sent, n) => (n === 1 ? failure(401) : sse(chat(["Hello"]))));
+    const channel = open();
+    channel.write(compatible());
+    expect(await channel.untilEnd()).toEqual([error("provider_auth", false, 401)]);
+    channel.write(again({ api_key: "sk-rotated" }));
+    expect(await channel.untilEnd()).toEqual(hello);
+    expect(sent[1]!.headers.authorization).toBe("Bearer sk-rotated");
+    expect(sent[1]!.body!.messages).toEqual(asked);
+  });
+
+  test("while a turn runs is busy, and what the turn ends with decides the next", async () => {
+    let stream: ReturnType<typeof openStream> | undefined;
+    const { sent, open } = turns((request) => {
+      stream = openStream(request.signal);
+      return stream.response;
+    });
+    const channel = open();
+    channel.write(compatible());
+    await vi.waitFor(() => expect(stream).toBeDefined());
+    channel.write(again());
+    expect(await channel.next()).toEqual(error("busy"));
+    stream!.send(...chat(["ok"]));
+    stream!.end();
+    expect(await channel.untilEnd()).toEqual([{ type: "delta", text: "ok" }, done()]);
+    channel.write(again());
+    expect(await channel.next()).toEqual(error("invalid_message"));
+    expect(sent).toHaveLength(1);
+  });
+
+  test("for another chat or a base URL the egress refuses is refused as one with text is, and the conversation stays to send again", async () => {
+    const { sent, open } = turns((_sent, n) => (n === 1 ? failure(400) : sse(chat(["Hello"]))));
+    const channel = open();
+    channel.write(compatible());
+    expect(await channel.untilEnd()).toEqual([error("provider_rejected", false, 400)]);
+    channel.write(again({ model: "m-2" }));
+    expect(await channel.next()).toEqual(error("invalid_message"));
+    expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=other_chat\n");
+    channel.write(again({ base_url: "http://127.0.0.1:8080/v1" }));
+    expect(await channel.next()).toEqual(error("egress_denied"));
+    channel.write(again());
+    expect(await channel.untilEnd()).toEqual(hello);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]!.body!.messages).toEqual(asked);
+  });
+
+  test("in a chat past its limit is conversation_limit, as every later turn is", async () => {
+    const big = "가".repeat(Math.ceil((1024 * 1024) / 3));
+    const { sent, open } = turns(() => sse(chat([big])));
+    const channel = open();
+    for (const text of ["one", "two"]) {
+      channel.write(compatible({ text }));
+      expect((await channel.untilEnd()).at(-1)).toEqual(done());
+    }
+    channel.write(compatible({ text: "three" }));
+    expect(await channel.next()).toEqual(error("conversation_limit"));
+    channel.write(again());
+    expect(await channel.next()).toEqual(error("conversation_limit"));
+    expect(sent).toHaveLength(2);
+  });
+});
+
 describe("the time a text was sent", () => {
   test.each([
     ["Asia/Seoul", "2026-11-22T21:56:31+09:00 (Sunday)"],
@@ -1030,7 +1242,7 @@ describe("time limits", () => {
 
 describe("a turn the channel cannot read", () => {
   test.each([
-    ["no text", compatible({ text: undefined })],
+    ["a text that is null", compatible({ text: null })],
     ["an empty text", compatible({ text: "" })],
     ["a text over 64 KiB", compatible({ text: "a".repeat(chatLimits.textBytes + 1) })],
     ["no model", compatible({ model: undefined })],

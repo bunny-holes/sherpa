@@ -22,6 +22,7 @@ import {
   anthropicCalls,
   chat,
   chatCalls,
+  chunk,
   failure,
   google,
   googleCalls,
@@ -1089,6 +1090,242 @@ describe("a cancel while a step's calls run (§7.11)", () => {
     );
     expect(channel.sent).toEqual([tool(1, "event_create", "started")]);
     expect(sent).toHaveLength(1);
+  });
+});
+
+// §7.11 "다시 보내기": the rows of the contract's table with a tool in them, each a test; the rows
+// without are in tests/chat-turn.test.ts.
+describe("a turn without text after a turn that called tools", () => {
+  /** JSON leaves out a key whose value is undefined. */
+  const again = () => ({ ...compatible(), text: undefined });
+  /** The roles of the messages an OpenAI-compatible request sends, in order. */
+  const roles = (request: Sent) =>
+    (request.body.messages as { role: string }[]).map((message) => message.role);
+
+  test.each([
+    {
+      name: "done length, whose call the AI SDK did not run",
+      calls: () => chatCalls([list()], [], "length"),
+      reason: "length",
+      code: "chat.not_run",
+    },
+    {
+      name: "done other, whose call the model formed badly",
+      calls: () => chatCalls([badly()], [], "eos"),
+      reason: "other",
+      code: "chat.invalid_call",
+    },
+    {
+      name: "done length, whose call was cut in the middle of its arguments",
+      calls: () =>
+        chatCalls(
+          [{ id: "call_1", name: "event_list", input: '{"from":"2026-11-23T0' }],
+          [],
+          "length",
+        ),
+      reason: "length",
+      code: "chat.invalid_call",
+    },
+  ])(
+    "after $name sends the conversation again, which ends with the call's result",
+    async ({ calls, reason, code }) => {
+      const { sent, open, asked } = world((_sent, n) => sse(n === 1 ? calls() : chat(["Done"])));
+      const channel = open();
+      channel.write(compatible());
+      expect(await ending(channel)).toEqual([
+        tool(1, "event_list", "started"),
+        tool(1, "event_list", "failed", code),
+        done(reason, 11, 3),
+      ]);
+      channel.write(again());
+      expect(await ending(channel)).toEqual([answered(), done("stop", 11, 3)]);
+      expect(asked()).toEqual([]);
+      expect(roles(sent[1]!)).toEqual(["system", "user", "assistant", "tool"]);
+    },
+  );
+
+  test("after done aborted while a call waited sends the conversation again, which ends with the call taken back", async () => {
+    const held = new Held((frame) => frame.type === "confirm");
+    const { sent, open } = world(
+      (_sent, n) => sse(n === 1 ? chatCalls([remove()]) : chat(["Done"])),
+      { app: held.app },
+    );
+    const channel = open();
+    channel.write(compatible());
+    await held.nth(1);
+    channel.write({ type: "cancel" });
+    expect(await ending(channel)).toEqual([
+      tool(1, "event_delete", "started"),
+      tool(1, "event_delete", "withdrawn", "chat.cancelled"),
+      done("aborted", 11, 3),
+    ]);
+    channel.write(again());
+    expect(await ending(channel)).toEqual([answered(), done("stop", 11, 3)]);
+    expect(roles(sent[1]!)).toEqual(["system", "user", "assistant", "tool"]);
+    expect(outcomes(sent[1]!)).toMatchObject([
+      { id: "call_1", error: { code: "chat.cancelled", retry: "after_user_action" } },
+    ]);
+  });
+
+  test("after done step-limit sends the conversation again, and the tools may take 20 more requests", async () => {
+    const { sent, open } = world((_sent, n) =>
+      sse(n <= 2 * chatLimits.steps ? chatCalls([list(`call_${n}`)]) : chat(["Done"])),
+    );
+    const channel = open();
+    channel.write(compatible());
+    expect((await ending(channel)).at(-1)).toEqual(done("step-limit", 220, 60));
+    channel.write(again());
+    expect((await ending(channel)).at(-1)).toEqual(done("step-limit", 220, 60));
+    expect(sent).toHaveLength(40);
+    // The second turn's first request follows the twentieth call's result, and no text after it.
+    const next = sent[20]!.body.messages as { role: string; tool_call_id?: string }[];
+    expect(next.at(-1)).toMatchObject({ role: "tool", tool_call_id: "call_20" });
+    expect(next.filter((message) => message.role === "user")).toHaveLength(1);
+    channel.write(again());
+    expect(await ending(channel)).toEqual([answered(), done("stop", 11, 3)]);
+    expect(sent).toHaveLength(41);
+  });
+
+  test("after an error that followed a tool step sends the conversation again, which ends with the step's result, and the tool does not run again", async () => {
+    const { sent, open, asked } = world((_sent, n) => {
+      if (n === 1) return sse(chatCalls([list()]));
+      return n === 2 ? failure(400) : sse(chat(["Done"]));
+    });
+    const channel = open();
+    channel.write(compatible());
+    expect(await ending(channel)).toEqual([
+      tool(1, "event_list", "started"),
+      tool(1, "event_list", "succeeded", null, "op-1"),
+      {
+        type: "error",
+        in_reply_to: "turn",
+        code: "provider_rejected",
+        retryable: false,
+        status: 400,
+      },
+    ]);
+    channel.write(again());
+    expect(await ending(channel)).toEqual([answered(), done("stop", 11, 3)]);
+    expect(asked()).toEqual(["event.list"]);
+    expect(sent).toHaveLength(3);
+    expect(roles(sent[2]!)).toEqual(["system", "user", "assistant", "tool"]);
+  });
+
+  test("after a step of reasoning alone that followed a tool step and ended with done length has nothing to send again, though the app heard of a tool last", async () => {
+    const reasoning = [
+      chunk({ role: "assistant", reasoning_content: "Let me see" }),
+      ...chat([], "length"),
+    ];
+    const { sent, open } = world((_sent, n) => sse(n === 1 ? chatCalls([list()]) : reasoning));
+    const channel = open();
+    channel.write(compatible());
+    expect(await ending(channel)).toEqual([
+      tool(1, "event_list", "started"),
+      tool(1, "event_list", "succeeded", null, "op-1"),
+      done("length"),
+    ]);
+    channel.write(again());
+    expect(await channel.next()).toEqual({
+      type: "error",
+      in_reply_to: "turn",
+      code: "invalid_message",
+      retryable: false,
+      status: null,
+    });
+    expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=nothing_to_retry\n");
+    expect(sent).toHaveLength(2);
+  });
+
+  test.each([
+    {
+      name: "Anthropic, whose package tells of the call when its block ends",
+      message: turn("anthropic", "claude-sonnet-5-5"),
+      first: () => {
+        const calls = anthropicCalls([badly()], [], "max_tokens");
+        const text = [
+          {
+            event: "content_block_start",
+            data: {
+              type: "content_block_start",
+              index: 1,
+              content_block: { type: "text", text: "" },
+            },
+          },
+          {
+            event: "content_block_delta",
+            data: {
+              type: "content_block_delta",
+              index: 1,
+              delta: { type: "text_delta", text: "After" },
+            },
+          },
+          { event: "content_block_stop", data: { type: "content_block_stop", index: 1 } },
+        ];
+        return [...calls.slice(0, 4), ...text, ...calls.slice(4)];
+      },
+      frames: [
+        tool(1, "event_list", "started"),
+        tool(1, "event_list", "failed", "chat.invalid_call"),
+        answered("After"),
+        done("length", 11, 3),
+      ],
+      answer: anthropic,
+    },
+    {
+      name: "OpenAI-compatible, whose package tells of the call when the response ends",
+      message: compatible(),
+      first: () => {
+        const events = chatCalls([badly()], [], "length");
+        events.splice(1, 0, chunk({ content: "After" }));
+        return events;
+      },
+      frames: [
+        answered("After"),
+        tool(1, "event_list", "started"),
+        tool(1, "event_list", "failed", "chat.invalid_call"),
+        done("length", 11, 3),
+      ],
+      answer: chat,
+    },
+  ])(
+    "after a step with text after a call formed badly, on $name, sends the conversation again, which ends with the call's result",
+    async ({ message, first, frames, answer }) => {
+      const { sent, open } = world((_sent, n) => sse(n === 1 ? first() : answer(["Done"])));
+      const channel = open();
+      channel.write(message);
+      expect(await ending(channel)).toEqual(frames);
+      channel.write({ ...message, text: undefined });
+      expect(await ending(channel)).toEqual([answered(), done("stop", 11, 3)]);
+      expect(sent).toHaveLength(2);
+      expect(JSON.stringify(sent[1]!.body)).toContain("Invalid input for tool event_list");
+    },
+  );
+
+  test("whose conversation grew past its limit in the turn before is conversation_limit, and the chat takes no later turn", async () => {
+    // Only a turn's start reads the limit, so the step that passes it stays.
+    const big = "가".repeat(Math.ceil((2 * 1024 * 1024) / 3));
+    const { sent, open } = world((_sent, n) =>
+      n === 1 ? sse(chatCalls([list()], [big])) : failure(400),
+    );
+    const channel = open();
+    channel.write(compatible());
+    expect((await ending(channel)).at(-1)).toMatchObject({
+      type: "error",
+      code: "provider_rejected",
+    });
+    const limit = {
+      type: "error",
+      in_reply_to: "turn",
+      code: "conversation_limit",
+      retryable: false,
+      status: null,
+    };
+    channel.write(again());
+    expect(await channel.next()).toEqual(limit);
+    expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=conversation_limit\n");
+    channel.write(compatible("그리고"));
+    expect(await channel.next()).toEqual(limit);
+    expect(sent).toHaveLength(2);
   });
 });
 

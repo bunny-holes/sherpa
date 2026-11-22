@@ -2,7 +2,7 @@
  * The messages of a chat channel, `sherpa.chat.v1` (app-connection-v1 §7.11, ADR-0012 "앱과 코어
  * 사이 채널"): one JSON object per `data` frame each way, told apart by `type`. This edition
  * reads `list_models`, `turn` and `cancel` and writes `models`, `delta`, `tool`, `done` and
- * `error`.
+ * `error`. A `turn` without `text` sends the conversation again.
  */
 import { z } from "zod";
 import { type ChatErrorCode, retryable } from "./errors.ts";
@@ -97,14 +97,15 @@ const listModels = z.union([
 
 export type ListModelsRequest = z.infer<typeof listModels>;
 
-// A turn names its provider as a model list does, and the model and the person's text besides.
+// A turn names its provider as a model list does, and the model and the person's text besides;
+// one without text sends the conversation again (§7.11 "다시 보내기").
 const turn = z.union([
   z.strictObject({
     type: z.literal("turn"),
     provider: z.enum(FIXED_PROVIDERS),
     api_key: apiKey,
     model: modelId,
-    text,
+    text: text.optional(),
   }),
   z.strictObject({
     type: z.literal("turn"),
@@ -112,7 +113,7 @@ const turn = z.union([
     base_url: baseURL,
     api_key: apiKey.optional(),
     model: modelId,
-    text,
+    text: text.optional(),
   }),
 ]);
 

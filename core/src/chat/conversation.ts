@@ -15,13 +15,20 @@ export interface ChatIdentity {
   model: string;
 }
 
-/** Why a chat takes no turn: another provider, base URL or model, or a conversation too large. */
-export type TurnRefusal = "other_chat" | "conversation_limit";
+/**
+ * Why a chat takes no turn: another provider, base URL or model, a turn without text whose
+ * conversation ends with nothing a model answers, or a conversation too large.
+ */
+export type TurnRefusal = "other_chat" | "nothing_to_retry" | "conversation_limit";
 
 export type TurnStart =
   | { type: "refused"; reason: TurnRefusal }
-  /** The messages to send: the conversation, the person's text last. */
+  /** The messages to send: the conversation, the person's text of the turn last when it has one. */
   | { type: "started"; messages: ModelMessage[] };
+
+/** What a model answers: the person's text, or the results of the tools it called. */
+const answerable = (message: ModelMessage | undefined) =>
+  message?.role === "user" || message?.role === "tool";
 
 export class Conversation {
   private readonly messages: ModelMessage[] = [];
@@ -34,6 +41,19 @@ export class Conversation {
    * provider takes. A conversation that would pass its limit ends the chat: it takes no later turn.
    */
   start(identity: ChatIdentity, text: string, note: string): TurnStart {
+    return this.take(identity, { role: "user", content: `${note}\n\n${text}` });
+  }
+
+  /**
+   * Takes a turn without text, which sends the conversation again as it is, so that the person's
+   * text in it goes once (§7.11 "다시 보내기"): only when it ends with what a model answers. One
+   * that holds nothing, or ends with the model's answer, has nothing to send again.
+   */
+  again(identity: ChatIdentity): TurnStart {
+    return this.take(identity, null);
+  }
+
+  private take(identity: ChatIdentity, said: ModelMessage | null): TurnStart {
     const chat = this.identity;
     if (
       chat &&
@@ -43,16 +63,18 @@ export class Conversation {
     ) {
       return { type: "refused", reason: "other_chat" };
     }
-    const messages: ModelMessage[] = [
-      ...this.messages,
-      { role: "user", content: `${note}\n\n${text}` },
-    ];
-    if (this.full || Buffer.byteLength(JSON.stringify(messages)) > chatLimits.conversationBytes) {
+    // A chat past its limit takes no later turn, one without text included.
+    if (this.full) return { type: "refused", reason: "conversation_limit" };
+    if (said === null && !answerable(this.messages.at(-1))) {
+      return { type: "refused", reason: "nothing_to_retry" };
+    }
+    const messages = said === null ? [...this.messages] : [...this.messages, said];
+    if (Buffer.byteLength(JSON.stringify(messages)) > chatLimits.conversationBytes) {
       this.full = true;
       return { type: "refused", reason: "conversation_limit" };
     }
     this.identity ??= identity;
-    this.messages.push(messages.at(-1)!);
+    if (said !== null) this.messages.push(said);
     return { type: "started", messages };
   }
 

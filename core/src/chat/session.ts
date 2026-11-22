@@ -163,8 +163,8 @@ class ChatSession {
 
   /**
    * Starts a turn, or refuses it at once: one runs already, the base URL is not allowed, the turn
-   * is for another chat, or the conversation is full. A refused turn sends nothing and leaves the
-   * conversation as it was.
+   * is for another chat, a turn without text has nothing to send again, or the conversation is
+   * full. A refused turn sends nothing and leaves the conversation as it was.
    */
   private startTurn(request: TurnRequest): void {
     const id = this.channel.id;
@@ -189,10 +189,13 @@ class ChatSession {
       baseURL: where.base,
       model: request.model,
     };
-    const note = timeNote(this.clock(), this.timeZone());
-    const start = this.conversation.start(identity, request.text, note);
+    // A turn without text adds no text, so no time line either (§7.11 "다시 보내기").
+    const start =
+      request.text === undefined
+        ? this.conversation.again(identity)
+        : this.conversation.start(identity, request.text, timeNote(this.clock(), this.timeZone()));
     if (start.type === "refused") {
-      const code = start.reason === "other_chat" ? "invalid_message" : "conversation_limit";
+      const code = start.reason === "conversation_limit" ? "conversation_limit" : "invalid_message";
       refuse(start.reason, errorEvent("turn", code));
       return;
     }
