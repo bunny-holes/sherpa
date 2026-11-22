@@ -400,35 +400,3 @@ describe("a base URL", () => {
     ]);
   });
 });
-
-describe(`Bun ${Bun.version}'s certificate authorities`, () => {
-  // A provider's certificate is valid when this store holds its root (ADR-0012 위험 9, contract
-  // §7.1). Each child runs in / without this process's environment, as the app starts the core.
-  // Where the system store holds nothing beyond the bundled roots, both halves pass trivially.
-  const STORES = ["default", "bundled", "system", "extra"] as const;
-  const SCRIPT = `const tls = require("node:tls");
-console.log(JSON.stringify({ bun: Bun.version, ...Object.fromEntries(${JSON.stringify(STORES)}.map((store) => [store, tls.getCACertificates(store)])) }));`;
-
-  function stores(
-    flags: string[],
-    env: Record<string, string> = {},
-  ): Record<(typeof STORES)[number], string[]> & { bun: string } {
-    const child = Bun.spawnSync({
-      cmd: [process.execPath, ...flags, "-e", SCRIPT],
-      cwd: "/",
-      env: { HOME: "/var/empty", PATH: "/usr/bin:/bin", ...env },
-    });
-    expect(child.stderr.toString()).toBe("");
-    return JSON.parse(child.stdout.toString());
-  }
-
-  test("are its bundled ones, never the system's unless --use-system-ca or NODE_USE_SYSTEM_CA asks", () => {
-    const plain = stores([]);
-    expect(plain.bun).toBe(Bun.version);
-    expect(plain.extra).toEqual([]);
-    expect(new Set(plain.default)).toEqual(new Set(plain.bundled));
-    for (const system of [stores(["--use-system-ca"]), stores([], { NODE_USE_SYSTEM_CA: "1" })]) {
-      expect(new Set(system.default)).toEqual(new Set([...system.bundled, ...system.system]));
-    }
-  });
-});

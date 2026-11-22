@@ -52,10 +52,7 @@ Anything not listed here is not proven by the gate.
     `fetch` and `WebSocket` refuse every call and connection and the AI SDK's
     default provider every model, that none of them can be put back, that a
     turn fetch lets out only HTTPS to its origin with `redirect: "error"` and
-    the turn's signal, and which base URLs are refused. Started as the app
-    starts the core, the declared Bun trusts only its bundled certificate
-    authorities; the system store joins only with `--use-system-ca` or
-    `NODE_USE_SYSTEM_CA=1`.
+    the turn's signal, and which base URLs are refused.
   - `chat-sdk-globals.test.ts` (ADR-0012) runs the AI SDK itself on the
     globals the core's entry point leaves, in a process of its own: a model id
     given as a string to `generateText`, `streamText` or `embed` is refused
@@ -110,7 +107,12 @@ Anything not listed here is not proven by the gate.
     internet socket and no listening Unix socket in the core from the hello
     through two MCP sessions and a delete waiting for the person; `--version`
     starts with the global `fetch`, `WebSocket` and AI SDK default provider
-    refused too. A chat channel's model list for a plain-HTTP loopback origin
+    refused too. Started in `/` as the app starts it, the built core holds
+    `--use-system-ca` in its `execArgv`, and its default certificate store,
+    read by a probe the test passes through Bun's `BUN_OPTIONS`, is Bun's
+    bundled authorities together with the macOS system store; the same Bun
+    without the flag keeps the bundled ones alone.
+    A chat channel's model list for a plain-HTTP loopback origin
     ends with `egress_denied` and no connection while `lsof` sees no socket,
     and one for an HTTPS loopback server with a self-signed certificate ends
     with `provider_certificate` before the server's handler sees a request.

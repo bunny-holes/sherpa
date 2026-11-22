@@ -9,6 +9,44 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — The core built with `--use-system-ca`: its certificate stores, the trust settings they come from, and its start time (bunny-holes/sherpa#66)
+
+This Mac (macOS 27.3 26C5035r, Bun 1.4.5), run by the bunny-holes/sherpa#66
+worker between 11:48Z and 11:57Z on the tree of `main` `fe7f444`. No model
+call was made, nothing left the loopback interface, and neither a keychain
+nor its trust settings changed. Each core and probe ran in `/` under
+`env -i` with only `HOME` and `PATH=/usr/bin:/bin`, as the app starts the
+core.
+
+- A standalone built from a probe script with
+  `--compile-exec-argv=--use-system-ca` and the four
+  `--no-compile-autoload-*` flags had `process.execArgv`
+  `["--use-system-ca"]`, and its default store held the 118 bundled
+  certificates and the system store's 5 (123). Built without the first flag,
+  its default store held the 118.
+- The core built the same way from `src/main.ts`, run with `--version` and a
+  probe passed through `BUN_OPTIONS`, saw the same inside: `--use-system-ca`
+  and 123. The core `bun run build` made without the flag saw 118. Under
+  `BUN_BE_BUN=1` a standalone runs as `bun` without its embedded arguments,
+  and both builds saw 118 there.
+- `security trust-settings-export` wrote the admin (`-d`) and the user trust
+  settings to scratch files, and `security find-certificate -a -Z` listed the
+  SHA-1 of every certificate in the System keychain, the system roots and the
+  default search list. The 5 system certificates were in the System keychain
+  and in the admin settings, whose other 12 entries name no certificate any of
+  those keychains holds. None of the 10 user entries was among the 5, though
+  all 10 are in a keychain and 7 are trusted for `sslServer`. None of the 5
+  is among the bundled 118.
+- `--version`, 80 runs of each build interleaved after 5 warm-ups: median
+  35.66 ms without the flag and 35.68 ms with it (p90 49.34 and 48.24 ms).
+  In a probe standalone, building the default store once took a median of
+  4.4 ms without the flag and 17.0 ms with it (20 runs each), and the whole
+  probe process 11.0 and 23.4 ms (60 runs each).
+- Not covered: whether `fetch` in the built core accepts an origin whose
+  chain ends at one of the 5, which needs a certificate the keychain trusts
+  and its key (bunny-holes/sherpa#68); whether its first TLS connection pays
+  the same 12 ms; and roots that a configuration profile installs.
+
 ## 2026-11-22 — The released 0.8.6 CLI reads no configuration from the directory it runs in (bunny-holes/sherpa#92)
 
 This Mac (macOS 27.3 26C5035r, Homebrew 7.0.15, Bun 1.4.5), run by the main
