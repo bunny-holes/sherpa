@@ -92,7 +92,8 @@ you to allow it.
 
 ## Verify
 
-In Claude Code, run `/mcp`: `plugin:sherpa:sherpa` must be connected. In
+In Claude Code, run `/mcp`: `plugin:sherpa:sherpa` must be connected; if it
+shows as failed, choose Reconnect there. In
 Codex, `codex mcp list` must show `sherpa` as enabled. `claude plugin list`
 and `codex plugin list --marketplace plug-hole` show the plugin itself.
 
@@ -101,8 +102,8 @@ and `codex plugin list --marketplace plug-hole` show the plugin itself.
 | What you see | Cause and fix |
 |---|---|
 | Claude Code: `plugin:sherpa:sherpa` failed; its MCP log ends with `ENOENT` and `posix_spawn`. Codex: `MCP startup failed: No such file or directory (os error 2)`. | Sherpa.app is not at `/Applications/Sherpa.app`. Move it there; the plugin does not search other places. |
-| The server failed and its MCP log names `app_not_running` or `mcp_disabled`. | Open Sherpa.app and turn on MCP Server. Then reconnect: in Claude Code choose Reconnect for `plugin:sherpa:sherpa` in `/mcp`; in Codex start a new session. |
-| The tools stopped in the middle of a session; the MCP log names `app_closed_session`. | MCP Server was turned off, or the app quit. Turn it on again and reconnect the server in `/mcp`, or start a new Codex session. |
+| The server failed and its MCP log names `app_not_running` or `mcp_disabled`. | Start Sherpa.app (`app_not_running`) or turn on MCP in Sherpa.app (`mcp_disabled`), then reconnect the server (Claude Code: `/mcp`, then Reconnect; Codex: start a new session). |
+| The tools stopped in the middle of a session; the MCP log names `app_closed_session`. | If you turned MCP off in Sherpa.app, turn it on first; then reconnect the server (Claude Code: `/mcp`, then Reconnect; Codex: start a new session). |
 | Claude Code starts with no Sherpa tools right after a failure. | Claude Code skips a plugin server that failed in the last 15 minutes. Choose Reconnect for `plugin:sherpa:sherpa` in `/mcp`, or wait. |
 | Codex: `-32022: Unsupported protocol version: 2025-06-18`. | The feature is off. Run `codex features enable mcp_2026_07_28` and start a new session. |
 | Codex uses a different command than the plugin. | A `[mcp_servers.sherpa]` entry in your own `config.toml` takes precedence over the plugin's server of the same name. Remove it, or keep it with the same command and environment value. |

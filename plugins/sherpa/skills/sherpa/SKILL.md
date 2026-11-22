@@ -13,8 +13,8 @@ Sherpa.app serves the tools through the `sherpa` MCP server this plugin register
 
 If no Sherpa tool is available, or the host reports the `sherpa` server as failed, stop and tell the user:
 
-- Open Sherpa.app (it must be in `/Applications`) and turn on its "MCP Server" switch in the menu bar menu or the status window.
-- Claude Code: reconnect the server in `/mcp`. A plugin server that failed is skipped by new sessions for 15 minutes unless it is reconnected there.
+- Open Sherpa.app (it must be in `/Applications`) and turn on its "MCP Server" switch in the menu bar menu or the status window. If they turned MCP off during the session, it must be turned on first.
+- Claude Code: in `/mcp`, choose Reconnect for the server. A plugin server that failed is skipped by new sessions for 15 minutes unless it is reconnected there.
 - Codex: the feature `mcp_2026_07_28` must be on (`codex features enable mcp_2026_07_28`); start a new session afterwards.
 
 If some Sherpa tools exist but one a skill names is missing, Sherpa.app and this plugin do not match: report the missing tool name and suggest updating both. Never fall back to AppleScript, `sqlite3`, or another tool.
