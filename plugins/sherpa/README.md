@@ -54,8 +54,8 @@ start that an under-development feature is enabled.
 `plug-hole` fetches the plugin from `plugins/sherpa/` in this repository. A
 new session loads the skills and starts the server; an open session keeps what
 it already loaded. With the plugin installed, you do not need the
-`claude mcp add` or `codex mcp add` commands that the Sherpa status window
-shows; those register the same relay without the plugin.
+`claude mcp add` or `codex mcp add` commands behind the **?** button of the
+status window's MCP row; those register the same relay without the plugin.
 
 ## Prerequisites
 
@@ -101,7 +101,7 @@ and `codex plugin list --marketplace plug-hole` show the plugin itself.
 | What you see | Cause and fix |
 |---|---|
 | Claude Code: `plugin:sherpa:sherpa` failed; its MCP log ends with `ENOENT` and `posix_spawn`. Codex: `MCP startup failed: No such file or directory (os error 2)`. | Sherpa.app is not at `/Applications/Sherpa.app`. Move it there; the plugin does not search other places. |
-| The server failed and its MCP log names `app_not_running` or `mcp_disabled`. | Open Sherpa.app and turn on MCP Server, then reconnect. |
+| The server failed and its MCP log names `app_not_running` or `mcp_disabled`. | Open Sherpa.app and turn on MCP Server. Then reconnect: in Claude Code choose Reconnect for `plugin:sherpa:sherpa` in `/mcp`; in Codex start a new session. |
 | The tools stopped in the middle of a session; the MCP log names `app_closed_session`. | MCP Server was turned off, or the app quit. Turn it on again and reconnect the server in `/mcp`, or start a new Codex session. |
 | Claude Code starts with no Sherpa tools right after a failure. | Claude Code skips a plugin server that failed in the last 15 minutes. Choose Reconnect for `plugin:sherpa:sherpa` in `/mcp`, or wait. |
 | Codex: `-32022: Unsupported protocol version: 2025-06-18`. | The feature is off. Run `codex features enable mcp_2026_07_28` and start a new session. |
