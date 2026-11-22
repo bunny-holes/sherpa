@@ -7,13 +7,15 @@ tone: "평어체 규범. 규칙마다 소유자 결정, 실측, 문서, 계약, 
 manner: "경계마다 규칙을 먼저 쓰고 근거를 괄호로 붙인다. 시험 빌드의 코드는 옮기지 않고 사실만 옮긴다"
 ---
 
-# 앱 연결 계약 V2
+# 앱 연결 계약 V3
 
-상태: 계약 2판(2026-11-22, bunny-holes/sherpa#63). 1판(2026-11-21)의 코어 쪽(bunny-holes/sherpa#27)과 앱·중계(#28)가
-모두 구현됐고, 배포(#31)와 소유자 실기(#29)가 남았다. 2판은 [ADR-0012](../adr/0012-in-app-chat.md) 구현 단계 1 이다.
-`open` 이 채널 종류를 싣고(§7.3) 인사의 `mux` 가 2 가 되며 1 은 받지 않는다(§7.5). MCP 스위치는 `mcp` 채널만
-닫는다(§7.6, §9). 그 밖의 규칙은 1판 그대로이고, 본문에 "1판" 으로 적은 범위(작업자, 도구 목록, 믿는 범위 등)도
-2판에 그대로 이어진다. 링크와 시험이 이 경로를 읽으므로 파일 이름은 바꾸지 않는다.
+상태: 계약 3판(2026-11-22, bunny-holes/sherpa#66). 1판(2026-11-21)의 코어 쪽(bunny-holes/sherpa#27)과 앱·중계(#28)가
+모두 구현됐고, 배포(#31)와 소유자 실기(#29)가 남았다. 2판(2026-11-22, #63)은 [ADR-0012](../adr/0012-in-app-chat.md)
+구현 단계 1 이다. `open` 이 채널 종류를 싣고(§7.3) MCP 스위치는 `mcp` 채널만 닫는다(§7.6, §9). 3판은 같은 ADR 의
+구현 단계 4 의 몫이다. `confirm` 이 그 호출이 온 채널을 싣고, 앱은 확인의 출처를 그 채널의 종류로 가리며, 스위치는
+`mcp` 채널의 확인만 거둔다(§9). 그래서 인사의 `mux` 가 3 이 되고 1 과 2 는 받지 않는다(§7.5). 그 밖의 규칙은 앞
+판 그대로이고, 본문에 "1판" 으로 적은 범위(작업자, 도구 목록, 믿는 범위 등)도 3판에 그대로 이어진다. 링크와 시험이
+이 경로를 읽으므로 파일 이름은 바꾸지 않는다.
 MCP 는 2026-07-28 만 받는다(소유자 결정 2026-11-22, [ADR-0011](../adr/0011-mcp-2026-07-28-only.md), §10.1). ADR-0010 2단계의
 두 작업, 코어 MCP 서버(bunny-holes/sherpa#27)와 `Sherpa.app`·`sherpa-relay`(bunny-holes/sherpa#28)는 이 문서만 보고
 동시에 만들고, 상대 쪽 없이 자기 쪽을 시험한다.
@@ -55,9 +57,12 @@ sherpa-relay ──Unix 소켓──▶ Sherpa.app ──stdin/stdout 프레임�
 정하지 않는 것: 메뉴와 창의 생김새, 공증·cask·formula 이전(3단계), 로그인 항목과 중계가 앱을 띄우는 동작(ADR-0010 의 미확인), 헬퍼 번들을 걷어 낸 뒤 `sherpa` 명령이 EventKit 에
 닿는 길(§11).
 
-판: 프레임은 `mux: 2`, 머리말은 `sherpa_app: 1`, 도구 결과는 `sherpa.mcp.tool-outcome.v1` 이다. 호환되지 않는
+판: 프레임은 `mux: 3`, 머리말은 `sherpa_app: 1`, 도구 결과는 `sherpa.mcp.tool-outcome.v1` 이다. 호환되지 않는
 변경은 그 숫자를 올리고 이 문서의 새 판을 낸다. [계약] 2판은 `open` 에 채널 종류를 실으며 `mux` 를 1 에서 2 로
-올렸다. 머리말과 도구 결과의 숫자는 그대로다. [계약; ADR-0012 "앱과 코어 사이 채널"]
+올렸다. [계약; ADR-0012 "앱과 코어 사이 채널"] 3판은 `confirm` 본문에 `channel` 을 더하며 `mux` 를 2 에서 3 으로
+올렸다. 앱은 정해진 키만 가진 `confirm` 본문을 읽으므로(§9), 판이 섞이면 2판의 앱은 3판 코어의 확인을, 3판의 앱은
+2판 코어의 확인을 모두 잘못된 본문으로 보고 `unavailable` 로 답한다. 인사가 그 섞임을 확인 전에 가려 낸다(§7.5).
+머리말과 도구 결과의 숫자는 그대로다. [계약; ADR-0012 "확인 흐름"]
 
 ## 2. 번들과 실행 파일
 
@@ -100,7 +105,7 @@ sherpa-relay ──Unix 소켓──▶ Sherpa.app ──stdin/stdout 프레임�
 - 코어는 앱 타깃의 첫 단계 Embed Core(`apple/sherpa-app/scripts/embed-core.sh`)가 넣는다. Xcode 의 스크립트
   PATH 에는 bun 이 없어 이 단계는 코어를 빌드하지 않는다. xcodebuild 전에 `core/` 에서 `bun run build` 를
   한다. 단계는 빌드 설정 `SHERPA_CORE`(기본 `core/dist/sherpa`)를 `app serve </dev/null` 로 띄워 첫 줄이 채널 0
-  의 Mux 2 인사이고 버전이 앱의 버전인지 본다. 아니면 `reason=core_not_mux` 로 빌드를 실패시키고, 번들에는
+  의 Mux 3 인사이고 버전이 앱의 버전인지 본다. 아니면 `reason=core_not_mux` 로 빌드를 실패시키고, 번들에는
   서명도 실행 파일도 남지 않는다. 인사를 통과한 코어는 `BUN_BE_BUN=1 <코어> --version` 이 `core/package.json` 의
   `devEngines.packageManager` 가 선언한 Bun 판이어야 한다. 아니면 `reason=core_runtime_mismatch`(답이 없으면
   `core_runtime_unreadable`)로 같은 식으로 실패한다. 선언 판은 게이트와 `scripts/package.sh` 가 쓰는
@@ -199,7 +204,7 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 - 스위치는 메뉴 막대 메뉴(체크 항목 "MCP Server")와 상태 창의 MCP 줄에 있다. 앱은 첫 실행과, MCP 가 꺼진 채 뜰 때마다
   상태 창을 연다. 스위치가 없던 판에서 올린 앱은 첫 실행 표시가 이미 남아 있어도 꺼진 채 시작하기 때문이다. [계약]
 - 꺼져 있으면 앱은 중계의 서명을 확인한 뒤 머리말 `unavailable`·`mcp_disabled` 로 돌려보낸다(§5). 켜 있다가 끄면
-  열린 중계 연결을 모두 닫고(§7.6), 떠 있는 확인 창을 답 없이 닫는다(§9). 꺼져 있는 동안에도 코어는 돈다. [계약]
+  열린 중계 연결을 모두 닫고(§7.6), 그 연결의 호출이 띄운 확인 창을 답 없이 닫는다(§9). 꺼져 있는 동안에도 코어는 돈다. [계약]
 - 상태 창의 본문은 머리(아이콘, 버전, 코어 상태), MCP 줄, 권한 목록만 둔다. MCP 줄은 스위치와 짧은 상태(`Off`, 또는
   `On · <연결된 중계 수> connected`)만 보인다. 켜고 끌 때 일어나는 일과 메뉴 막대 아이콘을 찾는 안내는 그 줄과 머리의
   툴팁(SwiftUI `.help`)에 둔다. [계약; 소유자 결정 2026-11-22: "화면을 설명으로 덮어버리지마라"]
@@ -488,8 +493,8 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 
 | 채널 | 형식 | 방향 | 본문 | 뜻 |
 | --- | --- | --- | --- | --- |
-| 0 | `hello` | 코어 → 앱 | `{"mux":2,"version":"…"}` | 코어 준비 끝. 코어의 첫 프레임 |
-| 0 | `hello` | 앱 → 코어 | `{"mux":2,"version":"…","workers":["planner"]}` | 앱이 받아들였다. 앱의 첫 프레임 |
+| 0 | `hello` | 코어 → 앱 | `{"mux":3,"version":"…"}` | 코어 준비 끝. 코어의 첫 프레임 |
+| 0 | `hello` | 앱 → 코어 | `{"mux":3,"version":"…","workers":["planner"]}` | 앱이 받아들였다. 앱의 첫 프레임 |
 | 0 | `request` | 코어 → 앱 | §8 | 앱 작업 요청 |
 | 0 | `response` | 앱 → 코어 | §8 | 작업 응답 |
 | 0 | `confirm` | 코어 → 앱 | §9 | 사람 확인 요청 |
@@ -502,14 +507,14 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 
 - 같은 파이프에 쓰는 프레임은 한 덩이로 쓰고 서로 끼어들지 않게 한다. [계약]
 - `open` 의 본문은 키 `kind` 하나만 가진 JSON 객체이고, 그 값은 형식과 같은 문법의 낱말(`1*16(%x61-7A / "-")`)인
-  채널 종류다. 2판의 코어가 받는 종류는 `mcp`(중계 연결 하나, §7.6) 하나다. 채팅 채널의 `chat` 은 채팅 루프 작업
+  채널 종류다. 3판의 코어가 받는 종류는 `mcp`(중계 연결 하나, §7.6) 하나다. 채팅 채널의 `chat` 은 채팅 루프 작업
   (bunny-holes/sherpa#66)이 더한다. [계약; ADR-0012 "앱과 코어 사이 채널"]
 - 표에 없는 조합(채널 0 의 `data`, 채널 1 이상의 `hello` 등), 문법 위반, 인사 전의 다른 프레임, 살아 있는 채널의
   두 번째 `open` 은 프로토콜 위반이다. 코어는 `fatal` 을 쓰고 65 로 끝난다. 앱은 코어 출력에서 위반을 보면
   코어를 끝낸다(§7.8 의 재시작 규칙을 따른다). [계약]
 - `fatal` 의 코드: 문법이나 본문 모양 오류, 그리고 V2 모양이나 상관 값이 맞지 않는 `response` 본문은
   `mux.frame_invalid`, 한도 초과는 `mux.frame_too_large`, 표나 순서 위반(채널·방향에 없는 형식, 인사 전 프레임,
-  두 번째 `open`·`hello`, 닫힌 번호의 `open`)은 `mux.unexpected_frame`, 앱 `hello` 의 `mux` 가 2 가 아니면
+  두 번째 `open`·`hello`, 닫힌 번호의 `open`)은 `mux.unexpected_frame`, 앱 `hello` 의 `mux` 가 3 이 아니면
   `mux.version_unsupported` 다. 본문 없는 `open`(Mux 1 의 `open`)과 모양이 틀린 `open` 본문(JSON 이 아님, `kind`
   가 없음, 낱말이 아닌 값, 다른 키)은 본문 모양 오류다. 앱은 코드와 상관없이 같은 규칙으로 코어를 다룬다. [계약]
 - 모양이 맞지만 코어가 받지 않는 종류의 `open` 은 위반이 아니다. 코어는 그 채널에
@@ -545,21 +550,21 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 
 ### 7.5 인사
 
-1. 코어는 준비되면 첫 프레임으로 `0\thello\t{"mux":2,"version":"<코어 버전>"}` 를 쓴다.
-2. 앱은 그것을 10초 안에 받아야 한다. `mux` 가 2 이고 `version` 이 앱 버전과 같으면 `hello` 로 답한다. 같은
+1. 코어는 준비되면 첫 프레임으로 `0\thello\t{"mux":3,"version":"<코어 버전>"}` 를 쓴다.
+2. 앱은 그것을 10초 안에 받아야 한다. `mux` 가 3 이고 `version` 이 앱 버전과 같으면 `hello` 로 답한다. 같은
    번들에서 나온 둘의 `mux` 나 버전이 다르면 설치가 깨진 것이다. 앱은 코어를 끝내고 상태를 `core_incompatible` 로
    두며 다시 띄우지 않는다.
-3. 코어는 앱의 `hello` 를 받기 전에 다른 프레임을 쓰지 않는다. 앱의 `mux` 가 2 가 아니면 `fatal`
+3. 코어는 앱의 `hello` 를 받기 전에 다른 프레임을 쓰지 않는다. 앱의 `mux` 가 3 이 아니면 `fatal`
    `mux.version_unsupported` 를 쓰고 65 로 끝난다.
 4. 앱은 `hello` 를 보낸 뒤에만 `open` 을 보낸다. 코어는 앱의 `hello` 를 받자마자 `capabilities` 작업 요청으로
    도구 목록의 근거를 얻는다(§10.2).
 
 모두 [계약].
 
-2판의 앱과 코어는 Mux 1 을 받지 않는다. 앱과 코어는 한 번들로 나가고 인사에서 버전이 같아야 하므로 두 판을 함께
-받을 까닭이 없다. [계약; ADR-0012 "앱과 코어 사이 채널"] CLI 버전은 병합마다 오르지 않아 2판 전에 빌드한 코어도
-같은 버전을 말할 수 있으므로, 그 코어는 `mux` 로 가려 낸다. 번들 빌드도 Mux 2 인사가 아닌 코어를 넣지 않는다(§2
-"번들 빌드"). [계약]
+3판의 앱과 코어는 앞 판(Mux 1, Mux 2)을 받지 않는다. 앱과 코어는 한 번들로 나가고 인사에서 버전이 같아야 하므로
+두 판을 함께 받을 까닭이 없다. [계약; ADR-0012 "앱과 코어 사이 채널"] CLI 버전은 병합마다 오르지 않아 3판 전에
+빌드한 코어도 같은 버전을 말할 수 있으므로, 그 코어는 `mux` 로 가려 낸다. 번들 빌드도 Mux 3 인사가 아닌 코어를
+넣지 않는다(§2 "번들 빌드"). [계약]
 
 ### 7.6 연결 수명
 
@@ -680,7 +685,7 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
      시간이 없으면 묻지 않고 `failed`·`confirmation.timed_out`·`after_user_action` 으로 끝낸다.
   3. `approved` 면 실행한다. `declined` 면 실행하지 않고 `failed`·`confirmation.declined`·`after_user_action`
      으로 끝낸다. 30초가 지나면 `withdraw` 를 보내고 `failed`·`confirmation.timed_out`·`after_user_action`.
-     앱이 창을 띄울 수 없으면 `unavailable` 로 답하고 코어는
+     앱이 창을 띄울 수 없거나 그 호출의 채널이 앱에 열려 있지 않으면 `unavailable` 로 답하고 코어는
      `failed`·`confirmation.unavailable`·`after_backoff`.
   4. 기다리는 중에 호출이 취소되거나 연결이 끊기면 `withdraw` 를 보내고 실행하지 않는다. 코어의 시계가
      권위이고, `withdraw` 뒤에 앱이 보낸 답은 버린다. 실행은 원래 호출 안에서만 일어나므로 늦게 누른 허용이
@@ -694,7 +699,7 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
 - 프레임(탭은 `\t` 로 적었다):
 
   ```text
-  0\tconfirm\t{"id":3,"tool":"reminder_delete","operation_id":"op-…","client":{"name":"claude-code","version":"2.1.326"},"title":"…","lines":[{"label":"…","value":"…"}],"timeout_ms":30000}
+  0\tconfirm\t{"id":3,"tool":"reminder_delete","operation_id":"op-…","channel":1,"client":{"name":"claude-code","version":"2.1.326"},"title":"…","lines":[{"label":"…","value":"…"}],"timeout_ms":30000}
   0\tconfirmation\t{"id":3,"decision":"approved"}
   0\twithdraw\t{"id":3}
   ```
@@ -705,21 +710,34 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   12줄, `label` 은 40자, `value` 는 2,000자까지다(자는 코드 포인트). 이름표는 코어가 도구마다 정한 Sherpa 고정
   문구이고, 값은 대상의 실제 내용이다. [계약; 규격은 `clientInfo` 를 요청마다 싣기를 권하고(SHOULD) 서버가 앞선
   요청에 기대지 않게 한다: 문서: MCP 2026-07-28 Overview, `_meta` "Per-request protocol fields", "Statelessness"]
+
+  `channel` 은 그 호출이 온 채널의 번호(§7.2, 1 이상 2^53-1 이하의 정수)다. 본문은 위의 여덟 키만 가진다.
+  `channel` 이 없거나 정수가 아니거나 범위 밖이면, 다른 키가 틀린 본문처럼 잘못된 본문이고 앱은 창 없이
+  `unavailable` 로 답한다. `id` 를 읽을 수 없는 본문만 프로토콜 위반이다. 앱은 확인의 출처를 그 번호로 자기 채널
+  표에서 찾은 종류로 가리고 `client` 로 가리지 않는다. `client` 는 클라이언트가 스스로 댄 값이라 어느 MCP
+  클라이언트든 `sherpa-chat` 같은 남의 이름을 댈 수 있다. [계약; ADR-0012 "확인 흐름"]
 - 앱은 확인 창을 맨 앞 창으로 띄우고 남은 시간을 보여 준다. 메뉴에만 두지 않는다. 소유자가 미리보기 앱의 메뉴
   막대 아이콘을 보지 못한 일이 있었다(원인 미확인). 창은 한 번에 하나만 띄우고 나머지는 차례를 기다린다.
   기다리는 동안에도 각자의 30초는 흐른다. 버튼은 창이 뜬 뒤 1초가 지나야 눌린다. [계약; 값은
   `apple/sherpa-app/App/ConfirmationWindows.swift` 의 `armingDelay`]
+- 창은 묻는 쪽을 그 호출의 채널 종류로 밝힌다. `mcp` 채널이면 MCP 에이전트가 묻는다고 쓰고, `client` 의 이름과
+  버전은 그 에이전트가 스스로 댄 이름으로만 붙인다("An MCP agent that calls itself claude-code 2.1.326 asks to run
+  reminder_delete."). [계약; 글은 `apple/sherpa-app/App/ConfirmationWindows.swift` 의 `asker`]
 - 내보낸 앱(0.8.5, main `d2f9ad9`)에서 중계로 부른 `reminder_delete` 의 창은 호출 0.29초 안에 맞는 내용으로 떴고,
   버튼은 약 1초 뒤 눌렸다. 거부는 `confirmation.declined`(효과 `not_started`), 허용은 성공과
   `native_absence_readback` `matched`, 아무것도 누르지 않으면 30.01초 뒤 `confirmation.timed_out` 이었다. [실측:
   live-evidence 2026-11-21 "Delete confirmation through the exported app's relay"]
 - 미리보기 내용은 사용자 데이터다. 앱 화면에만 보이고 로그와 기록부에 남지 않는다. [계약]
-- MCP 를 끄면(§2) 모든 `mcp` 채널이 닫히므로(§7.6), 앱은 떠 있거나 차례를 기다리는 확인 창을 답 없이 모두 닫고 그
-  뒤에 온 답을 버린다. 코어는 채널이 닫혔으므로 흐름 4 대로 그 호출을 거두고 `withdraw` 를 보낸다. 꺼진 동안 온
-  `confirm` 은 닫힌 채널의 호출이므로 창을 띄우지 않고 `unavailable` 로 답한다. 2판에서 `confirm` 은 모두 `mcp`
-  채널의 호출에서 오므로 이 규칙이 모든 확인 창에 걸린다. 스위치는 `mcp` 채널의 확인만 다루므로, 채팅의 호출이
-  확인을 부르게 되면 그 창은 닫지 않는다. `confirm` 본문에는 채널이 없어, 앱이 어느 종류의 채널에서 온 확인인지
-  아는 방법은 채팅 루프 작업(bunny-holes/sherpa#66)이 정한다. [계약]
+- MCP 를 끄면(§2) 모든 `mcp` 채널이 닫히므로(§7.6), 앱은 `mcp` 채널의 호출이 띄운 확인 창을 떠 있든 차례를
+  기다리든 답 없이 닫고 그 뒤에 온 답을 버린다. 코어는 채널이 닫혔으므로 흐름 4 대로 그 호출을 거두고 `withdraw` 를
+  보낸다. 다른 종류의 채널에서 온 확인은 스위치가 닫지 않는다. [계약]
+- 앱은 `channel` 이 자기 채널 표에 열려 있지 않은 `confirm` 에 창을 띄우지 않고 `unavailable` 로 답한다. 그 코어에서
+  이미 쓴 번호(스위치가 닫았거나 중계가 끝난 채널)와 그 코어가 아직 쓰지 않은 번호가 그렇다. 꺼진 동안 온 `mcp`
+  채널의 `confirm` 은 닫힌 채널의 호출이다. 거부는 스위치가 아니라 채널이 열려 있는지로 정하므로, 열린 채팅 채널의
+  호출이 부른 확인은 MCP 가 꺼져 있어도 창을 띄운다. [계약; ADR-0012 "확인 흐름"]
+- 3판의 앱은 `mcp` 채널만 연다. 앱이 채팅 채널을 여는 것은 ADR-0012 구현 단계 5(bunny-holes/sherpa#67)이고, MCP 가
+  꺼진 동안 채팅의 확인이 창을 띄우는지와 스위치를 끌 때 그 창이 남는지를 끝까지 보는 시험도 그 단계가 더한다.
+  지금의 시험은 `mcp` 채널 쪽만 본다(§13.2, §16). [계약]
 - Claude Code 의 `_meta["anthropic/requiresUserInteraction"]: true` 는 그 도구의 권한 창을 `bypassPermissions`
   에서도 호출마다 띄우고 "다시 묻지 않기" 를 내지 않으며, `dontAsk` 모드와 답할 사람이 없는 `-p` 실행에서는
   호출을 거부한다. [문서: Claude Code MCP, "Require approval for a specific tool"] 앱 창과 두 번 묻게 되고
@@ -959,7 +977,7 @@ result         object | null
 | `app.unsupported_worker` | `failed` | `never` | 앱이 모르는 작업자 |
 | `confirmation.declined` | `failed` | `after_user_action` | 사람이 거부했다 |
 | `confirmation.timed_out` | `failed` | `after_user_action` | 30초 안에 답이 없었다 |
-| `confirmation.unavailable` | `failed` | `after_backoff` | 앱이 확인 창을 띄울 수 없었다 |
+| `confirmation.unavailable` | `failed` | `after_backoff` | 앱이 확인 창을 띄울 수 없었다. 그 호출의 채널이 앱에 열려 있지 않거나 본문이 잘못된 때도 같다(§9) |
 | `mux.frame_invalid`, `mux.frame_too_large`, `mux.unexpected_frame`, `mux.version_unsupported` | — | — | 코어의 `fatal` 프레임에만 쓴다 |
 
 기존 코드(`protocol.*`, `eventkit.*`, `imessage.*`, `kakaotalk.*`, `mail.*`, `journal.*`, `sherpa.*`)는 그대로
@@ -1001,9 +1019,16 @@ result         object | null
   같은 구간에서 stream 이 받은 인사·열기·스위치 줄 11개 중 3개만 돌려줬다. [실측: live-evidence 2026-11-22 "The Mux 2
   bundle"]
 - MCP 스위치(§2)는 바뀔 때 `info [app:mcp:switch] enabled=<true|false> sessions_closed=N confirmations_withdrawn=M`
-  을 남긴다. `sessions_closed` 는 닫은 `mcp` 채널 수다. 꺼진 동안 온 중계는
-  `warn [app:session:open] status=unavailable reason=mcp_disabled pid=N`, 끈 뒤 온 확인 요청은
-  `warn [app:confirm:request] id=N status=refused reason=mcp_disabled decision=unavailable` 이다. [계약]
+  을 남긴다. `sessions_closed` 는 닫은 `mcp` 채널 수, `confirmations_withdrawn` 은 그 채널의 호출이 띄워 함께 닫은
+  확인 창 수다. 꺼진 동안 온 중계는 `warn [app:session:open] status=unavailable reason=mcp_disabled pid=N` 이다.
+  [계약]
+- 앱은 창을 띄우는 확인 요청에
+  `info [app:confirm:request] id=N channel=C kind=<종류> tool=… operation_id=… client=… client_version=…` 를,
+  채널이 열려 있지 않은 확인 요청에
+  `warn [app:confirm:request] id=N channel=C status=refused reason=<channel_closed|channel_unknown> decision=unavailable`
+  을 남긴다. `channel_closed` 는 그 코어에서 이미 쓴 번호(끈 뒤 온 `mcp` 채널의 확인이 이것이다), `channel_unknown`
+  은 아직 쓰지 않은 번호다. 잘못된 본문은 `warn [app:confirm:request] id=N status=invalid decision=unavailable` 이다.
+  코어의 확인 줄(`[core:control:confirm] start`·`withdraw`)도 `channel=C` 를 싣는다. [계약]
 - 채널을 열 때 앱은 `info [app:session:open] channel=N kind=mcp …` 를, 코어는
   `info [core:mux:session-open] channel=N kind=<종류> sessions=M` 을 남긴다. 받지 않는 종류의 `open`(§7.3)은
   `warn [core:mux:open] refused channel=N kind=<종류> reason=unsupported_kind` 다. [계약]
@@ -1040,12 +1065,12 @@ result         object | null
 
 - 프레임: §14 의 벡터 전부, 형식별 한도의 경계값(한도와 한도 + 1), 읽는 도중 한도를 넘으면 더 쌓지 않음.
 - 다중화: `open`·`data`·`close` 순서, 닫힌 채널과 엇갈린 프레임, 두 번째 `open` 위반, 인사 순서와 `mux`
-  불일치(`fatal`, 65). Mux 1 앱 인사는 `mux.version_unsupported`, 본문 없는 `open` 과 모양이 틀린 종류는
+  불일치(`fatal`, 65). Mux 1·2 앱 인사는 `mux.version_unsupported`, 본문 없는 `open` 과 모양이 틀린 종류는
   `mux.frame_invalid`. 받지 않는 종류(`chat`, 객체 원형의 이름 `constructor`)의 `open` 은 그 채널만
   `unsupported_kind` 로 닫고, 그 번호의 다음 `open` 은 위반이며, 다른 채널은 계속 돈다.
 - 작업 요청: `id` 상관, 늦은 응답 버림, 시간 초과에서 읽기와 변경의 구분, `report` 모양 옮기기.
 - 확인: `approved`·`declined`·`unavailable`·30초 초과, 취소와 연결 끊김의 `withdraw`, `withdraw` 뒤 답 무시,
-  실행이 원래 호출 안에서만 일어남.
+  실행이 원래 호출 안에서만 일어남. `confirm` 본문은 앱이 읽는 여덟 키만 가지고 `channel` 은 그 호출의 채널임.
 - 도구 등록부: 이름 규칙과 중복, 효과 부류별 annotation 표, 가짜 발견 응답과 맞추기(맞지 않는 서술자는 빠짐),
   발견 실패에서 core 도구만 남음.
 - 결과: 상태와 효과의 조합마다 `isError`, `structuredContent`, text 의 키 순서, 1 MiB 맞춤, 모든 결과가
@@ -1066,9 +1091,10 @@ stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). �
   `response`). 시험 빌드의 동시 세 세션 시험과 같은 모양이다.
 - 2025-11-25·2025-06-18 `initialize` → -32022, 봉투 없는 `tools/list` → -32022, 같은 채널의 `server/discover` 뒤 도구
   35개와 읽기 호출, 표준 오류의 `reason=unsupported_protocol_version`.
-- 삭제 도구 → `confirm` → `approved` 면 `request` 가 나가고, `declined` 면 나가지 않음.
+- 삭제 도구 → `confirm` → `approved` 면 `request` 가 나가고, `declined` 면 나가지 않음. 채널 2 와 3 에서 부른
+  삭제의 `confirm` 은 `channel` 이 2 와 3 임.
 - 호출 중 `close` → 답이 없고 코어는 계속 돈다.
-- Mux 1 앱 인사 → `fatal` `mux.version_unsupported` 와 65, 작업 요청 없음, 표준 오류의 `app_mux=1`. 본문 없는 `open`
+- Mux 2 앱 인사 → `fatal` `mux.version_unsupported` 와 65, 작업 요청 없음, 표준 오류의 `app_mux=2`. 본문 없는 `open`
   → `fatal` `mux.frame_invalid` 와 65. `chat` 종류의 `open` → 그 채널에 `close` `unsupported_kind` 와 warn 로그,
   그 채널의 `data` 는 답이 없고, 다음 채널은 열리며, 표준 입력 EOF 뒤 0.
 - 한도를 넘는 줄 → `fatal` 과 65. 표준 입력 EOF → 5초 안에 0.
@@ -1089,6 +1115,8 @@ stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). �
 
 - 프레임: §14 의 벡터 전부. 코어와 같은 벡터다. 다만 `open` 본문의 종류와 앱 `hello` 의 `mux` 는 앱 → 코어 프레임을
   읽는 코어가 보므로, 앱의 프레임 읽기 시험은 본문 없는 `open` 까지만 본다.
+- 확인 요청 본문(§9): 여덟 키만 받고, `channel` 은 1 부터 2^53-1 까지의 정수만 받는다. 없거나 0, 음수, 2^53, 소수,
+  문자열, null, 불이면 그 `id` 의 잘못된 본문이다.
 - 머리말의 직렬화와 중계의 해석, 종료 코드를 고르는 표. `mcp_disabled` 는 75 와 MCP 를 켜라는 `remedy`, 모르는 사유는
   `status` 대로 75·77 과 일반 `remedy`, 사유 모양이 아니면 76.
 - 소켓 경로 계산(홈은 사용자 데이터베이스에서), 103 바이트 경계.
@@ -1108,17 +1136,20 @@ stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). �
   않음. 스크립트의 표식 파일과 가짜 코어의 시작 기록이 없어야 한다.
 - 중계 종료 코드: 69(소켓 없음), 77(ad-hoc 가짜 서버), 76(잘못된 머리말), 75(`unavailable` 머리말, 입력이 열린
   채 EOF), 78(긴 경로), 64(인자), 0(정상).
-- 가짜 코어(프레임을 말하는 작은 시험 프로그램)와 다중화: 인사의 버전이나 `mux` 불일치(Mux 1 가짜 코어 포함,
+- 가짜 코어(프레임을 말하는 작은 시험 프로그램)와 다중화: 인사의 버전이나 `mux` 불일치(Mux 2 가짜 코어 포함,
   `core_incompatible`, 재시작 안 함), 연결마다 `{"kind":"mcp"}` 의 `open` 과 `close`, 코어가 끝나면 모든 중계가
   75, 재시작 간격과 다섯 번 뒤 멈춤(시간은 주입), 코어 준비 전 연결의 10초 대기, `slow_consumer` 가 다른 채널을
-  멈추지 않음, 16개 초과 거부, 확인 요청에 시험용 결정기로 답함.
+  멈추지 않음, 16개 초과 거부, 확인 요청에 시험용 결정기로 답함(결정기는 채널 번호와 그 종류 `mcp` 를 받는다).
 - MCP 스위치(§2, §5, §7.6, §9): 시험 호스트는 `--mcp on|off` 로 시작하고, 없으면 앱의 첫 실행처럼 꺼진 채
   시작한다. 표준 입력의 `mcp on`·`mcp off` 한 줄이 앱의 스위치처럼 바꾼다. 꺼진 호스트에서 직접 연결은 여전히
   `peer_signature` 이고, 중계는 75·`mcp_disabled` 로 끝나며 코어에 `open` 이 가지 않음. 켜면 같은 호스트가 중계에
   채널을 엶. 켜진 채 끄면 열린 중계 둘이 75(`app_closed_session`), 코어가 `mcp` 채널마다 `close`
-  `{"reason":"mcp_disabled"}` 를 받고, 떠 있던 확인 창이 닫히며, 새 중계는 `mcp_disabled`. 다시 켜면 같은 코어의 다음
-  채널. 끈 뒤 도착한 확인 요청은 창 없이 `unavailable`. 스위치에는 시험용 환경 변수가 없다. 이 인자와 표준 입력은
-  DEBUG 시험 호스트만 읽고(릴리스 시험 호스트는 `--print-configuration` 만 한다), 앱은 defaults 만 읽는다.
+  `{"reason":"mcp_disabled"}` 를 받고, 떠 있던 `mcp` 채널의 확인 창이 그 `id` 로 닫히며(한꺼번에 거두지 않는다), 새
+  중계는 `mcp_disabled`. 다시 켜면 같은 코어의 다음 채널. 끈 뒤 도착한 확인 요청은 창 없이 `unavailable`
+  (`channel_closed`). 켜진 동안에도 닫힌 채널과 연 적 없는 채널을 대는 확인 요청은 창 없이 `unavailable`
+  (`channel_closed`, `channel_unknown`). 채팅 채널의 확인은 앱이 그 채널을 열 때(bunny-holes/sherpa#67) 더한다(§9).
+  스위치에는 시험용 환경 변수가 없다. 이 인자와 표준 입력은 DEBUG 시험 호스트만 읽고(릴리스 시험 호스트는
+  `--print-configuration` 만 한다), 앱은 defaults 만 읽는다.
 - 릴리스 빌드는 시험용 변수를 읽지 않음: 릴리스 중계에 시험용 변수를 줘도 기본 경로와 운영 요건을 쓴다. 게이트
   (`scripts/check-all.sh`)가 아래 이름이 DEBUG 빌드에는 있고 릴리스 빌드에는 없는지 본다. 보는 파일은 패키지의
   `sherpa-relay` 와 Xcode 가 빌드한 Debug·Release 번들의 `Sherpa`·`sherpa-relay` 다. Debug 앱 타깃은
@@ -1196,15 +1227,15 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 맞는 프레임:
 
 ```text
-← 0\thello\t{"mux":2,"version":"0.9.0"}\n
-→ 0\thello\t{"mux":2,"version":"0.9.0","workers":["planner"]}\n
+← 0\thello\t{"mux":3,"version":"0.9.0"}\n
+→ 0\thello\t{"mux":3,"version":"0.9.0","workers":["planner"]}\n
 ← 0\trequest\t{"id":1,"worker":"planner","request":{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"op-1","operation_id":"op-1","capability":"capabilities","payload":{"schema":"sherpa.planner.capabilities.request.v2"},"deadline_ms":20000,"idempotency_key":"op-1","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}}\n
 → 0\tresponse\t{"id":1,"response":{"application_contract":"sherpa.planner.v2","capability":"capabilities","effect":{"kind":"none","state":"not_started"},"error":{"code":"protocol.unsupported_capability","retry":"never"},"kind":"response","operation_id":"op-1","protocol_version":"2.0.0","request_id":"op-1","status":"failed","warnings":[]}}\n
 → 0\tresponse\t{"id":2,"report":{"error":"sherpa.internal_failure","status":"failed"}}\n
 → 1\topen\t{"kind":"mcp"}\n
 → 1\tdata\t{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n
 ← 1\tdata\t{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}\n
-← 0\tconfirm\t{"id":3,"tool":"reminder_delete","operation_id":"op-2","client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}\n
+← 0\tconfirm\t{"id":3,"tool":"reminder_delete","operation_id":"op-2","channel":1,"client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}\n
 → 0\tconfirmation\t{"id":3,"decision":"declined"}\n
 ← 0\twithdraw\t{"id":3}\n
 → 1\tclose\n
@@ -1224,14 +1255,14 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 1\tdata\n                                   본문 없는 data
 1\tdata\t\n                                 빈 본문
 0\topen\t{"kind":"mcp"}\n                   제어 채널의 open
-1\thello\t{"mux":2}\n                       채널 1 이상의 hello
+1\thello\t{"mux":3}\n                       채널 1 이상의 hello
 9007199254740992\topen\t{"kind":"mcp"}\n    2^53
 1\topen\n                                   본문 없는 open(Mux 1 의 open): mux.frame_invalid
 1\topen\t{}\n                               종류 없는 open: mux.frame_invalid
 1\topen\t{"kind":"MCP"}\n                   낱말이 아닌 종류: mux.frame_invalid
 1\topen\t{"kind":"mcp"}\n 를 두 번          살아 있는 채널의 두 번째 open
 1\topen\t{"kind":"mcp"}\n 이 첫 프레임      인사 전 프레임
-0\thello\t{"mux":1,"version":"0.9.0","workers":["planner"]}\n   Mux 1 앱 인사: mux.version_unsupported
+0\thello\t{"mux":2,"version":"0.9.0","workers":["planner"]}\n   Mux 2 앱 인사: mux.version_unsupported
 줄 끝 없이 8,454,144 바이트 초과            줄 한도
 ```
 
@@ -1242,6 +1273,7 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 1\tdata\tnot json\n                         그 채널에 -32700 오류, 연결 유지
 0\tresponse\t{"id":99,"report":{"error":"x","status":"failed"}}\n   모르는 id(늦은 응답): 버리고 warn 로그
 1\topen\t{"kind":"chat"}\n                  받지 않는 종류: 그 채널에 1\tclose\t{"reason":"unsupported_kind"}\n, 코어는 계속 돈다
+← 0\tconfirm\t{"id":4,"tool":"reminder_delete","operation_id":"op-3","client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}\n   channel 없는 확인: 앱은 창 없이 → 0\tconfirmation\t{"id":4,"decision":"unavailable"}\n 로 답한다
 ```
 
 머리말(중계가 받는 줄과 그 결과):
@@ -1298,6 +1330,9 @@ not json\n                                                                      
 - Developer ID 로 양방향 서명이 통과하는 경로. 인증서가 소유자 키체인에만 있어 게이트는 거부 쪽과 시험 요건만
   돈다.
 - DEBUG 앱·빌드한 코어·중계의 통합 시험(§13.3). 게이트에 없다.
+- MCP 가 꺼진 동안 채팅 채널의 호출이 부른 확인이 창을 띄우는지와, 스위치를 끌 때 그 창이 남는지(§9). 3판의
+  앱은 채팅 채널을 열지 못해 게이트는 `mcp` 채널 쪽만 본다. 앱이 채팅 채널을 여는 bunny-holes/sherpa#67 이 시험을
+  더한다.
 - 내보낸 앱의 메뉴 막대 아이콘이 보이는지와 미리보기 앱에서 보이지 않은 원인, 메뉴의 Quit, 오래 켜 둔 앱과 코어의
   메모리. 2026-11-21 의 #29 실기에서 재지 않았다.
 - 도구별 결과 스키마. Swift 와 ObjC 응답의 null 키 차이가 정리된 뒤 정한다.
