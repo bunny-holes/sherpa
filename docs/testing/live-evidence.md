@@ -9,6 +9,46 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — An encrypted chat history file in a scratch folder: backup flag, file mode, AES-GCM and Spotlight (bunny-holes/sherpa#59)
+
+This Mac (macOS 27.3, build 26C5035r), run by the chat history design worker
+for ADR-0012 "대화 기록". A throwaway Swift 6.4.2 script ran with `swift` in a
+scratch folder under `/private/tmp`. No Sherpa build, keychain item, Time
+Machine backup or model was involved.
+
+- Setting `URLResourceValues.isExcludedFromBackup` to `true` on a new 0700
+  folder added the extended attribute
+  `com.apple.metadata:com_apple_backup_excludeItem`. `tmutil addexclusion` on
+  another item wrote the same attribute with the same 61-byte value, a binary
+  plist holding `com.apple.backupd`.
+- A file created inside the flagged folder had no attribute of its own, yet
+  its `isExcludedFromBackup` read `true`. After `FileManager.moveItem` into an
+  unflagged sibling folder it read `false`.
+- `Data.write(to:options: .atomic)` created the file with mode 0644. After the
+  flag was set on that file, a second `.atomic` write left the file without
+  the attribute; the value still read `true` only because the folder was
+  flagged.
+- A temporary file opened with
+  `open(O_CREAT|O_EXCL|O_WRONLY|O_CLOEXEC, 0600)`, written, `fsync`ed and
+  `rename`d into place kept mode 0600.
+- CryptoKit `AES.GCM.seal` of 1,000 bytes with a 6-byte header as additional
+  data gave a 1,028-byte `combined` value (12-byte nonce, 16-byte tag).
+  Opening it with a different header threw `authenticationFailure`.
+- `mdimport -t -d3` on the sealed file (`.sherpachat`) reported a dynamic type
+  (`dyn.…`), no importer plug-in and 27 attributes, none of them
+  `kMDItemTextContent`. The same text in a `.txt` file went through
+  `RichText.mdimporter`, which returned it as `kMDItemTextContent`.
+- Not measured:
+  - Whether Time Machine leaves out a flagged folder under
+    `~/Library/Application Support`. `tmutil isexcluded` answered `[Excluded]`
+    for every item under `/private/tmp`, flagged or not, so it could not show
+    the flag's effect; `/Users/Shared` answered `[Included]`.
+  - Whether local snapshots keep flagged items, and whether other backup tools
+    honor the flag.
+  - `fcntl(F_FULLFSYNC)`, which ADR-0012 uses in place of the probe's `fsync`.
+  - The history key in the data protection keychain, which needs the
+    provisioning profile (bunny-holes/sherpa#65).
+
 ## 2026-11-22 — The core refuses the global fetch and the built core holds no socket while it serves MCP (bunny-holes/sherpa#64)
 
 This Mac, worker session on `feat/core-egress` from `main` `3ce5e60`. The
