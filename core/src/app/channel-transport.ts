@@ -18,7 +18,7 @@ const PARSE_ERROR = '{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message"
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
 /**
- * The MCP transport of one mux channel, handed to `serveStdio(factory, { transport })`
+ * The MCP transport of one `mcp` channel, handed to `serveStdio(factory, { transport })`
  * (§7.6). One `data` frame carries one JSON-RPC message each way. A body that
  * is not JSON is answered with -32700 and the connection stays open (§7.3).
  *

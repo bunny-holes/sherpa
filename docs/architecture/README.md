@@ -37,8 +37,8 @@ Human / LLM
 sherpa — Bun + TypeScript core (one compiled executable, core/)
     |-- cli/ -------------- argv parsing, bounded stdin, reports with remedies
     |-- commands.ts ------- the core commands both the CLI and the MCP tools call
-    |-- app/ -------------- `sherpa app serve`: Mux 1 frames, control channel,
-    |                       one MCP transport per channel (app-connection-v1 §7–§9)
+    |-- app/ -------------- `sherpa app serve`: Mux 2 frames, control channel,
+    |                       one MCP transport per `mcp` channel (app-connection-v1 §7–§9)
     |-- mcp/ -------------- tool registry, input schemas, outcome envelope,
     |                       confirmation previews (app-connection-v1 §10)
     |-- planner/ ---------- planner port: Worker Protocol V2 request and reply,

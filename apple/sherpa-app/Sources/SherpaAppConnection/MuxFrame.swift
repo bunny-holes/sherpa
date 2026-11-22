@@ -8,6 +8,9 @@ import Foundation
 ///     body    = 1*(%x00-09 / %x0B-FF)
 public struct MuxFrame: Equatable, Sendable {
     public static let maximumChannel: UInt64 = (1 << 53) - 1
+    /// The `mux` of both hellos (contract §7.5). Mux 2's `open` names the channel's kind; a core of
+    /// another `mux` is incompatible.
+    public static let muxVersion: Int64 = 2
 
     public let channel: UInt64
     public let type: String
@@ -23,6 +26,11 @@ public struct MuxFrame: Equatable, Sendable {
         self.init(channel: channel, type: type, body: Data(json.utf8))
     }
 
+    /// `N\topen\t{"kind":"…"}`: the app opens channel `channel` of `kind` (contract §7.3).
+    public static func open(channel: UInt64, kind: MuxChannelKind) -> MuxFrame {
+        MuxFrame(channel: channel, type: "open", json: #"{"kind":"\#(kind.rawValue)"}"#)
+    }
+
     /// The frame as one write: header, optional body, line feed. A body never holds a line feed;
     /// callers split relay input on line feeds and serialize JSON without one.
     public var encoded: Data {
@@ -35,6 +43,12 @@ public struct MuxFrame: Equatable, Sendable {
         line.append(0x0a)
         return line
     }
+}
+
+/// The kind of a channel the app opens, the body of its `open` (contract §7.3).
+public enum MuxChannelKind: String, Sendable {
+    /// One relay connection, one MCP connection in the core (§7.6). The MCP switch closes these.
+    case mcp
 }
 
 /// Which end wrote the frame. The table of allowed channel and type pairs differs by direction.
@@ -79,9 +93,9 @@ public enum MuxLimits {
     }
 }
 
-/// Whether a body is required, forbidden or optional for a pair the table allows.
+/// Whether a body is required or optional for a pair the table allows.
 private enum BodyRule {
-    case required, forbidden, optional
+    case required, optional
 }
 
 private func rule(direction: MuxDirection, channel: UInt64, type: String) -> BodyRule? {
@@ -89,10 +103,9 @@ private func rule(direction: MuxDirection, channel: UInt64, type: String) -> Bod
     case (.coreToApp, true, "hello"), (.coreToApp, true, "request"), (.coreToApp, true, "confirm"),
         (.coreToApp, true, "withdraw"), (.coreToApp, true, "fatal"):
         .required
-    case (.appToCore, true, "hello"), (.appToCore, true, "response"), (.appToCore, true, "confirmation"):
+    case (.appToCore, true, "hello"), (.appToCore, true, "response"), (.appToCore, true, "confirmation"),
+        (.appToCore, false, "open"):
         .required
-    case (.appToCore, false, "open"):
-        .forbidden
     case (_, false, "data"):
         .required
     case (_, false, "close"):
@@ -105,7 +118,8 @@ private func rule(direction: MuxDirection, channel: UInt64, type: String) -> Bod
 /// Splits a byte stream into frames and enforces each type's limit while reading: once the
 /// header names the type, the line stops growing the moment it passes that limit, before
 /// an unbounded buffer can form. The pair table and body rules are checked here too;
-/// ordering rules (hello first, a second `open`) belong to the reader's owner.
+/// ordering rules (hello first, a second `open`) and body contents (the kind an `open` names)
+/// belong to the reader's owner.
 public struct MuxFrameReader: Sendable {
     private static let maximumChannelDigits = 16
     private static let maximumTypeBytes = 16
@@ -165,10 +179,7 @@ public struct MuxFrameReader: Sendable {
             return
         }
         let type = try parseType(bytes[(firstTab + 1)..<secondTab])
-        guard let rule = rule(direction: direction, channel: channel, type: type) else {
-            throw .unexpectedFrame
-        }
-        guard rule != .forbidden else { throw .frameInvalid }
+        guard rule(direction: direction, channel: channel, type: type) != nil else { throw .unexpectedFrame }
         let limit = MuxLimits.body(type: type)
         let bodyStart = secondTab + 1
         guard line.count - bodyStart <= limit, line.count + 1 <= MuxLimits.line else { throw .frameTooLarge }

@@ -35,8 +35,9 @@ private let capabilities =
         // The app ignores SIGPIPE and SIGTERM for itself; the core must not inherit that.
         #expect(field("ignored", in: spawn) == "none")
         #expect(field("blocked", in: spawn) == "none")
-        #expect(rig.coreLog.contains("app-hello version=0.9.0 workers=planner"))
-        #expect((1...3).allSatisfy { rig.coreLog.contains("open \($0)") })
+        // Mux 2: the app's hello and an `mcp` open for each relay (contract §7.3, §7.5).
+        #expect(rig.coreLog.contains("app-hello mux=2 version=0.9.0 workers=planner"))
+        #expect((1...3).allSatisfy { rig.coreLog.contains("open \($0) kind=mcp") })
 
         for relay in relays { try relay.closeInput() }
         for relay in relays { #expect(await relay.exitStatus() == 0) }
@@ -170,6 +171,25 @@ private let capabilities =
         #expect(host.errorLines(containing: "[app:core:restart]").isEmpty)
     }
 
+    @Test func stopsACoreOfTheFirstMuxWithoutRestart() async throws {
+        // The app's version under Mux 1: a core built before Mux 2 (contract §7.5).
+        let rig = try Rig(core: #"{"version":"0.9.0","mode":"mux-1"}"#)
+        defer { rig.tearDown() }
+        let host = try await rig.startHost()
+        #expect(await host.waitForError("[app:core:hello] status=incompatible"))
+        let refusal = try #require(host.errorLines(containing: "[app:core:hello] status=incompatible").first)
+        #expect(field("mux", in: refusal) == "1")
+        #expect(field("core_version", in: refusal) == "0.9.0")
+        let relay = try rig.startRelay()
+        #expect(await relay.exitStatus() == 75)
+        #expect(relay.errorText.contains("app_reason=core_incompatible"))
+        try await Task.sleep(for: .seconds(1.5))
+        #expect(rig.coreSpawns == 1)
+        #expect(host.errorLines(containing: "[app:core:restart]").isEmpty)
+        // The app never answered that hello.
+        #expect(rig.coreLog.allSatisfy { !$0.hasPrefix("app-hello ") })
+    }
+
     @Test func endsEveryRelayWhenTheCoreExitsAndRestartsIt() async throws {
         let rig = try Rig()
         defer { rig.tearDown() }
@@ -242,7 +262,7 @@ private let capabilities =
         #expect(try await other.echo(1) != nil)
         // This relay's agent never reads, so its pipe and socket fill and the app's queue grows.
         let slow = try rig.startRelay(output: .held)
-        #expect(await rig.waitForCoreLog { $0.contains("open 2") })
+        #expect(await rig.waitForCoreLog { $0.contains("open 2 kind=mcp") })
         try slow.send(MCP.call(1, "flood", #"{"frames":800,"bytes":32768}"#))
         #expect(
             await host.waitForError(

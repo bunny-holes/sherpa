@@ -30,6 +30,12 @@ const appHello = z.strictObject({
 });
 const closeBody = z.strictObject({ reason: z.string().max(256) });
 
+/** The channel kinds this core serves (§7.3). Stage 4 of ADR-0012 adds `chat`. */
+export type ChannelKind = "mcp";
+
+/** An `open` body: one kind, a word of the frame type grammar (§7.2, §7.3). */
+const openBody = z.strictObject({ kind: z.string().regex(/^[a-z-]{1,16}$/) });
+
 /**
  * Serialises frames onto the sink. A write the sink does not take at once
  * waits for `drain` before the next frame is written (§7.7), so frames never
@@ -53,7 +59,7 @@ export class FrameWriter {
   }
 }
 
-/** One MCP connection (channel 1 and above) as the session sees it. */
+/** One channel the app opened (1 and above), as the session that serves its kind sees it. */
 export class MuxChannel {
   /** One `data` body from the app. */
   onmessage?: (body: Uint8Array) => void;
@@ -63,6 +69,7 @@ export class MuxChannel {
 
   constructor(
     readonly id: number,
+    readonly kind: ChannelKind,
     private readonly connection: AppConnection,
   ) {}
 
@@ -103,11 +110,14 @@ export class MuxChannel {
   }
 }
 
+/** What serves a channel of each kind the core accepts (§7.3). */
+export type ChannelHandlers = Readonly<Record<ChannelKind, (channel: MuxChannel) => void>>;
+
 export interface AppConnectionHandlers {
   /** The app accepted the handshake; the control channel is usable from now on. */
   ready(hello: AppHello): void;
-  /** The app opened an MCP connection. */
-  open(channel: MuxChannel): void;
+  /** The app opened a channel of that kind. An `open` of any other kind is closed (§7.3). */
+  open: ChannelHandlers;
 }
 
 export interface AppConnectionOptions {
@@ -125,8 +135,8 @@ export const EXIT_INTERNAL = 70;
 
 /**
  * The core side of the pipe pair with Sherpa.app: the hello handshake,
- * channel 0, and one `MuxChannel` per MCP connection (§7). Reading never
- * waits for writing; a violation writes `fatal` and ends the run with 65.
+ * channel 0, and one `MuxChannel` per channel of a kind the core serves (§7).
+ * Reading never waits for writing; a violation writes `fatal` and ends the run with 65.
  */
 export class AppConnection {
   readonly control: ControlChannel;
@@ -146,7 +156,7 @@ export class AppConnection {
 
   /** Runs until standard input ends (0) or a violation (65). */
   async run(): Promise<number> {
-    log.info(`[core:mux:hello] start version=${this.options.version}`);
+    log.info(`[core:mux:hello] start version=${this.options.version} mux=${MUX_VERSION}`);
     await this.writeFrame(
       encodeFrame(0, "hello", JSON.stringify({ mux: MUX_VERSION, version: this.options.version })),
     );
@@ -256,6 +266,10 @@ export class AppConnection {
       "mux" in value &&
       value.mux !== MUX_VERSION
     ) {
+      // Mux 1 too: the app and the core ship in one bundle, so one edition is served (§7.5).
+      const mux =
+        typeof value.mux === "number" && Number.isSafeInteger(value.mux) ? value.mux : "invalid";
+      log.error(`[core:mux:hello] failure reason=version_unsupported app_mux=${mux}`);
       throw new FrameViolation("mux.version_unsupported", "hello_mux");
     }
     const hello = appHello.safeParse(value);
@@ -267,8 +281,11 @@ export class AppConnection {
     this.options.handlers.ready(hello.data);
   }
 
+  /** `N\topen\t{"kind":…}` (§7.3): a body of another shape is a violation, a kind the core does not serve is not. */
   private openChannel(frame: Frame): void {
-    if (frame.body !== null) throw new FrameViolation("mux.frame_invalid", "open_body");
+    if (frame.body === null) throw new FrameViolation("mux.frame_invalid", "open_without_body");
+    const body = openBody.safeParse(controlBody(frame.body));
+    if (!body.success) throw new FrameViolation("mux.frame_invalid", "open_body");
     if (this.channels.has(frame.channel)) {
       throw new FrameViolation("mux.unexpected_frame", "second_open");
     }
@@ -276,9 +293,32 @@ export class AppConnection {
       throw new FrameViolation("mux.unexpected_frame", "channel_reused");
     }
     this.highestChannel = frame.channel;
-    const channel = new MuxChannel(frame.channel, this);
+    const { kind } = body.data;
+    const handlers = this.options.handlers.open;
+    if (!serves(handlers, kind)) {
+      // Only this channel is affected, so only it ends; its number stays used.
+      log.warn(
+        `[core:mux:open] refused channel=${frame.channel} kind=${kind} reason=unsupported_kind`,
+      );
+      this.writeFrame(
+        encodeFrame(frame.channel, "close", JSON.stringify({ reason: "unsupported_kind" })),
+      ).catch((error: unknown) => {
+        log.error(
+          `[core:mux:open] write_failure channel=${frame.channel} error_type=${error instanceof Error ? error.name : typeof error}`,
+        );
+      });
+      return;
+    }
+    const channel = new MuxChannel(frame.channel, kind, this);
     this.channels.set(frame.channel, channel);
-    log.info(`[core:mux:session-open] channel=${frame.channel} sessions=${this.channels.size}`);
-    this.options.handlers.open(channel);
+    log.info(
+      `[core:mux:session-open] channel=${frame.channel} kind=${kind} sessions=${this.channels.size}`,
+    );
+    handlers[kind](channel);
   }
+}
+
+/** Whether the core serves `kind`; an inherited key such as `constructor` is not a kind. */
+function serves(handlers: ChannelHandlers, kind: string): kind is ChannelKind {
+  return Object.hasOwn(handlers, kind);
 }

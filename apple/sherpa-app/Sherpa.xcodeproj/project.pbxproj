@@ -224,6 +224,8 @@
 			inputPaths = (
 				"$(SRCROOT)/scripts/embed-core.sh",
 				"$(SHERPA_CORE)",
+				"$(SRCROOT)/../../scripts/lib/bun-pin.sh",
+				"$(SRCROOT)/../../core/package.json",
 			);
 			name = "Embed Core";
 			outputFileListPaths = (

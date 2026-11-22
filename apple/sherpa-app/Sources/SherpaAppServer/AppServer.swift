@@ -26,7 +26,9 @@ public final class AppServer: @unchecked Sendable {
     private var generation = 0
     private var coreStartedAt = 0.0
     private var helloReceived = false
+    /// One counter for the channels of every kind (contract §7.2).
     private var nextChannel: UInt64 = 1
+    /// The open `mcp` channels, one per relay (§7.3). The MCP switch closes these and only these.
     private var channels: [UInt64: RelayConnection] = [:]
     private var connections: [Int: RelayConnection] = [:]
     private var nextConnectionID = 0
@@ -100,9 +102,10 @@ public final class AppServer: @unchecked Sendable {
     }
 
     /// The MCP switch (contract §2). While it is off, every relay is turned away with
-    /// `mcp_disabled` once its signature passes. Turning it off closes every open session at
-    /// once: the core gets `close` for each channel and withdraws the calls that were waiting
-    /// for a confirmation (§9), and the windows of those confirmations close unanswered.
+    /// `mcp_disabled` once its signature passes. Turning it off closes every open session, the
+    /// `mcp` channels, at once (§7.6): the core gets `close` for each and withdraws the calls that
+    /// were waiting for a confirmation (§9), and the windows of those confirmations close
+    /// unanswered. Every confirmation comes from an `mcp` channel's call while that is the only kind.
     public func setMCPEnabled(_ enabled: Bool) {
         state.lock()
         guard status.mcpEnabled != enabled else {
@@ -437,7 +440,9 @@ public final class AppServer: @unchecked Sendable {
                 channels[frame.channel] = nil
                 connections[connection.id] = nil
                 status.sessions = connections.count
-                logger.info("app:session:close", "channel=\(frame.channel) by=core")
+                let reason = frame.body.flatMap { try? JSONDecoder().decode(JSONObject.self, from: $0) }?["reason"]?
+                    .string
+                logger.info("app:session:close", "channel=\(frame.channel) by=core reason=\(logToken(reason))")
                 connection.closeAfterFlush()
                 publishLocked()
             default:
@@ -521,7 +526,7 @@ public final class AppServer: @unchecked Sendable {
             state.unlock()
             return nil
         }
-        guard object["mux"] == .integer(1), coreVersion == configuration.version else {
+        guard object["mux"] == .integer(MuxFrame.muxVersion), coreVersion == configuration.version else {
             status.core = .incompatible
             state.broadcast()
             publishLocked()
@@ -537,7 +542,8 @@ public final class AppServer: @unchecked Sendable {
         process.send(
             MuxFrame(
                 channel: 0, type: "hello",
-                json: #"{"mux":1,"version":\#(jsonLiteral(configuration.version)),"workers":["planner"]}"#
+                json:
+                    #"{"mux":\#(MuxFrame.muxVersion),"version":\#(jsonLiteral(configuration.version)),"workers":["planner"]}"#
             ))
         status.core = .ready
         policyReadyLog(process)
@@ -548,7 +554,9 @@ public final class AppServer: @unchecked Sendable {
     }
 
     private func policyReadyLog(_ process: CoreProcess) {
-        logger.info("app:core:hello", "status=ready pid=\(process.pid) version=\(logToken(configuration.version))")
+        logger.info(
+            "app:core:hello",
+            "status=ready pid=\(process.pid) version=\(logToken(configuration.version)) mux=\(MuxFrame.muxVersion)")
     }
 
     private func decided(_ id: UInt64, _ decision: ConfirmationDecision, generation: Int) {
@@ -685,8 +693,9 @@ public final class AppServer: @unchecked Sendable {
             relayEnded(connection, reason: "write_failed")
         }
         _ = connection.send(AppPreface.ready(version: configuration.version).line())
-        core.send(MuxFrame(channel: channel, type: "open"))
-        logger.info("app:session:open", "channel=\(channel) \(connection.peer.logFields)")
+        core.send(.open(channel: channel, kind: .mcp))
+        logger.info(
+            "app:session:open", "channel=\(channel) kind=\(MuxChannelKind.mcp.rawValue) \(connection.peer.logFields)")
         connection.readLines(
             waitForCapacity: { [weak self] in self?.waitForCoreCapacity() },
             line: { [weak self, weak connection] line in
