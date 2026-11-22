@@ -560,16 +560,28 @@ describe("a turn without text", () => {
   const hello = [{ type: "delta", text: "Hello" }, done()];
   const nothing = "warn [core:chat:turn] refused channel=1 reason=nothing_to_retry\n";
 
-  test("in a chat that has taken no turn has nothing to send, and fixes nothing of the chat", async () => {
-    const { sent, open } = turns(() => sse(chat(["Hello"])));
-    const channel = open();
-    channel.write(again({ model: "m-2" }));
-    expect(await channel.next()).toEqual(error("invalid_message", false, null, false));
-    expect(lines).toContain(nothing);
-    expect(sent).toEqual([]);
-    channel.write(compatible());
-    expect(await channel.untilEnd()).toEqual(hello);
-  });
+  test.each([
+    { name: "a turn without text", turn: () => again({ model: "m-2" }), code: "invalid_message" },
+    {
+      name: "a turn whose base URL the egress refuses",
+      turn: () => compatible({ model: "m-2", base_url: "http://127.0.0.1:8080/v1" }),
+      code: "egress_denied",
+    },
+  ])(
+    "in a chat that has taken no turn has nothing to send after $name, which fixes nothing of the chat",
+    async ({ turn, code }) => {
+      const { sent, open } = turns(() => sse(chat(["Hello"])));
+      const channel = open();
+      channel.write(turn());
+      expect(await channel.next()).toEqual(error(code, false, null, false));
+      channel.write(again());
+      expect(await channel.next()).toEqual(error("invalid_message", false, null, false));
+      expect(lines).toContain(nothing);
+      expect(sent).toEqual([]);
+      channel.write(compatible());
+      expect(await channel.untilEnd()).toEqual(hello);
+    },
+  );
 
   test.each([
     ["stop", "stop"],
@@ -775,12 +787,14 @@ describe("a turn without text", () => {
     const channel = open();
     channel.write(compatible());
     await vi.waitFor(() => expect(stream).toBeDefined());
-    channel.write(again());
-    expect(await channel.next()).toEqual(error("busy", false, null, false));
     // A turn the core cannot read while one runs has `resend` false too, though the person's text
-    // is last.
+    // is last: the turn without text after it is busy, and so is the one after that.
     channel.write(again({ model: "" }));
     expect(await channel.next()).toEqual(error("invalid_message", false, null, false));
+    channel.write(again());
+    expect(await channel.next()).toEqual(error("busy", false, null, false));
+    channel.write(again());
+    expect(await channel.next()).toEqual(error("busy", false, null, false));
     stream!.send(...chat(["ok"]));
     stream!.end();
     expect(await channel.untilEnd()).toEqual([
@@ -792,21 +806,58 @@ describe("a turn without text", () => {
     expect(sent).toHaveLength(1);
   });
 
-  test("for another chat or a base URL the egress refuses is refused as one with text is, and the conversation stays to send again", async () => {
-    const { sent, open } = turns((_sent, n) => (n === 1 ? failure(400) : sse(chat(["Hello"]))));
-    const channel = open();
-    channel.write(compatible());
-    expect(await channel.untilEnd()).toEqual([error("provider_rejected", false, 400, true)]);
-    channel.write(again({ model: "m-2" }));
-    expect(await channel.next()).toEqual(error("invalid_message", false, null, true));
-    expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=other_chat\n");
-    channel.write(again({ base_url: "http://127.0.0.1:8080/v1" }));
-    expect(await channel.next()).toEqual(error("egress_denied", false, null, true));
-    channel.write(again());
-    expect(await channel.untilEnd()).toEqual(hello);
-    expect(sent).toHaveLength(2);
-    expect(sent[1]!.body!.messages).toEqual(asked);
-  });
+  // A turn refused before it starts leaves the conversation as it was, so what refuses it carries
+  // the `resend` of what answered the turn before.
+  test.each(
+    [
+      {
+        refused: "a turn the core cannot read",
+        turn: { model: "" },
+        code: "invalid_message",
+        log: null,
+      },
+      {
+        refused: "a turn for another chat",
+        turn: { model: "m-2" },
+        code: "invalid_message",
+        log: "warn [core:chat:turn] refused channel=1 reason=other_chat\n",
+      },
+      {
+        refused: "a turn to a base URL the egress refuses",
+        turn: { base_url: "http://127.0.0.1:8080/v1" },
+        code: "egress_denied",
+        log: "warn [core:chat:turn] refused channel=1 reason=egress_denied\n",
+      },
+    ].flatMap((row) => [
+      { ...row, before: "error provider_rejected", resend: true },
+      { ...row, before: "done stop", resend: false },
+    ]),
+  )(
+    "$refused after $before is refused with the resend of that end, and the conversation stays",
+    async ({ turn, code, log, before, resend }) => {
+      const failed = before === "error provider_rejected";
+      const { sent, open } = turns((_sent, n) =>
+        failed && n === 1 ? failure(400) : sse(chat(["Hello"])),
+      );
+      const channel = open();
+      channel.write(compatible());
+      expect((await channel.untilEnd()).at(-1)).toEqual(
+        failed ? error("provider_rejected", false, 400, true) : done(),
+      );
+      channel.write(again(turn));
+      expect(await channel.next()).toEqual(error(code, false, null, resend));
+      if (log !== null) expect(lines).toContain(log);
+      channel.write(again());
+      if (resend) {
+        expect(await channel.untilEnd()).toEqual(hello);
+        expect(sent).toHaveLength(2);
+        expect(sent[1]!.body!.messages).toEqual(asked);
+      } else {
+        expect(await channel.next()).toEqual(error("invalid_message", false, null, false));
+        expect(sent).toHaveLength(1);
+      }
+    },
+  );
 
   test("in a chat past its limit is conversation_limit, as every later turn is", async () => {
     const big = "가".repeat(Math.ceil((1024 * 1024) / 3));
