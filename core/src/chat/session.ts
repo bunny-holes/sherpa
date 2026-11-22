@@ -39,6 +39,8 @@ export interface ChatOptions {
   turn?: Partial<TurnLimits>;
   /** The time a turn's text was sent; tests fix it. */
   clock?: () => Date;
+  /** The IANA time zone it was sent in, read for each turn; tests fix it. */
+  timeZone?: () => string;
 }
 
 const errorType = (error: unknown) => (error instanceof Error ? error.name : typeof error);
@@ -80,6 +82,7 @@ class ChatSession {
     private readonly listMs: number,
     private readonly turnLimits: TurnLimits,
     private readonly clock: () => Date,
+    private readonly timeZone: () => string,
     onEnd: () => void,
   ) {
     channel.onmessage = (body) => this.receive(body);
@@ -182,7 +185,7 @@ class ChatSession {
       baseURL: where.base,
       model: request.model,
     };
-    const note = timeNote(this.clock(), systemTimeZone());
+    const note = timeNote(this.clock(), this.timeZone());
     const start = this.conversation.start(identity, request.text, note);
     if (start.type === "refused") {
       const code = start.reason === "other_chat" ? "invalid_message" : "conversation_limit";
@@ -255,6 +258,7 @@ export class ChatSessions {
       this.options.listMs ?? chatLimits.listMs,
       { ...TURN_LIMITS, ...this.options.turn },
       this.options.clock ?? (() => new Date()),
+      this.options.timeZone ?? systemTimeZone,
       () => this.open.delete(session),
     );
     this.open.add(session);

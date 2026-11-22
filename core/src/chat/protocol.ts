@@ -32,16 +32,17 @@ export const chatLimits = {
    */
   conversationBytes: 2 * 1024 * 1024,
   /**
-   * One model request without output: from the moment it is sent until its first output, or
-   * until a failure answer has come in whole. Each request the AI SDK sends again starts anew.
+   * A model request without output: from the moment it is sent until its first output, until
+   * its fetch fails, or until the head of a failure answer has come in. Each request the AI SDK
+   * sends again starts it anew. Ten minutes: the Claude of today streams nothing while it thinks.
    */
-  firstOutputMs: 120_000,
+  firstOutputMs: 600_000,
   /** Between two outputs of one model response. */
   chunkMs: 120_000,
   /** How long the answer's text waits for more before a `delta` takes it, and the most one takes. */
   deltaMs: 50,
   deltaBytes: 4096,
-  /** What the core reads of a failure answer's body: its status is what the error carries. */
+  /** The head of a failure answer's body the core reads: its status is what the error carries. */
   failureBodyBytes: 64 * 1024,
 } as const;
 

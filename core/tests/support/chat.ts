@@ -106,5 +106,10 @@ export function openStream(signal: AbortSignal | null | undefined, init: Respons
       if (open) controller.close();
       open = false;
     },
+    /** Breaks the body off with `error`, as Bun's fetch does when its socket fails. */
+    fail(error: unknown) {
+      if (open) controller.error(error);
+      open = false;
+    },
   };
 }

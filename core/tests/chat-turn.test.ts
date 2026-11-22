@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { type Fetch, installEgress } from "../src/chat/egress.ts";
 import { INSTRUCTIONS } from "../src/chat/instructions.ts";
-import { systemTimeZone, timeNote } from "../src/chat/now.ts";
+import { timeNote } from "../src/chat/now.ts";
 import { chatLimits } from "../src/chat/protocol.ts";
 import { type ChatOptions, ChatSessions } from "../src/chat/session.ts";
 import { installWarningLog } from "../src/chat/warnings.ts";
@@ -16,9 +16,10 @@ installWarningLog();
 const KEY = "sk-sherpa-turn-key";
 const TEXT = "내일 일정 알려줘";
 const BASE = "https://models.example/v1";
-/** The time every turn's text is sent at, and what the model reads of it before the text. */
+/** The time every turn's text is sent at, in this zone, and what the model reads before the text. */
 const AT = new Date("2026-11-22T12:56:31Z");
-const said = (text: string) => `${timeNote(AT, systemTimeZone())}\n\n${text}`;
+const ZONE = "Asia/Seoul";
+const said = (text: string) => `${timeNote(AT, ZONE)}\n\n${text}`;
 
 interface Sent {
   url: string;
@@ -50,7 +51,11 @@ function turns(
     },
     { preconnect: () => {} },
   );
-  const sessions = new ChatSessions(installEgress({ fetch }), { clock: () => AT, ...options });
+  const sessions = new ChatSessions(installEgress({ fetch }), {
+    clock: () => AT,
+    timeZone: () => ZONE,
+    ...options,
+  });
   const open = (id = 1) => {
     const channel = new FakeChannel(id);
     sessions.serve(channel);
@@ -148,6 +153,16 @@ const openai = (texts: string[]): ServerEvent[] => [
     },
   },
 ];
+/** The error OpenAI streams when its server fails before any output. */
+const serverError: ServerEvent = {
+  data: {
+    type: "error",
+    code: "server_error",
+    message: "The server had an error.",
+    param: null,
+    sequence_number: 1,
+  },
+};
 const google = (texts: string[]): ServerEvent[] => [
   { data: { event_type: "interaction.created", interaction: { status: "in_progress" } } },
   { data: { event_type: "step.start", index: 0, step: { type: "model_output", content: [] } } },
@@ -206,11 +221,11 @@ const error = (code: string, retryable = false, status: number | null = null) =>
   status,
 });
 
-/** A failure answer the AI SDK sends again at once. */
-const failure = (status: number) =>
+/** A failure answer the AI SDK sends again after `ms`, at once unless the test says otherwise. */
+const failure = (status: number, ms = 0) =>
   Response.json(
     { error: { message: "try later" } },
-    { status, headers: { "retry-after-ms": "0" } },
+    { status, headers: { "retry-after-ms": String(ms) } },
   );
 
 /** What Bun's fetch throws when a connection fails (Bun 1.4.5). */
@@ -231,10 +246,24 @@ beforeEach(() => {
     return true;
   }) as typeof process.stderr.write);
 });
+const isWarning = (line: string) => line.includes("[core:chat:sdk-warning]");
+
+/** The AI SDK's warnings so far, which the test takes as it expects them. */
+function takeWarnings(): string[] {
+  const warnings = lines.filter(isWarning);
+  lines = lines.filter((line) => !isWarning(line));
+  return warnings;
+}
+
 afterEach(() => {
+  const warnings = takeWarnings();
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  // No test meets a warning it does not expect: a deprecated name, a setting the core sent that
+  // did not take, or one the SDK changed (ADR-0012 "제공자 면"). The model ids are ones the
+  // providers' packages know, so a warning names a defect rather than an id.
+  expect(warnings).toEqual([]);
 });
 
 const logged = (start: string) => lines.some((line) => line.startsWith(start));
@@ -257,7 +286,7 @@ describe("a turn on each provider", () => {
     },
     {
       name: "google",
-      message: turn("google", "gemini-3-pro"),
+      message: turn("google", "gemini-3.5-flash"),
       url: "https://generativelanguage.googleapis.com/v1beta/interactions",
       header: ["x-goog-api-key", KEY],
       events: google,
@@ -292,8 +321,6 @@ describe("a turn on each provider", () => {
           `info [core:chat:turn] success channel=1 provider=${name} reason=stop steps=1 input_tokens=11 output_tokens=3 ms=`,
         ),
       ).toBe(true);
-      // The AI SDK warned of nothing, a deprecated name least of all (ADR-0012 "제공자 면").
-      expect(lines.filter((line) => line.includes("[core:chat:sdk-warning]"))).toEqual([]);
     },
   );
 
@@ -312,6 +339,8 @@ describe("a turn on each provider", () => {
     ]);
     for (const setting of ["temperature", "top_p", "top_k"])
       expect(body).not.toHaveProperty(setting);
+    // The core sets no output limit: the package sends the most its model takes (4.0.107).
+    expect(body.max_tokens).toBe(128_000);
   });
 
   test("openai stores nothing, and the SDK adds the old include value for a reasoning model only (owner, 2026-11-22)", async () => {
@@ -340,10 +369,10 @@ describe("a turn on each provider", () => {
   test("google uses the Interactions API, stores nothing and takes the instructions as its system instruction", async () => {
     const { sent, open } = turns(() => sse(google(["Hi"])));
     const channel = open();
-    channel.write(turn("google", "gemini-3-pro"));
+    channel.write(turn("google", "gemini-3.5-flash"));
     await channel.untilEnd();
     expect(sent[0]!.body).toMatchObject({
-      model: "gemini-3-pro",
+      model: "gemini-3.5-flash",
       store: false,
       stream: true,
       system_instruction: INSTRUCTIONS,
@@ -383,6 +412,25 @@ describe("a turn on each provider", () => {
       done("content-filter"),
     ]);
   });
+
+  // `@ai-sdk/anthropic` 4.0.107 reads a model id it does not know with `claude-` in it as the
+  // Claude of today and any other as an old model (`resolveRuntimeDefinition`), and says so.
+  test.each([
+    ["claude-next-1", 128_000],
+    ["sonnet-next", 4_096],
+  ])(
+    "an Anthropic model the package does not know, %s, gets %i output tokens and a warning, and an answer cut there ends with length",
+    async (model, tokens) => {
+      const { sent, open } = turns(() => sse(anthropic(["Hi"], "max_tokens")));
+      const channel = open();
+      channel.write(turn("anthropic", model));
+      expect(await channel.untilEnd()).toEqual([{ type: "delta", text: "Hi" }, done("length")]);
+      expect(sent[0]!.body!.max_tokens).toBe(tokens);
+      expect(takeWarnings()).toEqual([
+        "warn [core:chat:sdk-warning] type=compatibility subject=maxOutputTokens provider=anthropic.messages\n",
+      ]);
+    },
+  );
 });
 
 describe("the conversation", () => {
@@ -520,14 +568,14 @@ describe("the conversation", () => {
     },
     {
       provider: "google",
-      model: "gemini-3-pro",
+      model: "gemini-3.5-flash",
       when: "after its output",
       events: google(["Hi"]).slice(0, 3),
       frames: [hi, error("network", true)],
     },
     {
       provider: "google",
-      model: "gemini-3-pro",
+      model: "gemini-3.5-flash",
       when: "before any output",
       events: google(["Hi"]).slice(0, 1),
       frames: [error("network", true)],
@@ -618,21 +666,36 @@ describe("the time a text was sent", () => {
     expect(timeNote(AT, timeZone)).toBe(`[Current time: ${time}, time zone: ${timeZone}]`);
   });
 
-  test("goes before each of the person's texts, as each was sent", async () => {
+  test("goes before each of the person's texts, as each was sent and where", async () => {
     let now = AT;
-    const { sent, open } = turns(() => sse(chat(["Hello"])), { ...WHOLE, clock: () => now });
+    let zone = ZONE;
+    const { sent, open } = turns(() => sse(chat(["Hello"])), {
+      ...WHOLE,
+      clock: () => now,
+      timeZone: () => zone,
+    });
     const channel = open();
     channel.write(compatible());
     await channel.untilEnd();
+    // The person flew to New York, and their Mac took its time zone.
     now = new Date("2026-11-23T00:30:00Z");
+    zone = "America/New_York";
     channel.write(compatible({ text: "그리고 모레는?" }));
     await channel.untilEnd();
-    const zone = systemTimeZone();
+    // Each is one string: the line and the text are one part, so an OpenAI-compatible server
+    // that takes no array of parts reads it too.
     expect(sent[1]!.body!.messages).toEqual([
       { role: "system", content: INSTRUCTIONS },
-      { role: "user", content: `${timeNote(AT, zone)}\n\n${TEXT}` },
+      {
+        role: "user",
+        content: `[Current time: 2026-11-22T21:56:31+09:00 (Sunday), time zone: Asia/Seoul]\n\n${TEXT}`,
+      },
       { role: "assistant", content: "Hello" },
-      { role: "user", content: `${timeNote(now, zone)}\n\n그리고 모레는?` },
+      {
+        role: "user",
+        content:
+          "[Current time: 2026-11-22T19:30:00-05:00 (Sunday), time zone: America/New_York]\n\n그리고 모레는?",
+      },
     ]);
   });
 });
@@ -752,27 +815,57 @@ describe("a turn that ends early", () => {
 
 describe("retries", () => {
   test.each([
-    [503, "provider_unavailable"],
-    [429, "provider_rate_limited"],
-  ])("a %i is sent again twice by the AI SDK, then ends with %s", async (status, code) => {
-    const { sent, open } = turns(() => failure(status));
-    const channel = open();
-    channel.write(compatible());
-    expect(await channel.untilEnd()).toEqual([error(code, true, status)]);
-    expect(sent).toHaveLength(3);
-    expect(
-      logged(
-        `warn [core:chat:turn] failure channel=1 provider=openai-compatible code=${code} status=${status} steps=0 ms=`,
-      ),
-    ).toBe(true);
-  });
+    [[503, 500, 429], "provider_rate_limited"],
+    [[429, 429, 503], "provider_unavailable"],
+  ])(
+    "failures %j are sent three times by the AI SDK, and the turn ends with the last one's %s",
+    async (statuses, code) => {
+      const { sent, open } = turns((_sent, n) => failure(statuses[n - 1]!));
+      const channel = open();
+      channel.write(compatible());
+      const last = statuses.at(-1)!;
+      expect(await channel.untilEnd()).toEqual([error(code, true, last)]);
+      expect(sent).toHaveLength(3);
+      expect(
+        logged(
+          `warn [core:chat:turn] failure channel=1 provider=openai-compatible code=${code} status=${last} steps=0 ms=`,
+        ),
+      ).toBe(true);
+    },
+  );
 
-  test("a request that succeeds when sent again answers as if it had the first time", async () => {
-    const { sent, open } = turns((_sent, n) => (n < 3 ? failure(503) : sse(chat(["ok"]))));
+  test("a 503 and then a 200 answer the turn as if the first had, after the wait the 503 names", async () => {
+    const at: number[] = [];
+    const { sent, open } = turns((_sent, n) => {
+      at.push(performance.now());
+      return n === 1 ? failure(503, 50) : sse(chat(["ok"]));
+    });
     const channel = open();
     channel.write(compatible());
     expect(await channel.untilEnd()).toEqual([{ type: "delta", text: "ok" }, done()]);
-    expect(sent).toHaveLength(3);
+    expect(sent).toHaveLength(2);
+    // Its retry-after-ms, not the 2 s the AI SDK waits when an answer names no time.
+    expect(at[1]! - at[0]!).toBeGreaterThanOrEqual(45);
+    expect(at[1]! - at[0]!).toBeLessThan(1_000);
+  });
+
+  test("a cancel while the AI SDK waits to send again ends the turn with done aborted at once, and nothing more is sent", async () => {
+    const { sent, open } = turns(() => failure(503, 30_000));
+    const channel = open();
+    channel.write(compatible());
+    // The egress logs the answer as it comes in; the SDK then reads it and waits 30 s.
+    await vi.waitFor(() =>
+      expect(logged("info [core:egress:fetch] success status=503")).toBe(true),
+    );
+    const cancelled = performance.now();
+    channel.write({ type: "cancel" });
+    expect(await channel.untilEnd()).toEqual([done("aborted", null, null)]);
+    expect(performance.now() - cancelled).toBeLessThan(1_000);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(sent).toHaveLength(1);
+    expect(
+      logged("info [core:chat:turn] cancelled channel=1 provider=openai-compatible steps=0 ms="),
+    ).toBe(true);
   });
 
   test.each([
@@ -830,18 +923,7 @@ describe("retries", () => {
     {
       name: "openai",
       message: turn("openai", "gpt-5.1"),
-      events: [
-        openai([]).at(0)!,
-        {
-          data: {
-            type: "error",
-            code: "server_error",
-            message: "The server had an error.",
-            param: null,
-            sequence_number: 1,
-          },
-        },
-      ],
+      events: [openai([]).at(0)!, serverError],
       status: 500,
     },
     {
@@ -883,7 +965,7 @@ describe("retries", () => {
     },
   );
 
-  test("an error in the stream after output is not sent again, and the text before it reaches the app", async () => {
+  test("an error in the stream after output is not sent again, though the turn passes onError, and the text before it reaches the app", async () => {
     const overloaded: ServerEvent = {
       event: "error",
       data: { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
@@ -930,7 +1012,7 @@ describe("time limits", () => {
       expect(await channel.untilEnd()).toEqual([error("timeout", true)]);
       expect(sent).toHaveLength(1);
       expect(sent[0]!.signal?.aborted).toBe(true);
-      expect(chatLimits.firstOutputMs).toBe(120_000);
+      expect(chatLimits.firstOutputMs).toBe(600_000);
     },
   );
 
@@ -969,6 +1051,60 @@ describe("time limits", () => {
     expect(await channel.untilEnd()).toEqual([{ type: "delta", text: "ok" }, done()]);
     expect(sent).toHaveLength(2);
   });
+
+  test("an OpenAI answer that reports an error before its output is sent again, and the next request starts the limit anew", async () => {
+    // The first answer is 2xx, so its limit runs on while the AI SDK waits 200 ms to send again.
+    // The second request starts it anew, and its output at about 500 ms comes within that limit
+    // but after the first request's would have run out.
+    const { sent, open } = turns(
+      (request, n) => {
+        if (n === 1) return sse([openai([]).at(0)!, serverError], { "retry-after-ms": "200" });
+        const stream = openStream(request.signal);
+        stream.send(openai([]).at(0)!);
+        setTimeout(() => {
+          stream.send(...openai(["ok"]).slice(1));
+          stream.end();
+        }, 300);
+        return stream.response;
+      },
+      { turn: { firstOutputMs: 400, deltaMs: 60_000 } },
+    );
+    const channel = open();
+    channel.write(turn("openai", "gpt-5.1"));
+    expect(await channel.untilEnd()).toEqual([{ type: "delta", text: "ok" }, done()]);
+    expect(sent).toHaveLength(2);
+  });
+
+  /**
+   * What Bun's fetch throws when its socket gets no byte for its idle timeout, five minutes by
+   * default, before the headers and in the body alike (Bun 1.4.5, measured).
+   */
+  const idle = () => new DOMException("The operation timed out.", "TimeoutError");
+  const failing = (request: Sent, ...events: ServerEvent[]) => {
+    const stream = openStream(request.signal);
+    stream.send(...events);
+    setTimeout(() => stream.fail(idle()), 10);
+    return stream.response;
+  };
+
+  test.each([
+    ["before its headers", () => Promise.reject(idle()), []],
+    ["after its headers", (request: Sent) => failing(request), []],
+    [
+      "after its output",
+      (request: Sent) => failing(request, chunk({ role: "assistant", content: "half" })),
+      [{ type: "delta", text: "half" }],
+    ],
+  ])(
+    "Bun's idle timeout %s ends the turn with timeout, and the AI SDK does not send it again",
+    async (_name, answer, before) => {
+      const { sent, open } = turns(answer);
+      const channel = open();
+      channel.write(compatible());
+      expect(await channel.untilEnd()).toEqual([...before, error("timeout", true)]);
+      expect(sent).toHaveLength(1);
+    },
+  );
 });
 
 describe("a turn the channel cannot read", () => {

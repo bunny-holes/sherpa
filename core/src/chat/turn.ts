@@ -3,13 +3,14 @@
  * "재시도"): the answer's text in `delta` events, then one `done` or `error`. The AI SDK and the
  * providers load with the first turn (src/chat/load.ts); this module takes only their types.
  *
- * A model request that goes `firstOutputMs` without output ends the turn. The limit runs from
- * the moment the request is sent until its first output, or until the body of an answer that is
- * not 2xx has come in, and every request the AI SDK sends again starts it anew. So the wait
- * after a failure status is not under it, while the wait after a 2xx stream that reported an
- * error before its first output stays under that request's limit. The SDK's own `firstChunkMs`
- * would start only once the response streams, which leaves the wait for its headers open, and
- * for OpenAI the wait for `response.in_progress` as well.
+ * A model request that goes `firstOutputMs` without output ends the turn. The turn has one such
+ * limit, which every request the AI SDK sends starts anew. It stops at the request's first
+ * output, when its fetch fails, or once the head of an answer that is not 2xx has come in, and
+ * for good when the turn ends, is cancelled or loses its channel. So the wait after a failure
+ * status is not under it, while the wait after a 2xx stream that reported an error before its
+ * first output stays under it until the next request starts it anew. The SDK's own
+ * `firstChunkMs` would start only once the response streams, which leaves the wait for its
+ * headers open, and for OpenAI the wait for `response.in_progress` as well.
  */
 import { log } from "../log.ts";
 import type { Fetch } from "./egress.ts";
@@ -105,10 +106,13 @@ async function headOf(response: Response, most: number): Promise<Uint8Array> {
 /**
  * The turn's fetch, which ends the turn when a request goes `firstOutputMs` without output. An
  * answer that is not 2xx is read here, its first `failureBodyBytes`, while the limit still
- * runs; the AI SDK reads the copy, and the wait before it sends again runs without a limit.
+ * runs; the AI SDK reads the copy, and the wait before it sends again runs without a limit. The
+ * limit stops for good when `signal` aborts: the turn was cancelled, timed out or lost its
+ * channel.
  */
 function watched(
   fetch: Fetch,
+  signal: AbortSignal,
   limits: TurnLimits,
   silent: () => void,
 ): { fetch: Fetch; output: () => void } {
@@ -117,9 +121,10 @@ function watched(
     clearTimeout(timer);
     timer = undefined;
   };
+  signal.addEventListener("abort", quiet, { once: true });
   const send = async (input: string | URL | Request, init?: BunFetchRequestInit) => {
     quiet();
-    timer = setTimeout(silent, limits.firstOutputMs);
+    if (!signal.aborted) timer = setTimeout(silent, limits.firstOutputMs);
     try {
       const response = await fetch(input, init);
       if (response.ok) return response;
@@ -184,7 +189,7 @@ export class ChatTurn {
     const started = Date.now();
     const signal = AbortSignal.any([this.context.ended, this.stopped.signal]);
     const deltas = new Deltas(this.context.send, limits.deltaMs, limits.deltaBytes);
-    const requests = watched(this.context.fetch(signal), limits, () => {
+    const requests = watched(this.context.fetch(signal), signal, limits, () => {
       this.silent = true;
       this.stopped.abort(
         new DOMException(`No output for ${limits.firstOutputMs} ms.`, "TimeoutError"),
