@@ -9,6 +9,33 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — The released 0.8.5 CLI read configuration from the directory it ran in (bunny-holes/sherpa#92)
+
+This Mac (macOS 27.3 26C5035r, Bun 1.4.5), run by the bunny-holes/sherpa#66
+worker between 10:40Z and 11:20Z. No model call was made and nothing left the
+loopback interface. Each run used `env -i` with only `HOME`, `TMPDIR` and
+`PATH=/usr/bin:/bin`, as the app starts the core, in a scratch directory.
+
+- The Homebrew `sherpa` 0.8.5, whose `BUN_BE_BUN=1 sherpa --version` printed
+  `1.4.4`, applied a `bunfig.toml` in that directory when it ran
+  `--version`. A core built with `bun run build` on Bun 1.4.5 from the
+  checkout applied both the directory's `bunfig.toml` and its `.env`. 0.8.5
+  writes nothing at the log level the `.env` set, so its run shows nothing
+  about `.env`.
+- Standalone executables built on Bun 1.4.5 from probe scripts read `.env`,
+  `.env.local`, `.env.<NODE_ENV>` when `NODE_ENV` was set, and `bunfig.toml`
+  from their working directory by default, and neither `$HOME/.bunfig.toml`
+  nor `$XDG_CONFIG_HOME/.bunfig.toml`. Built with
+  `--compile-autoload-tsconfig --compile-autoload-package-json`, they also
+  parsed the directory's `tsconfig.json` and `package.json` once the entry
+  module had finished, and only while `.env` loading was on. Built with the four
+  `--no-compile-autoload-*` flags, they read none of these files.
+- `lsof -d cwd` showed the running `Sherpa.app` and its `sherpa-core` in
+  `/`. The app's `posix_spawn` sets no directory, so the core inherits the
+  app's.
+- Not covered: running 0.8.0 to 0.8.4, which the same build command produced,
+  and the directories people and agents run `sherpa` in.
+
 ## 2026-11-22 — The Mux 2 bundle in `/Applications`: both agents attach and read, MCP goes off under three relays, and both reattach (bunny-holes/sherpa#63)
 
 This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52 with Swift 6.4.2, Bun 1.4.5),

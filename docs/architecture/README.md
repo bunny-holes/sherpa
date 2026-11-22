@@ -111,7 +111,10 @@ bunny-holes/sherpa#31), and the CLI keeps the helper path above until then.
 The one network connection a Sherpa process makes is the core's HTTPS request
 to the provider origin the person chose, and today only a chat channel's model
 list (`list_models`, contract §7.11) sends one. The core reads only the pipes
-the app opened for it (contract §7.1) and listens on no socket. Every core
+the app opened for it (contract §7.1), listens on no socket, and reads no
+configuration from the directory it runs in: its build turns off the `.env`,
+`bunfig.toml`, `tsconfig.json` and `package.json` files a Bun standalone
+executable can load from there. Every core
 command starts with `globalThis.fetch` refusing every call,
 `globalThis.WebSocket` refusing every connection, and the AI SDK's default
 provider (`globalThis.AI_SDK_DEFAULT_PROVIDER`) refusing every model, so a
