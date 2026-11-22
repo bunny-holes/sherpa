@@ -53,38 +53,42 @@ func makeModelTranscript(_ payload: AnalysisPayload) throws -> ModelTranscript {
     for index in lines.indices.dropFirst() {
         if lines[index].isEmpty { continue }
         var fields = try splitEscapedFields(lines[index])
-        let evidenceFields: (record: Int, revision: Int)? = switch kind {
-        case .cct6:
-            fields.count == 2 && ["T", "D"].contains(fields[0]) ? nil : (2, 3)
-        case .cct7:
-            fields.count == 2 && ["T", "D", "S"].contains(fields[0]) ? nil : (1, 2)
-        case .mct2:
-            fields.count == 2 && fields[0] == "D" ? nil : (1, 2)
-        case .freshChat, .freshMail:
-            (1, 2)
-        }
+        let evidenceFields: (record: Int, revision: Int)? =
+            switch kind {
+            case .cct6:
+                fields.count == 2 && ["T", "D"].contains(fields[0]) ? nil : (2, 3)
+            case .cct7:
+                fields.count == 2 && ["T", "D", "S"].contains(fields[0]) ? nil : (1, 2)
+            case .mct2:
+                fields.count == 2 && fields[0] == "D" ? nil : (1, 2)
+            case .freshChat, .freshMail:
+                (1, 2)
+            }
         guard let evidenceFields else { continue }
-        let expectedCount = switch kind {
-        case .cct6: 5
-        case .cct7: 4
-        case .mct2: 14
-        case .freshChat: 8
-        case .freshMail: 6
-        }
+        let expectedCount =
+            switch kind {
+            case .cct6: 5
+            case .cct7: 4
+            case .mct2: 14
+            case .freshChat: 8
+            case .freshMail: 6
+            }
         guard fields.count == expectedCount else {
             throw WorkerProtocolError.invalidPayload
         }
 
-        let recordPrefix: String = switch kind {
-        case .mct2: "mail1_"
-        case .cct6, .cct7: "ctxm1_"
-        case .freshChat, .freshMail: ""
-        }
-        let revisionPrefix: String = switch kind {
-        case .mct2: "mailr1_"
-        case .cct6, .cct7: "ctxr1_"
-        case .freshChat, .freshMail: ""
-        }
+        let recordPrefix: String =
+            switch kind {
+            case .mct2: "mail1_"
+            case .cct6, .cct7: "ctxm1_"
+            case .freshChat, .freshMail: ""
+            }
+        let revisionPrefix: String =
+            switch kind {
+            case .mct2: "mailr1_"
+            case .cct6, .cct7: "ctxr1_"
+            case .freshChat, .freshMail: ""
+            }
         let evidence = EvidenceReference(
             record: recordPrefix + fields[evidenceFields.record],
             revision: revisionPrefix + fields[evidenceFields.revision]
@@ -92,22 +96,25 @@ func makeModelTranscript(_ payload: AnalysisPayload) throws -> ModelTranscript {
         guard let handle = handles[evidence], seen.insert(handle).inserted else {
             throw WorkerProtocolError.invalidPayload
         }
-        let contentFields: [String] = switch kind {
-        case .cct6: [fields[4]]
-        case .cct7: [fields[3]]
-        case .mct2: [fields[9], fields[11]]
-        case .freshChat: [fields[7]]
-        case .freshMail: [fields[4], fields[5]]
-        }
-        evidenceContent[handle] = try contentFields
+        let contentFields: [String] =
+            switch kind {
+            case .cct6: [fields[4]]
+            case .cct7: [fields[3]]
+            case .mct2: [fields[9], fields[11]]
+            case .freshChat: [fields[7]]
+            case .freshMail: [fields[4], fields[5]]
+            }
+        evidenceContent[handle] =
+            try contentFields
             .map(unescapeField)
             .joined(separator: "\n")
         fields.remove(at: evidenceFields.revision)
         fields.remove(at: evidenceFields.record)
-        let handleIndex = switch kind {
-        case .cct6: 2
-        case .cct7, .mct2, .freshChat, .freshMail: 1
-        }
+        let handleIndex =
+            switch kind {
+            case .cct6: 2
+            case .cct7, .mct2, .freshChat, .freshMail: 1
+            }
         fields.insert(String(handle), at: handleIndex)
         lines[index] = fields.joined(separator: "|")
     }
@@ -129,8 +136,7 @@ private func modelHeader(_ header: String, kind: TranscriptKind) throws -> Strin
     if !isMail {
         fields.append("e=ordinal")
     }
-    if let rowIndex = fields.firstIndex(where: { $0.hasPrefix("row=") })
-    {
+    if let rowIndex = fields.firstIndex(where: { $0.hasPrefix("row=") }) {
         fields[rowIndex] = fields[rowIndex].replacingOccurrences(
             of: ",ref,revision,",
             with: ",evidence,"

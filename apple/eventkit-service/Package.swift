@@ -102,7 +102,7 @@ let package = Package(
             name: "SherpaEventKitLiveVerifierSupport",
             dependencies: [
                 "SherpaPlannerContract",
-                .product(name: "SherpaWorkerProtocol", package: "worker-protocol")
+                .product(name: "SherpaWorkerProtocol", package: "worker-protocol"),
             ]
         ),
         .executableTarget(

@@ -37,8 +37,9 @@ struct SherpaEventKitLiveVerifierMain {
                 }
             )
             let output = try? JSONEncoder().encode(response)
-            print(output.flatMap { String(data: $0, encoding: .utf8) }
-                ?? #"{"status":"failed","code":"live_verifier.internal_failure"}"#)
+            print(
+                output.flatMap { String(data: $0, encoding: .utf8) }
+                    ?? #"{"status":"failed","code":"live_verifier.internal_failure"}"#)
             Foundation.exit(EXIT_FAILURE)
         } catch let error as LiveVerifierError {
             print("{\"status\":\"failed\",\"code\":\"\(error.stableCode)\"}")

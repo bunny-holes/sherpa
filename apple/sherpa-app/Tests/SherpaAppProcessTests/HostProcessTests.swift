@@ -5,7 +5,8 @@ import Testing
 // The DEBUG test host (Sherpa.app's server without its menu) with signed relays and the fake
 // core (contract §3–§9, §13.2). Every test has its own socket and core.
 
-private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"app-1","operation_id":"app-1","capability":"capabilities","payload":{"schema":"sherpa.planner.capabilities.request.v2"},"deadline_ms":30000,"idempotency_key":"app-1","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}"#
+private let capabilities =
+    #"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"app-1","operation_id":"app-1","capability":"capabilities","payload":{"schema":"sherpa.planner.capabilities.request.v2"},"deadline_ms":30000,"idempotency_key":"app-1","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}"#
 
 @Suite struct HostProcessTests {
     @Test func servesEachRelayOnItsOwnChannelOfOneCore() async throws {
@@ -47,7 +48,9 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         defer { rig.tearDown() }
         let host = try await rig.startHost()
         // This test process is not the relay.
-        #expect(try rig.directPreface() == #"{"sherpa_app":1,"status":"refused","reason":"peer_signature","version":"0.9.0"}"#)
+        #expect(
+            try rig.directPreface()
+                == #"{"sherpa_app":1,"status":"refused","reason":"peer_signature","version":"0.9.0"}"#)
         // The relay as the linker signed it: not the relay's identifier.
         let unsigned = try rig.startRelay(executable: Program.relay.linkerSignedPath)
         #expect(await unsigned.exitStatus() == 77)
@@ -107,7 +110,9 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         defer { other.tearDown() }
         let copy = other.root + "/sherpa-core"
         try FileManager.default.copyItem(atPath: Program.core.linkerSignedPath, toPath: copy)
-        #expect(runTool("/usr/bin/codesign", ["--force", "--sign", "-", "--identifier", "dev.xiyo.sherpa.other", copy]) == 0)
+        #expect(
+            runTool("/usr/bin/codesign", ["--force", "--sign", "-", "--identifier", "dev.xiyo.sherpa.other", copy]) == 0
+        )
         let otherHost = try await other.startHost(core: copy)
         #expect(await otherHost.waitForError("[app:core:signature] status=rejected"))
         try await Task.sleep(for: .milliseconds(300))
@@ -142,7 +147,8 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         let rig = try Rig()
         defer { rig.tearDown() }
         let target = rig.root + "/elsewhere"
-        try FileManager.default.createDirectory(atPath: target, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        try FileManager.default.createDirectory(
+            atPath: target, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         try FileManager.default.createSymbolicLink(atPath: rig.runDirectory, withDestinationPath: target)
         let host = try await rig.startHost(listening: false)
         #expect(await host.waitForError("[app:socket:listen] status=socket_failed reason=directory_is_link"))
@@ -193,7 +199,9 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         // for five spawns on a loaded machine.
         let host = try await rig.startHost(["--restart-scale", "0.05"])
         #expect(await host.waitForError("[app:core:restart] status=stopped reason=core_failed exits_in_window=5"))
-        let delays = host.errorLines(containing: "[app:core:restart] status=scheduled").compactMap { field("delay_ms", in: $0) }
+        let delays = host.errorLines(containing: "[app:core:restart] status=scheduled").compactMap {
+            field("delay_ms", in: $0)
+        }
         #expect(delays == ["0", "50", "100", "200"])
         #expect(rig.coreSpawns == 5)
 
@@ -236,7 +244,9 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         let slow = try rig.startRelay(output: .held)
         #expect(await rig.waitForCoreLog { $0.contains("open 2") })
         try slow.send(MCP.call(1, "flood", #"{"frames":800,"bytes":32768}"#))
-        #expect(await host.waitForError("[app:mux:route] channel=2 status=closed reason=slow_consumer", within: .seconds(20)))
+        #expect(
+            await host.waitForError(
+                "[app:mux:route] channel=2 status=closed reason=slow_consumer", within: .seconds(20)))
         #expect(try await other.echo(2)?.channel == 1)
         #expect(await rig.waitForCoreLog { $0.contains("close 2 reason=slow_consumer") })
         slow.readOutput()
@@ -317,7 +327,10 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         let report = try #require(MCP.result(await relay.line())?["report"] as? [String: Any])
         #expect(report["status"] as? String == "failed")
         #expect(report["error"] as? String == "protocol.invalid_envelope")
-        #expect(rig.coreLog.filter { $0.hasPrefix("response ") } == ["response 1 response", "response 2 response", "response 3 report"])
+        #expect(
+            rig.coreLog.filter { $0.hasPrefix("response ") } == [
+                "response 1 response", "response 2 response", "response 3 report",
+            ])
     }
 
     @Test func closesASessionWhoseMessageIsTooLarge() async throws {
@@ -372,7 +385,8 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         #expect(!FileManager.default.fileExists(atPath: rig.socket))
         #expect(host.errorText.contains("[app:server:shutdown] status=done"))
         // Statuses reach the observer in order, so the last one is the stopped core.
-        #expect(host.errorLines(containing: "[testhost:status]").last == "debug [testhost:status] core=stopped sessions=0")
+        #expect(
+            host.errorLines(containing: "[testhost:status]").last == "debug [testhost:status] core=stopped sessions=0")
     }
 
     // MARK: the MCP switch (contract §2, §5, §7.6, §9)
@@ -382,7 +396,9 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         defer { rig.tearDown() }
         let host = try await rig.startHost(mcp: nil)
         // The signature comes first: a connection that is not the relay is refused for that.
-        #expect(try rig.directPreface() == #"{"sherpa_app":1,"status":"refused","reason":"peer_signature","version":"0.9.0"}"#)
+        #expect(
+            try rig.directPreface()
+                == #"{"sherpa_app":1,"status":"refused","reason":"peer_signature","version":"0.9.0"}"#)
         let relay = try rig.startRelay()
         #expect(await relay.exitStatus() == 75)
         #expect(relay.errorText.contains(#"reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP"#))
@@ -423,9 +439,10 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         #expect(first.errorText.contains("reason=app_closed_session"))
         #expect(await host.waitForError("[app:mcp:switch] enabled=false sessions_closed=2 confirmations_withdrawn=1"))
         #expect(await host.waitForError("[testhost:confirm:withdraw-all]"))
-        #expect(await rig.waitForCoreLog { lines in
-            lines.contains("close 1 reason=mcp_disabled") && lines.contains("close 2 reason=mcp_disabled")
-        })
+        #expect(
+            await rig.waitForCoreLog { lines in
+                lines.contains("close 1 reason=mcp_disabled") && lines.contains("close 2 reason=mcp_disabled")
+            })
         let late = try rig.startRelay()
         #expect(await late.exitStatus() == 75)
         #expect(late.errorText.contains("app_reason=mcp_disabled"))
@@ -451,7 +468,9 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         try host.send("mcp off")
         #expect(await host.waitForError("[app:mcp:switch] enabled=false sessions_closed=1"))
         #expect(await rig.waitForCoreLog { $0.contains("confirmation 1 unavailable") })
-        #expect(await host.waitForError("[app:confirm:request] id=1 status=refused reason=mcp_disabled decision=unavailable"))
+        #expect(
+            await host.waitForError(
+                "[app:confirm:request] id=1 status=refused reason=mcp_disabled decision=unavailable"))
         #expect(host.errorLines(containing: "[testhost:confirm:present]").isEmpty)
     }
 

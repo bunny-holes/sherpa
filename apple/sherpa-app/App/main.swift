@@ -16,7 +16,8 @@ let logger = AppLog.logger(environment: environment)
 WorkerLog.route(to: AppLog.workerSink)
 
 let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? AppBootstrap.unbundledVersion
-let executableDirectory = Bundle.main.executableURL?.deletingLastPathComponent().path
+let executableDirectory =
+    Bundle.main.executableURL?.deletingLastPathComponent().path
     ?? (CommandLine.arguments[0] as NSString).deletingLastPathComponent
 
 let bootstrap: AppBootstrap
@@ -36,7 +37,8 @@ do {
     case let .failed(step, code):
         logger.error("app:lock:acquire", "status=failed step=\(step) errno=\(code)")
         bootstrap = AppBootstrap(
-            version: version, configuration: configuration, lock: nil, setupFailure: "lock_failed step=\(step) errno=\(code)"
+            version: version, configuration: configuration, lock: nil,
+            setupFailure: "lock_failed step=\(step) errno=\(code)"
         )
     }
 } catch {

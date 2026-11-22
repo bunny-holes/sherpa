@@ -1,8 +1,8 @@
-import SherpaWorkerProtocol
-import SherpaPlannerContract
-import SherpaPlannerApplication
 @preconcurrency import EventKit
 import Foundation
+import SherpaPlannerApplication
+import SherpaPlannerContract
+import SherpaWorkerProtocol
 
 public final class EventKitWorker {
     private let store: EKEventStore
@@ -26,9 +26,13 @@ public final class EventKitWorker {
             }
             if request.capability == PlannerCapability.eventAuthorizationStatus.rawValue {
                 _ = try request.payload.decode(as: EmptyPlannerRequest.self, allowedKeys: ["schema"])
-                return .success(request: request, result: try encodeJSONObject(AuthorizationResult(
-                    domain: "event", authorization: authorizationName(EKEventStore.authorizationStatus(for: .event))
-                )))
+                return .success(
+                    request: request,
+                    result: try encodeJSONObject(
+                        AuthorizationResult(
+                            domain: "event",
+                            authorization: authorizationName(EKEventStore.authorizationStatus(for: .event))
+                        )))
             }
             if request.capability == PlannerCapability.eventAuthorizationRequest.rawValue {
                 _ = try request.payload.decode(as: EmptyPlannerRequest.self, allowedKeys: ["schema"])
@@ -78,13 +82,15 @@ public final class EventKitWorker {
                 )
             }
             if request.capability == PlannerCapability.eventCommandValidate.rawValue {
-                let batch = try request.payload.decodeExact(as: EventCommandValidateRequest.self,
+                let batch = try request.payload.decodeExact(
+                    as: EventCommandValidateRequest.self,
                     allowedKeys: ["schema", "commands"])
                 let result = try EventCommandValidator().validate(batch)
                 return .success(request: request, result: try encodeJSONObject(result))
             }
             if request.capability == PlannerCapability.eventList.rawValue {
-                let command = try request.payload.decode(as: EventListRequest.self,
+                let command = try request.payload.decode(
+                    as: EventListRequest.self,
                     allowedKeys: ["schema", "from", "to", "limit", "collection_native_locator"],
                     requiredKeys: ["schema", "from", "to"])
                 try EventCommandValidator().validate(command)
@@ -92,29 +98,36 @@ public final class EventKitWorker {
                 return try typedResponse(request, result: events.list(command))
             }
             if request.capability == PlannerCapability.eventGet.rawValue {
-                let command = try request.payload.decode(as: EventGetRequest.self,
+                let command = try request.payload.decode(
+                    as: EventGetRequest.self,
                     allowedKeys: ["schema", "native_locator"])
                 try EventCommandValidator().validate(command)
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .event))
                 return try typedResponse(request, result: events.get(command))
             }
             if request.capability == PlannerCapability.eventCreate.rawValue {
-                let command = try request.payload.decode(as: EventCreateRequest.self,
-                    allowedKeys: ["schema", "title", "start", "end", "all_day", "collection_native_locator", "notes", "location", "url", "time_zone", "alarms", "recurrence_rules"],
+                let command = try request.payload.decode(
+                    as: EventCreateRequest.self,
+                    allowedKeys: [
+                        "schema", "title", "start", "end", "all_day", "collection_native_locator", "notes", "location",
+                        "url", "time_zone", "alarms", "recurrence_rules",
+                    ],
                     requiredKeys: ["schema", "title", "start", "end"])
                 try EventCommandValidator().validate(command)
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .event))
                 return try typedResponse(request, result: events.create(command))
             }
             if request.capability == PlannerCapability.eventUpdate.rawValue {
-                let command = try request.payload.decode(as: EventUpdateRequest.self,
+                let command = try request.payload.decode(
+                    as: EventUpdateRequest.self,
                     allowedKeys: ["schema", "native_locator", "span", "changes"])
                 try EventCommandValidator().validate(command)
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .event))
                 return try typedResponse(request, result: events.update(command))
             }
             if request.capability == PlannerCapability.eventDelete.rawValue {
-                let command = try request.payload.decode(as: EventDeleteRequest.self,
+                let command = try request.payload.decode(
+                    as: EventDeleteRequest.self,
                     allowedKeys: ["schema", "native_locator", "span"])
                 try EventCommandValidator().validate(command)
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .event))
@@ -122,9 +135,13 @@ public final class EventKitWorker {
             }
             if request.capability == PlannerCapability.reminderAuthorizationStatus.rawValue {
                 _ = try request.payload.decode(as: EmptyPlannerRequest.self, allowedKeys: ["schema"])
-                return .success(request: request, result: try encodeJSONObject(AuthorizationResult(
-                    domain: "reminder", authorization: authorizationName(EKEventStore.authorizationStatus(for: .reminder))
-                )))
+                return .success(
+                    request: request,
+                    result: try encodeJSONObject(
+                        AuthorizationResult(
+                            domain: "reminder",
+                            authorization: authorizationName(EKEventStore.authorizationStatus(for: .reminder))
+                        )))
             }
             if request.capability == PlannerCapability.reminderAuthorizationRequest.rawValue {
                 _ = try request.payload.decode(as: EmptyPlannerRequest.self, allowedKeys: ["schema"])
@@ -139,25 +156,31 @@ public final class EventKitWorker {
                 return .success(request: request, result: try encodeJSONObject(typedReminderSourceList(store: store)))
             }
             if request.capability == PlannerCapability.reminderCommandValidate.rawValue {
-                let command = try request.payload.decode(as: ReminderCommandValidateRequest.self,
+                let command = try request.payload.decode(
+                    as: ReminderCommandValidateRequest.self,
                     allowedKeys: ["schema", "commands"])
                 try ReminderCommandValidator().validate(command)
-                return .success(request: request, result: try encodeJSONObject(ReminderCommandValidateResult(commandCount: command.commands.count)))
+                return .success(
+                    request: request,
+                    result: try encodeJSONObject(ReminderCommandValidateResult(commandCount: command.commands.count)))
             }
             if request.capability == PlannerCapability.reminderCollectionCreate.rawValue {
-                let command = try request.payload.decode(as: ReminderCollectionCreateRequest.self,
+                let command = try request.payload.decode(
+                    as: ReminderCollectionCreateRequest.self,
                     allowedKeys: ["schema", "title", "source_native_locator"], requiredKeys: ["schema", "title"])
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .reminder))
                 return try typedResponse(request, result: reminderLists.create(command))
             }
             if request.capability == PlannerCapability.reminderCollectionDelete.rawValue {
-                let command = try request.payload.decode(as: ReminderCollectionDeleteRequest.self,
+                let command = try request.payload.decode(
+                    as: ReminderCollectionDeleteRequest.self,
                     allowedKeys: ["schema", "collection_native_locator"])
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .reminder))
                 return try typedResponse(request, result: reminderLists.delete(command))
             }
             if request.capability == PlannerCapability.reminderList.rawValue {
-                let command = try request.payload.decode(as: ReminderListRequest.self,
+                let command = try request.payload.decode(
+                    as: ReminderListRequest.self,
                     allowedKeys: ["schema", "collection_native_locator", "limit", "completed"],
                     requiredKeys: ["schema"])
                 try ReminderCommandValidator().validate(command)
@@ -165,36 +188,49 @@ public final class EventKitWorker {
                 return try typedResponse(request, result: await reminders.list(command))
             }
             if request.capability == PlannerCapability.reminderGet.rawValue {
-                let command = try request.payload.decode(as: ReminderGetRequest.self,
+                let command = try request.payload.decode(
+                    as: ReminderGetRequest.self,
                     allowedKeys: ["schema", "native_locator"])
                 try ReminderCommandValidator().validate(command)
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .reminder))
                 return try typedResponse(request, result: reminders.get(command))
             }
             if request.capability == PlannerCapability.reminderCreate.rawValue {
-                let command = try request.payload.decode(as: ReminderCreateRequest.self,
-                    allowedKeys: ["schema", "title", "collection_native_locator", "notes", "url", "priority", "due", "start", "alarms", "recurrence_rules"],
+                let command = try request.payload.decode(
+                    as: ReminderCreateRequest.self,
+                    allowedKeys: [
+                        "schema", "title", "collection_native_locator", "notes", "url", "priority", "due", "start",
+                        "alarms", "recurrence_rules",
+                    ],
                     requiredKeys: ["schema", "title"])
                 try ReminderCommandValidator().validate(command)
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .reminder))
                 return try typedResponse(request, result: reminders.create(command))
             }
             if request.capability == PlannerCapability.reminderUpdate.rawValue {
-                let command = try request.payload.decode(as: ReminderUpdateRequest.self,
+                let command = try request.payload.decode(
+                    as: ReminderUpdateRequest.self,
                     allowedKeys: ["schema", "native_locator", "changes"])
                 try ReminderCommandValidator().validate(command)
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .reminder))
                 return try typedResponse(request, result: reminders.update(command))
             }
-            if request.capability == PlannerCapability.reminderComplete.rawValue || request.capability == PlannerCapability.reminderReopen.rawValue {
-                let command = try request.payload.decode(as: ReminderGetRequest.self,
+            if request.capability == PlannerCapability.reminderComplete.rawValue
+                || request.capability == PlannerCapability.reminderReopen.rawValue
+            {
+                let command = try request.payload.decode(
+                    as: ReminderGetRequest.self,
                     allowedKeys: ["schema", "native_locator"])
                 try ReminderCommandValidator().validate(command)
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .reminder))
-                return try typedResponse(request, result: await reminders.setCompleted(command, completed: request.capability == PlannerCapability.reminderComplete.rawValue))
+                return try typedResponse(
+                    request,
+                    result: await reminders.setCompleted(
+                        command, completed: request.capability == PlannerCapability.reminderComplete.rawValue))
             }
             if request.capability == PlannerCapability.reminderDelete.rawValue {
-                let command = try request.payload.decode(as: ReminderDeleteRequest.self,
+                let command = try request.payload.decode(
+                    as: ReminderDeleteRequest.self,
                     allowedKeys: ["schema", "native_locator"])
                 try ReminderCommandValidator().validate(command)
                 try requireFullAccess(EKEventStore.authorizationStatus(for: .reminder))
@@ -222,16 +258,19 @@ public final class EventKitWorker {
     }
 
     private func typedResponse<Result: Encodable>(_ request: WorkerRequest, result: Result) throws -> WorkerResponse {
-        .success(request: request, result: try encodeJSONObject(result),
+        .success(
+            request: request, result: try encodeJSONObject(result),
             effect: effectOutcome(for: request), evidence: evidenceOutcome(for: request))
     }
 
     private func capabilityReport() -> [WorkerCapabilityDescriptor] {
         [
             "event.authorization.status", "event.authorization.request",
-            "event.source.list", "event.collection.create", "event.collection.delete", "event.command.validate", "event.list", "event.get", "event.create", "event.update", "event.delete",
+            "event.source.list", "event.collection.create", "event.collection.delete", "event.command.validate",
+            "event.list", "event.get", "event.create", "event.update", "event.delete",
             "reminder.authorization.status", "reminder.authorization.request",
-            "reminder.source.list", "reminder.collection.create", "reminder.collection.delete", "reminder.command.validate", "reminder.list", "reminder.get", "reminder.create",
+            "reminder.source.list", "reminder.collection.create", "reminder.collection.delete",
+            "reminder.command.validate", "reminder.list", "reminder.get", "reminder.create",
             "reminder.update", "reminder.complete", "reminder.reopen", "reminder.delete",
         ].map(capabilityDescriptor)
     }
@@ -241,19 +280,24 @@ public final class EventKitWorker {
 private func capabilityDescriptor(_ capability: String) -> WorkerCapabilityDescriptor {
     let authorizationRequest = capability.hasSuffix("authorization.request")
     let delete = capability.hasSuffix(".delete")
-    let mutation = authorizationRequest || delete || [
-        ".create", ".update", ".complete", ".reopen",
-    ].contains(where: capability.hasSuffix)
+    let mutation =
+        authorizationRequest || delete
+        || [
+            ".create", ".update", ".complete", ".reopen",
+        ].contains(where: capability.hasSuffix)
     let effect = authorizationRequest ? "authorization_prompt" : (mutation ? "mutation" : "read")
-    let evidence = authorizationRequest ? "authorization_readback"
+    let evidence =
+        authorizationRequest
+        ? "authorization_readback"
         : (delete ? "native_absence_readback" : (mutation ? "native_readback" : "none"))
-    let destination = if capability.hasPrefix("event.") &&
-        (capability.hasSuffix(".create") || capability.hasSuffix(".update")) {
-        "event_collection"
-    } else if capability.hasPrefix("reminder.") &&
-        (capability.hasSuffix(".create") || capability.hasSuffix(".update")) {
-        "reminder_collection"
-    } else { "none" }
+    let destination =
+        if capability.hasPrefix("event.") && (capability.hasSuffix(".create") || capability.hasSuffix(".update")) {
+            "event_collection"
+        } else if capability.hasPrefix("reminder.")
+            && (capability.hasSuffix(".create") || capability.hasSuffix(".update"))
+        {
+            "reminder_collection"
+        } else { "none" }
     return WorkerCapabilityDescriptor(
         capability: capability,
         effect: effect,
@@ -285,11 +329,11 @@ private func evidenceOutcome(for request: WorkerRequest) -> WorkerEvidence? {
 func entityRequiringFullAccess(for capability: String) -> EKEntityType? {
     switch capability {
     case "event.source.list", "event.collection.create", "event.collection.delete",
-         "event.list", "event.get", "event.create", "event.update", "event.delete":
+        "event.list", "event.get", "event.create", "event.update", "event.delete":
         .event
     case "reminder.source.list", "reminder.collection.create", "reminder.collection.delete",
-         "reminder.list", "reminder.get", "reminder.create", "reminder.update",
-         "reminder.complete", "reminder.reopen", "reminder.delete":
+        "reminder.list", "reminder.get", "reminder.create", "reminder.update",
+        "reminder.complete", "reminder.reopen", "reminder.delete":
         .reminder
     default:
         nil

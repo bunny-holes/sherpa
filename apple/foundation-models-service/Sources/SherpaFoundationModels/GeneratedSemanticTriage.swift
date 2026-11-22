@@ -8,7 +8,8 @@ struct GeneratedSemanticTriageBatch {
     var reviewedRows: Int
 
     @Guide(
-        description: "Planning-relevant lifecycle relations after inspecting all rows. Use a one-row relation when no other row is needed.",
+        description:
+            "Planning-relevant lifecycle relations after inspecting all rows. Use a one-row relation when no other row is needed.",
         .maximumCount(16)
     )
     var relations: [GeneratedSemanticRelation]
@@ -16,12 +17,15 @@ struct GeneratedSemanticTriageBatch {
 
 @Generable
 struct GeneratedSemanticRelation {
-    @Guide(description: "Exactly one of commitment, request, cancellation, reschedule, recommitment, completion, status_update, deadline, purchase_intent, other_planning_signal.")
+    @Guide(
+        description:
+            "Exactly one of commitment, request, cancellation, reschedule, recommitment, completion, status_update, deadline, purchase_intent, other_planning_signal."
+    )
     var kind: String
 
     @Guide(
         description: "Unique one-based row handles needed to establish the fact and its lifecycle context.",
-        .count(1 ... 16)
+        .count(1...16)
     )
     var handles: [Int]
 
@@ -64,9 +68,9 @@ func mapGeneratedSemanticTriage(
         guard validKinds.contains(relation.kind) else {
             throw GeneratedSemanticTriageError.kind
         }
-        guard (1 ... 16).contains(relation.handles.count),
-              Set(relation.handles).count == relation.handles.count,
-              relation.handles.allSatisfy({ (1 ... payload.rowCount).contains($0) })
+        guard (1...16).contains(relation.handles.count),
+            Set(relation.handles).count == relation.handles.count,
+            relation.handles.allSatisfy({ (1...payload.rowCount).contains($0) })
         else { throw GeneratedSemanticTriageError.evidenceHandle }
         return .object([
             "kind": .string(relation.kind),

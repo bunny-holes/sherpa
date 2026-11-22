@@ -23,7 +23,7 @@ enum PrivacyResponsibility {
         let environment = ProcessInfo.processInfo.environment
         if environment[relaunchedVariable] == "1" { return }
         guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_spawnattrs_setdisclaim"),
-              let executable = Bundle.main.executablePath
+            let executable = Bundle.main.executablePath
         else {
             WorkerLog.warn("[apple:sherpa-apple:responsibility] relaunch unavailable; host app stays responsible")
             return
@@ -32,7 +32,8 @@ enum PrivacyResponsibility {
 
         var attributes: posix_spawnattr_t?
         guard posix_spawnattr_init(&attributes) == 0 else {
-            WorkerLog.warn("[apple:sherpa-apple:responsibility] spawn attributes unavailable; host app stays responsible")
+            WorkerLog.warn(
+                "[apple:sherpa-apple:responsibility] spawn attributes unavailable; host app stays responsible")
             return
         }
         defer { posix_spawnattr_destroy(&attributes) }
@@ -54,7 +55,8 @@ enum PrivacyResponsibility {
         var child: pid_t = 0
         let spawned = posix_spawn(&child, executable, nil, &attributes, argv, envp)
         guard spawned == 0 else {
-            WorkerLog.warn("[apple:sherpa-apple:responsibility] relaunch failed errno=\(spawned); host app stays responsible")
+            WorkerLog.warn(
+                "[apple:sherpa-apple:responsibility] relaunch failed errno=\(spawned); host app stays responsible")
             return
         }
         WorkerLog.debug("[apple:sherpa-apple:responsibility] relaunched with responsibility disclaimed")

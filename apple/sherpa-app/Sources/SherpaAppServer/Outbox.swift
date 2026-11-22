@@ -24,8 +24,10 @@ final class Outbox: @unchecked Sendable {
     /// `failed` gets the errno of a write that did not complete. `ended` runs once when the
     /// writer thread stops for any reason. Both are released after that, so a closure that
     /// holds the outbox's owner does not keep it alive.
-    init(descriptor: Int32, limit: Int?, failed: @escaping @Sendable (Int32) -> Void,
-         ended: @escaping @Sendable () -> Void) {
+    init(
+        descriptor: Int32, limit: Int?, failed: @escaping @Sendable (Int32) -> Void,
+        ended: @escaping @Sendable () -> Void
+    ) {
         self.descriptor = descriptor
         self.limit = limit
         self.failed = failed
@@ -96,7 +98,9 @@ final class Outbox: @unchecked Sendable {
     }
 
     /// Under the lock: stops and hands back the closures still to run, each once.
-    private func stopLocked() -> (then: (@Sendable () -> Void)?, failed: (@Sendable (Int32) -> Void)?, ended: (@Sendable () -> Void)?) {
+    private func stopLocked() -> (
+        then: (@Sendable () -> Void)?, failed: (@Sendable (Int32) -> Void)?, ended: (@Sendable () -> Void)?
+    ) {
         let closures = (afterDrain, failed, ended)
         stopped = true
         dropQueued()

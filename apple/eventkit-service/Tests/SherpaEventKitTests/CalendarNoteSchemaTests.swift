@@ -2,40 +2,50 @@ import SherpaPlannerContract
 import Testing
 
 @Test func calendarNoteSchemasResolveTheVersionsStoredInCalendar() {
-    #expect(CalendarNoteSchemaRegistry.resolve(in: """
-    카드 대금 결제 · 예시 카드
+    #expect(
+        CalendarNoteSchemaRegistry.resolve(
+            in: """
+                카드 대금 결제 · 예시 카드
 
-    카드
-    • 발급사: 예시
+                카드
+                • 발급사: 예시
 
-    @schema: xiyo.calendar.card-payment@2.1
-    """) == .supported(.cardPaymentV2_1))
-    #expect(CalendarNoteSchemaRegistry.resolve(in: """
-    카드 대금 결제 · 예시 카드
+                @schema: xiyo.calendar.card-payment@2.1
+                """) == .supported(.cardPaymentV2_1))
+    #expect(
+        CalendarNoteSchemaRegistry.resolve(
+            in: """
+                카드 대금 결제 · 예시 카드
 
-    카드
-    • 발급사: 예시
+                카드
+                • 발급사: 예시
 
-    @schema: xiyo.calendar.card-payment@2.2
-    """) == .supported(.cardPaymentV2_2))
-    #expect(CalendarNoteSchemaRegistry.resolve(in: """
-    예시 정수기 구독료 · 예시카드
+                @schema: xiyo.calendar.card-payment@2.2
+                """) == .supported(.cardPaymentV2_2))
+    #expect(
+        CalendarNoteSchemaRegistry.resolve(
+            in: """
+                예시 정수기 구독료 · 예시카드
 
-    결제수단
-    • 유형: 신용카드
-    • 발급사: 예시카드
+                결제수단
+                • 유형: 신용카드
+                • 발급사: 예시카드
 
-    @schema: xiyo.calendar.payment@3.0
-    """) == .supported(.paymentV3_0))
+                @schema: xiyo.calendar.payment@3.0
+                """) == .supported(.paymentV3_0))
 }
 
 @Test func calendarNoteSchemaIsTheTerminalDeclarationOnly() {
     #expect(CalendarNoteSchemaRegistry.resolve(in: "자유 노트") == .none)
-    #expect(CalendarNoteSchemaRegistry.resolve(in: "@schema: xiyo.calendar.unknown@9") == .unsupported("xiyo.calendar.unknown@9"))
-    #expect(CalendarNoteSchemaRegistry.resolve(in: """
-    @schema: xiyo.calendar.card-payment@2.2
-    이 뒤에 본문이 있으면 안 된다
-    """) == .malformed)
+    #expect(
+        CalendarNoteSchemaRegistry.resolve(in: "@schema: xiyo.calendar.unknown@9")
+            == .unsupported("xiyo.calendar.unknown@9"))
+    #expect(
+        CalendarNoteSchemaRegistry.resolve(
+            in: """
+                @schema: xiyo.calendar.card-payment@2.2
+                이 뒤에 본문이 있으면 안 된다
+                """) == .malformed)
 }
 
 @Test func calendarNoteSchemaRendererKeepsTheVersionMarkerAtTheEnd() throws {
@@ -64,10 +74,10 @@ import Testing
 
 @Test func existingCalendarRecordDoesNotAutoMigrateToTheLatestSchema() {
     let v21 = """
-    카드 대금 결제 · 예시 카드
+        카드 대금 결제 · 예시 카드
 
-    @schema: xiyo.calendar.card-payment@2.1
-    """
+        @schema: xiyo.calendar.card-payment@2.1
+        """
     #expect(CalendarNoteSchema.cardPaymentV2_1.successor == .cardPaymentV2_2)
     #expect(CalendarNoteSchema.cardPaymentV2_2.successor == .paymentV3_0)
     #expect(CalendarNoteSchema.paymentV3_0.successor == nil)

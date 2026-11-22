@@ -1,7 +1,8 @@
-import Testing
-@testable import SherpaEventKitAdapter
 import EventKit
 import Foundation
+import Testing
+
+@testable import SherpaEventKitAdapter
 
 private struct Occurrence: Equatable {
     let eventIdentifier: String?
@@ -61,46 +62,51 @@ private struct Occurrence: Equatable {
     let original = ISO8601DateFormatter().date(from: "2026-08-10T00:00:00Z")!
     let replacement = ISO8601DateFormatter().date(from: "2026-08-10T01:00:00Z")!
 
-    #expect(shouldTrimStaleFutureSeries(
-        span: .futureEvents,
-        originalStart: original,
-        requestedStart: replacement,
-        staleStart: original,
-        replacementStart: replacement,
-        distinctEvents: true
-    ))
-    #expect(shouldTrimStaleFutureSeries(
-        span: .futureEvents,
-        originalStart: original,
-        requestedStart: original,
-        staleStart: original,
-        replacementStart: original,
-        distinctEvents: true
-    ))
-    #expect(!shouldTrimStaleFutureSeries(
-        span: .futureEvents,
-        originalStart: original,
-        requestedStart: replacement,
-        staleStart: replacement,
-        replacementStart: replacement,
-        distinctEvents: true
-    ))
-    #expect(!shouldTrimStaleFutureSeries(
-        span: .thisEvent,
-        originalStart: original,
-        requestedStart: replacement,
-        staleStart: original,
-        replacementStart: replacement,
-        distinctEvents: true
-    ))
-    #expect(!shouldTrimStaleFutureSeries(
-        span: .futureEvents,
-        originalStart: original,
-        requestedStart: replacement,
-        staleStart: original,
-        replacementStart: replacement,
-        distinctEvents: false
-    ))
+    #expect(
+        shouldTrimStaleFutureSeries(
+            span: .futureEvents,
+            originalStart: original,
+            requestedStart: replacement,
+            staleStart: original,
+            replacementStart: replacement,
+            distinctEvents: true
+        ))
+    #expect(
+        shouldTrimStaleFutureSeries(
+            span: .futureEvents,
+            originalStart: original,
+            requestedStart: original,
+            staleStart: original,
+            replacementStart: original,
+            distinctEvents: true
+        ))
+    #expect(
+        !shouldTrimStaleFutureSeries(
+            span: .futureEvents,
+            originalStart: original,
+            requestedStart: replacement,
+            staleStart: replacement,
+            replacementStart: replacement,
+            distinctEvents: true
+        ))
+    #expect(
+        !shouldTrimStaleFutureSeries(
+            span: .thisEvent,
+            originalStart: original,
+            requestedStart: replacement,
+            staleStart: original,
+            replacementStart: replacement,
+            distinctEvents: true
+        ))
+    #expect(
+        !shouldTrimStaleFutureSeries(
+            span: .futureEvents,
+            originalStart: original,
+            requestedStart: replacement,
+            staleStart: original,
+            replacementStart: replacement,
+            distinctEvents: false
+        ))
     #expect(staleFutureSeriesWasRemoved(false))
     #expect(!staleFutureSeriesWasRemoved(true))
 }

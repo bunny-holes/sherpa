@@ -51,15 +51,15 @@ enum SherpaNativeMain {
 }
 
 private let nativeHelp = """
-sherpa-apple 0.8.5 — Apple framework helper of the sherpa CLI
+    sherpa-apple 0.8.5 — Apple framework helper of the sherpa CLI
 
-The sherpa CLI starts this helper; run sherpa instead. It reads one strict
-Worker Protocol V2 request on standard input and writes one response:
+    The sherpa CLI starts this helper; run sherpa instead. It reads one strict
+    Worker Protocol V2 request on standard input and writes one response:
 
-  sherpa-apple planner request        EventKit Calendar and Reminders
-  sherpa-apple mail request           Mail.app shim
-  sherpa-apple reminder-kit request   isolated private ReminderKit capabilities
-"""
+      sherpa-apple planner request        EventKit Calendar and Reminders
+      sherpa-apple mail request           Mail.app shim
+      sherpa-apple reminder-kit request   isolated private ReminderKit capabilities
+    """
 
 private func plannerRequest() async throws -> Data {
     let input = try readWorkerRequest(maximumBytes: PlannerRequestService.requestLimit)

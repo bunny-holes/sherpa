@@ -23,22 +23,35 @@ struct SemanticTriagePayload {
         struct Wire: Decodable {
             let schema, analysisID, chunkID, source, transcript, timezone, referenceTime: String
             let rowCount, maxRelations: Int
-            enum CodingKeys: String, CodingKey { case schema, analysisID = "analysis_id", chunkID = "chunk_id", source, transcript, timezone, referenceTime = "reference_time", rowCount = "row_count", maxRelations = "max_relations" }
+            enum CodingKeys: String, CodingKey {
+                case schema
+                case analysisID = "analysis_id"
+                case chunkID = "chunk_id"
+                case source, transcript, timezone
+                case referenceTime = "reference_time"
+                case rowCount = "row_count"
+                case maxRelations = "max_relations"
+            }
         }
         let wire = try object.decode(as: Wire.self, allowedKeys: keys)
         guard wire.schema == contextSemanticTriageRequestSchema else { throw WorkerProtocolError.invalidPayload }
-        let analysisID = wire.analysisID, chunkID = wire.chunkID, source = wire.source
-        let transcript = wire.transcript, timezone = wire.timezone, referenceTime = wire.referenceTime
-        let rowCount = wire.rowCount, maximumRelations = wire.maxRelations
+        let analysisID = wire.analysisID
+        let chunkID = wire.chunkID
+        let source = wire.source
+        let transcript = wire.transcript
+        let timezone = wire.timezone
+        let referenceTime = wire.referenceTime
+        let rowCount = wire.rowCount
+        let maximumRelations = wire.maxRelations
         guard isSafeTriageIdentifier(analysisID),
-              isSafeTriageIdentifier(chunkID),
-              ["imessage", "kakaotalk", "mail"].contains(source),
-              !transcript.isEmpty,
-              transcript.utf8.count <= maximumTranscriptBytes,
-              TimeZone(identifier: timezone) != nil,
-              parseRFC3339(referenceTime) != nil,
-              (1 ... maximumTriageRows).contains(rowCount),
-              maximumRelations == rowCount
+            isSafeTriageIdentifier(chunkID),
+            ["imessage", "kakaotalk", "mail"].contains(source),
+            !transcript.isEmpty,
+            transcript.utf8.count <= maximumTranscriptBytes,
+            TimeZone(identifier: timezone) != nil,
+            parseRFC3339(referenceTime) != nil,
+            (1...maximumTriageRows).contains(rowCount),
+            maximumRelations == rowCount
         else { throw WorkerProtocolError.invalidPayload }
         try validateTriageTranscript(transcript, source: source, expectedRows: rowCount)
 
@@ -58,20 +71,21 @@ private func validateTriageTranscript(
     source: String,
     expectedRows: Int
 ) throws {
-    let lines = transcript
+    let lines =
+        transcript
         .split(separator: "\n", omittingEmptySubsequences: true)
         .map(String.init)
     guard let header = lines.first else { throw WorkerProtocolError.invalidPayload }
     let isMail = source == "mail"
     guard header.hasPrefix(isMail ? "!TM1|" : "!TC1|"),
-          lines.count - 1 == expectedRows
+        lines.count - 1 == expectedRows
     else { throw WorkerProtocolError.invalidPayload }
 
     for (offset, line) in lines.dropFirst().enumerated() {
         let fields = try splitTriageFields(line)
         guard fields.count == (isMail ? 7 : 8),
-              fields[1] == String(offset + 1),
-              validPartToken(fields[2])
+            fields[1] == String(offset + 1),
+            validPartToken(fields[2])
         else { throw WorkerProtocolError.invalidPayload }
     }
 }
@@ -101,19 +115,20 @@ private func splitTriageFields(_ line: String) throws -> [String] {
 private func validPartToken(_ value: String) -> Bool {
     let components = value.split(separator: "/", omittingEmptySubsequences: false)
     guard components.count == 2,
-          let index = Int(components[0]),
-          let total = Int(components[1])
+        let index = Int(components[0]),
+        let total = Int(components[1])
     else { return false }
     return index > 0 && total > 0 && index <= total && total <= 9_999
 }
 
 private func isSafeTriageIdentifier(_ value: String) -> Bool {
-    !value.isEmpty && value.utf8.count <= 64 && value.unicodeScalars.allSatisfy { scalar in
-        switch scalar.value {
-        case 45, 46, 48 ... 57, 65 ... 90, 95, 97 ... 122:
-            true
-        default:
-            false
+    !value.isEmpty && value.utf8.count <= 64
+        && value.unicodeScalars.allSatisfy { scalar in
+            switch scalar.value {
+            case 45, 46, 48...57, 65...90, 95, 97...122:
+                true
+            default:
+                false
+            }
         }
-    }
 }

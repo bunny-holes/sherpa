@@ -1,7 +1,7 @@
-import SherpaWorkerProtocol
-import SherpaPlannerContract
 @preconcurrency import EventKit
 import Foundation
+import SherpaPlannerContract
+import SherpaWorkerProtocol
 
 final class EventKitEventOperations {
     private let store: EKEventStore
@@ -24,7 +24,9 @@ final class EventKitEventOperations {
             to: end,
             selectedCalendarReference: calendarReference
         )
-        return EventListResult(events: try Array(entries.prefix(limit).map { try eventSnapshot($0.event) }), from: command.from, to: command.to)
+        return EventListResult(
+            events: try Array(entries.prefix(limit).map { try eventSnapshot($0.event) }), from: command.from,
+            to: command.to)
     }
 
     func get(_ command: EventGetRequest) throws -> EventItemResult {
@@ -34,7 +36,9 @@ final class EventKitEventOperations {
     func create(_ command: EventCreateRequest) throws -> EventItemResult {
         let event = EKEvent(eventStore: store)
         event.title = command.title
-        guard let requestedStart = parseDate(command.start), let requestedEnd = parseDate(command.end) else { throw WorkerProtocolError.invalidPayload }
+        guard let requestedStart = parseDate(command.start), let requestedEnd = parseDate(command.end) else {
+            throw WorkerProtocolError.invalidPayload
+        }
         guard requestedStart < requestedEnd else { throw WorkerProtocolError.invalidPayload }
         let isAllDay = command.allDay ?? false
         event.timeZone = try command.timeZone.map(validTimeZone)
@@ -51,7 +55,8 @@ final class EventKitEventOperations {
             reference: command.collectionNativeLocator,
             entity: .event
         )
-        event.notes = command.notes; event.location = command.location
+        event.notes = command.notes
+        event.location = command.location
         event.url = try command.url.map(validURL)
         event.alarms = try eventKitAlarms(command.alarms)
         event.recurrenceRules = try eventKitRecurrenceRules(command.recurrenceRules)
@@ -68,9 +73,9 @@ final class EventKitEventOperations {
         // from EventKit's Objective-C boundary.
         let event = try existingEvent(command.nativeLocator)
         guard let originalStart = event.startDate,
-              let originalCalendar = event.calendar,
-              let originalEventIdentifier = event.eventIdentifier,
-              !originalEventIdentifier.isEmpty
+            let originalCalendar = event.calendar,
+            let originalEventIdentifier = event.eventIdentifier,
+            !originalEventIdentifier.isEmpty
         else { throw EventKitWorkerError.verificationFailed }
         let requestedStart = try changedDate(changes.start)
         let wasAllDay = event.isAllDay
@@ -82,7 +87,9 @@ final class EventKitEventOperations {
         if let change = changes.title { event.title = try requiredSet(change) }
         if let requestedStart { event.startDate = requestedStart }
         if let change = changes.end {
-            guard case let .set(encoded) = change, let requestedEnd = parseDate(encoded) else { throw WorkerProtocolError.invalidPayload }
+            guard case let .set(encoded) = change, let requestedEnd = parseDate(encoded) else {
+                throw WorkerProtocolError.invalidPayload
+            }
             event.endDate = eventKitAllDayEnd(
                 requestedEnd,
                 isAllDay: targetAllDay,
@@ -104,7 +111,9 @@ final class EventKitEventOperations {
         if let change = changes.location { event.location = optionalSet(change) }
         if let change = changes.url { event.url = try changedOptional(change, transform: validURL) }
         if let change = changes.alarms { event.alarms = try changedCollection(change, eventKitAlarms) }
-        if let change = changes.recurrenceRules { event.recurrenceRules = try changedCollection(change, eventKitRecurrenceRules) }
+        if let change = changes.recurrenceRules {
+            event.recurrenceRules = try changedCollection(change, eventKitRecurrenceRules)
+        }
         try store.save(event, span: span, commit: true)
         try removeStaleFutureSeriesOccurrence(
             span: span,
@@ -176,14 +185,14 @@ final class EventKitEventOperations {
         // Accept that provider normalization only when the direct identifier,
         // destination Calendar, all-day state, and local start day all agree.
         if event.isAllDay,
-           let identifier = event.eventIdentifier,
-           let expectedCalendar = event.calendar,
-           let expectedStart = event.startDate,
-           let direct = store.event(withIdentifier: identifier),
-           direct.isAllDay,
-           direct.eventIdentifier == identifier,
-           direct.calendar.calendarIdentifier == expectedCalendar.calendarIdentifier,
-           let actualStart = direct.startDate
+            let identifier = event.eventIdentifier,
+            let expectedCalendar = event.calendar,
+            let expectedStart = event.startDate,
+            let direct = store.event(withIdentifier: identifier),
+            direct.isAllDay,
+            direct.eventIdentifier == identifier,
+            direct.calendar.calendarIdentifier == expectedCalendar.calendarIdentifier,
+            let actualStart = direct.startDate
         {
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = event.timeZone ?? direct.timeZone ?? .current
@@ -209,26 +218,28 @@ final class EventKitEventOperations {
         updatedEvent: EKEvent
     ) throws {
         guard let replacementStart = requestedStart ?? updatedEvent.startDate,
-              let stale = event(
-                  calendar: calendar,
-                  eventIdentifier: originalEventIdentifier,
-                  startingAt: originalStart
-              ),
-              let replacementIdentifier = updatedEvent.eventIdentifier,
-              let replacement = event(
-                  calendar: calendar,
-                  eventIdentifier: replacementIdentifier,
-                  startingAt: replacementStart
-              )
+            let stale = event(
+                calendar: calendar,
+                eventIdentifier: originalEventIdentifier,
+                startingAt: originalStart
+            ),
+            let replacementIdentifier = updatedEvent.eventIdentifier,
+            let replacement = event(
+                calendar: calendar,
+                eventIdentifier: replacementIdentifier,
+                startingAt: replacementStart
+            )
         else { return }
-        guard shouldTrimStaleFutureSeries(
-            span: span,
-            originalStart: originalStart,
-            requestedStart: replacementStart,
-            staleStart: stale.startDate,
-            replacementStart: replacement.startDate,
-            distinctEvents: stale.eventIdentifier != replacement.eventIdentifier
-        ) else { return }
+        guard
+            shouldTrimStaleFutureSeries(
+                span: span,
+                originalStart: originalStart,
+                requestedStart: replacementStart,
+                staleStart: stale.startDate,
+                replacementStart: replacement.startDate,
+                distinctEvents: stale.eventIdentifier != replacement.eventIdentifier
+            )
+        else { return }
         // EventKit has already split the recurrence before exposing this stale
         // generated occurrence.  Removing it with `.futureEvents` addresses
         // the original (now-ended) branch and leaves the generated instance in
@@ -238,11 +249,13 @@ final class EventKitEventOperations {
         // A successful EventKit call is not verification. Re-resolve the exact
         // pre-split occurrence: if it survives, returning a successful update
         // would expose two appointments for one user command.
-        guard event(
-            calendar: calendar,
-            eventIdentifier: originalEventIdentifier,
-            startingAt: originalStart
-        ) == nil else {
+        guard
+            event(
+                calendar: calendar,
+                eventIdentifier: originalEventIdentifier,
+                startingAt: originalStart
+            ) == nil
+        else {
             throw EventKitWorkerError.verificationFailed
         }
     }
@@ -264,9 +277,11 @@ final class EventKitEventOperations {
         guard let reference else {
             return nil
         }
-        guard let calendar = store.calendars(for: .event).first(where: {
-            $0.calendarIdentifier == reference
-        }) else {
+        guard
+            let calendar = store.calendars(for: .event).first(where: {
+                $0.calendarIdentifier == reference
+            })
+        else {
             throw EventKitWorkerError.notFound
         }
         return [calendar]
@@ -282,13 +297,13 @@ final class EventKitEventOperations {
         var entries = [EventListEntry]()
         for event in deduplicatedEventOccurrences(nativeEvents) {
             guard let calendar = event.calendar,
-                  let eventStart = event.startDate,
-                  let eventEnd = event.endDate,
-                  eventListRowIsWithinRange(start: eventStart, end: eventEnd, from: from, to: to),
-                  eventListCalendarMatches(
-                      returnedReference: calendar.calendarIdentifier,
-                      selectedReference: selectedCalendarReference
-                  )
+                let eventStart = event.startDate,
+                let eventEnd = event.endDate,
+                eventListRowIsWithinRange(start: eventStart, end: eventEnd, from: from, to: to),
+                eventListCalendarMatches(
+                    returnedReference: calendar.calendarIdentifier,
+                    selectedReference: selectedCalendarReference
+                )
             else { throw EventKitWorkerError.verificationFailed }
             let reference: String
             do {
@@ -300,14 +315,15 @@ final class EventKitEventOperations {
             guard eventListReferenceWasNotSeen(reference, seen: &references) else {
                 throw EventKitWorkerError.verificationFailed
             }
-            entries.append(EventListEntry(
-                event: event,
-                sortKey: eventListSortKey(
-                    start: eventStart,
-                    title: event.title ?? "",
-                    reference: reference
-                )
-            ))
+            entries.append(
+                EventListEntry(
+                    event: event,
+                    sortKey: eventListSortKey(
+                        start: eventStart,
+                        title: event.title ?? "",
+                        reference: reference
+                    )
+                ))
         }
         return entries.sorted { $0.sortKey < $1.sortKey }
     }
@@ -349,11 +365,17 @@ func eventListReferenceWasNotSeen(_ reference: String, seen: inout Set<String>) 
 }
 
 private func eventSpan(_ value: String) throws -> EKSpan {
-    switch value { case "this": .thisEvent; case "future": .futureEvents; default: throw WorkerProtocolError.invalidPayload }
+    switch value {
+    case "this": .thisEvent
+    case "future": .futureEvents
+    default: throw WorkerProtocolError.invalidPayload
+    }
 }
 
 private func validURL(_ value: String) throws -> URL {
-    guard let url = URL(string: value), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else { throw WorkerProtocolError.invalidPayload }
+    guard let url = URL(string: value), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else {
+        throw WorkerProtocolError.invalidPayload
+    }
     return url
 }
 
@@ -378,11 +400,17 @@ private func changedValue<T>(_ change: EventChange<T>?, current: T) throws -> T 
 }
 
 private func changedOptional<T, U>(_ change: EventChange<T>, transform: (T) throws -> U) throws -> U? {
-    switch change { case .clear: nil; case let .set(value): try transform(value) }
+    switch change {
+    case .clear: nil
+    case let .set(value): try transform(value)
+    }
 }
 
 private func changedCollection<T, U>(_ change: EventChange<[T]>, _ transform: ([T]?) throws -> [U]?) throws -> [U]? {
-    switch change { case .clear: nil; case let .set(values): try transform(values) }
+    switch change {
+    case .clear: nil
+    case let .set(values): try transform(values)
+    }
 }
 
 private func changedDate(_ change: EventChange<String>?) throws -> Date? {

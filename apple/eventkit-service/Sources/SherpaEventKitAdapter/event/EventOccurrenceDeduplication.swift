@@ -1,6 +1,6 @@
-import SherpaWorkerProtocol
 @preconcurrency import EventKit
 import Foundation
+import SherpaWorkerProtocol
 
 private struct EventOccurrenceKey: Hashable {
     let calendarIdentifier: String
@@ -19,7 +19,8 @@ func deduplicatedEventOccurrences(_ events: [EKEvent]) -> [EKEvent] {
     deduplicatingOccurrences(
         events,
         key: { event -> EventOccurrenceKey? in
-            let seriesIdentifier = event.eventIdentifier?
+            let seriesIdentifier =
+                event.eventIdentifier?
                 .components(separatedBy: "/RID=")
                 .first ?? ""
             guard !seriesIdentifier.isEmpty else {

@@ -41,7 +41,8 @@ public struct AppPreface: Equatable, Sendable {
     /// `{"sherpa_app":1,"status":…,"reason":…,"version":…}` and a line feed, keys in that order.
     public func line() -> Data {
         let reasonJSON = reason.map { "\"\($0.rawValue)\"" } ?? "null"
-        let text = #"{"sherpa_app":1,"status":"\#(status.rawValue)","reason":\#(reasonJSON),"version":\#(jsonString(version))}"#
+        let text =
+            #"{"sherpa_app":1,"status":"\#(status.rawValue)","reason":\#(reasonJSON),"version":\#(jsonString(version))}"#
         return Data((text + "\n").utf8)
     }
 }

@@ -3,6 +3,7 @@ import Foundation
 import SherpaAppConnection
 import SherpaWorkerProtocol
 import Testing
+
 @testable import SherpaAppServer
 
 // MARK: restart policy (contract §7.8), time injected
@@ -55,7 +56,9 @@ import Testing
 // MARK: work requests (contract §8)
 
 private func request(capability: String = "capabilities", deadline: Int = 20_000, effect: String = "read") -> Data {
-    Data(#"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"op-1","operation_id":"op-1","capability":"\#(capability)","payload":{"schema":"sherpa.planner.capabilities.request.v2"},"deadline_ms":\#(deadline),"idempotency_key":"op-1","policy":{"effect":"\#(effect)","required_evidence":"none","artifact_directory":null}}"#.utf8)
+    Data(
+        #"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"op-1","operation_id":"op-1","capability":"\#(capability)","payload":{"schema":"sherpa.planner.capabilities.request.v2"},"deadline_ms":\#(deadline),"idempotency_key":"op-1","policy":{"effect":"\#(effect)","required_evidence":"none","artifact_directory":null}}"#
+            .utf8)
 }
 
 private actor Calls {
@@ -108,9 +111,15 @@ private func decode(_ output: WorkerOutput) throws -> JSONObject {
     let replies = Replies()
     let queue = WorkerQueue(planner: FakePlanner(calls: calls, delay: 0.3), logger: quiet) { replies.add($0, $1) }
     let now = monotonicSeconds()
-    queue.enqueue(WorkerJob(id: 1, worker: "planner", request: request(capability: "event.list"), receivedAt: now, generation: 1))
-    queue.enqueue(WorkerJob(id: 2, worker: "planner", request: request(capability: "event.get", deadline: 100), receivedAt: now, generation: 1))
-    queue.enqueue(WorkerJob(id: 3, worker: "planner", request: request(capability: "reminder.list"), receivedAt: now, generation: 1))
+    queue.enqueue(
+        WorkerJob(id: 1, worker: "planner", request: request(capability: "event.list"), receivedAt: now, generation: 1))
+    queue.enqueue(
+        WorkerJob(
+            id: 2, worker: "planner", request: request(capability: "event.get", deadline: 100), receivedAt: now,
+            generation: 1))
+    queue.enqueue(
+        WorkerJob(
+            id: 3, worker: "planner", request: request(capability: "reminder.list"), receivedAt: now, generation: 1))
     let answered = replies.wait(count: 3)
     #expect(answered.map(\.0) == [1, 2, 3])
     let skipped = try decode(answered[1].1)
@@ -128,7 +137,10 @@ private func decode(_ output: WorkerOutput) throws -> JSONObject {
     let now = monotonicSeconds()
     queue.enqueue(WorkerJob(id: 1, worker: "mail", request: request(), receivedAt: now, generation: 1))
     queue.enqueue(WorkerJob(id: 2, worker: "planner", request: Data("{}".utf8), receivedAt: now, generation: 1))
-    queue.enqueue(WorkerJob(id: 3, worker: "planner", request: Data(repeating: 0x20, count: 64 * 1_024 + 1), receivedAt: now, generation: 1))
+    queue.enqueue(
+        WorkerJob(
+            id: 3, worker: "planner", request: Data(repeating: 0x20, count: 64 * 1_024 + 1), receivedAt: now,
+            generation: 1))
     let answered = replies.wait(count: 3)
     let unsupported = try decode(answered[0].1)
     #expect(unsupported["error"] == ["code": "app.unsupported_worker", "retry": "never"])
@@ -178,8 +190,9 @@ private struct RecordingPlanner: PlannerPort {
 }
 
 @Test func findsTheRawRequestOnlyWhenItIsThereOnce() {
-    #expect(RawJSONMember.value(of: "request", in: Data(#"{"request":{"a":"}\"{"},"x":[1,{"b":2}]}"#.utf8))
-        == Data(#"{"a":"}\"{"}"#.utf8))
+    #expect(
+        RawJSONMember.value(of: "request", in: Data(#"{"request":{"a":"}\"{"},"x":[1,{"b":2}]}"#.utf8))
+            == Data(#"{"a":"}\"{"}"#.utf8))
     #expect(RawJSONMember.value(of: "request", in: Data(#"{"\u0072equest":{"a":1}}"#.utf8)) == Data(#"{"a":1}"#.utf8))
     #expect(RawJSONMember.value(of: "request", in: Data(#"{"request":{},"request":{}}"#.utf8)) == nil)
     #expect(RawJSONMember.value(of: "request", in: Data(#"{"other":{}}"#.utf8)) == nil)
@@ -190,7 +203,8 @@ private struct RecordingPlanner: PlannerPort {
     let calls = Calls()
     let replies = Replies()
     let queue = WorkerQueue(planner: FakePlanner(calls: calls, delay: 2), logger: quiet) { replies.add($0, $1) }
-    queue.enqueue(WorkerJob(id: 1, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
+    queue.enqueue(
+        WorkerJob(id: 1, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
     let started = monotonicSeconds()
     queue.waitUntilIdle(limit: 0.3)
     let waited = monotonicSeconds() - started
@@ -201,14 +215,16 @@ private struct RecordingPlanner: PlannerPort {
     let calls = Calls()
     let replies = Replies()
     let queue = WorkerQueue(planner: FakePlanner(calls: calls, delay: 0.3), logger: quiet) { replies.add($0, $1) }
-    queue.enqueue(WorkerJob(id: 1, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
+    queue.enqueue(
+        WorkerJob(id: 1, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
     let waiting = Task.detached {
         let started = monotonicSeconds()
         queue.waitUntilIdle(limit: 35)
         return monotonicSeconds() - started
     }
     try await Task.sleep(for: .milliseconds(100))
-    queue.enqueue(WorkerJob(id: 2, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
+    queue.enqueue(
+        WorkerJob(id: 2, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
     let waited = await waiting.value
     // The first request ends at about 0.3 s; the second would end at about 0.6 s.
     #expect(waited >= 0.2 && waited < 0.55)
@@ -217,23 +233,27 @@ private struct RecordingPlanner: PlannerPort {
 @Test func refusesARequestThatArrivesWhileTheAppEnds() async throws {
     let calls = Calls()
     let queue = WorkerQueue(planner: FakePlanner(calls: calls, delay: 0), logger: quiet) { _, _ in }
-    let refused = queue.refuse(WorkerJob(id: 5, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
+    let refused = queue.refuse(
+        WorkerJob(id: 5, worker: "planner", request: request(), receivedAt: monotonicSeconds(), generation: 1))
     let failure = try decode(refused)
     #expect(failure["status"] == "failed")
     #expect(failure["error"] == ["code": "app.shutting_down", "retry": "after_backoff"])
     #expect(failure["effect"] == ["kind": "none", "state": "not_started"])
     #expect(failure["operation_id"] == "op-1")
     #expect(await calls.order.isEmpty)
-    let broken = queue.refuse(WorkerJob(id: 6, worker: "planner", request: Data("{}".utf8), receivedAt: 0, generation: 1))
+    let broken = queue.refuse(
+        WorkerJob(id: 6, worker: "planner", request: Data("{}".utf8), receivedAt: 0, generation: 1))
     #expect(broken == .report(Data(#"{"error":"protocol.invalid_envelope","status":"failed"}"#.utf8)))
 }
 
 @Test func wrapsTheOutputInTheResponseFrameBody() {
     let report = WorkerOutput.report(CommandReport(status: "failed", error: "sherpa.internal_failure").encoded())
-    #expect(String(decoding: report.frameBody(id: 2), as: UTF8.self)
-        == #"{"id":2,"report":{"error":"sherpa.internal_failure","status":"failed"}}"#)
-    #expect(String(decoding: WorkerOutput.response(Data("{}".utf8)).frameBody(id: 7), as: UTF8.self)
-        == #"{"id":7,"response":{}}"#)
+    #expect(
+        String(decoding: report.frameBody(id: 2), as: UTF8.self)
+            == #"{"id":2,"report":{"error":"sherpa.internal_failure","status":"failed"}}"#)
+    #expect(
+        String(decoding: WorkerOutput.response(Data("{}".utf8)).frameBody(id: 7), as: UTF8.self)
+            == #"{"id":7,"response":{}}"#)
 }
 
 @Test func parsesTheRequestFrameBody() throws {
@@ -241,18 +261,22 @@ private struct RecordingPlanner: PlannerPort {
     let job = try #require(WorkerJob.parse(body, receivedAt: 0, generation: 1))
     #expect(job.id == 7 && job.worker == "planner")
     #expect(try JSONDecoder().decode(JSONObject.self, from: job.request) == ["a": 1])
-    #expect(WorkerJob.parse(Data(#"{"id":0,"worker":"planner","request":{}}"#.utf8), receivedAt: 0, generation: 1) == nil)
+    #expect(
+        WorkerJob.parse(Data(#"{"id":0,"worker":"planner","request":{}}"#.utf8), receivedAt: 0, generation: 1) == nil)
     #expect(WorkerJob.parse(Data(#"{"id":1,"worker":"planner"}"#.utf8), receivedAt: 0, generation: 1) == nil)
-    #expect(WorkerJob.parse(Data(#"{"id":1,"worker":"planner","request":[]}"#.utf8), receivedAt: 0, generation: 1) == nil)
+    #expect(
+        WorkerJob.parse(Data(#"{"id":1,"worker":"planner","request":[]}"#.utf8), receivedAt: 0, generation: 1) == nil)
 }
 
 // MARK: confirmation requests (contract §9)
 
 @Test func parsesTheConfirmVectorAndRejectsBodiesOutsideTheLimits() throws {
-    let vector = #"{"id":3,"tool":"reminder_delete","operation_id":"op-2","client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}"#
+    let vector =
+        #"{"id":3,"tool":"reminder_delete","operation_id":"op-2","client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}"#
     let request = try ConfirmationRequest.parse(Data(vector.utf8), receivedAt: 10).get()
     #expect(request.id == 3 && request.tool == "reminder_delete" && request.deadline == 40)
-    let longTitle = vector.replacingOccurrences(of: #""title":"t""#, with: #""title":"\#(String(repeating: "가", count: 101))""#)
+    let longTitle = vector.replacingOccurrences(
+        of: #""title":"t""#, with: #""title":"\#(String(repeating: "가", count: 101))""#)
     #expect(ConfirmationRequest.parse(Data(longTitle.utf8), receivedAt: 0) == .failure(.invalid(id: 3)))
     let lines = (0..<13).map { _ in #"{"label":"l","value":"v"}"# }.joined(separator: ",")
     let tooMany = vector.replacingOccurrences(of: #""lines":[]"#, with: #""lines":[\#(lines)]"#)
@@ -271,8 +295,10 @@ private func temporaryFolder() throws -> String {
 @Test func refusesALinkedOrForeignFolderAndFixesAWrongMode() throws {
     let root = try temporaryFolder()
     defer { try? FileManager.default.removeItem(atPath: root) }
-    let real = root + "/real", link = root + "/link"
-    try FileManager.default.createDirectory(atPath: real, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o755])
+    let real = root + "/real"
+    let link = root + "/link"
+    try FileManager.default.createDirectory(
+        atPath: real, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o755])
     try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: real)
     #expect(SocketDirectory.validate(path: link) == .directoryIsLink)
     #expect(SocketDirectory.validate(path: real, owner: getuid() + 1) == .directoryForeignOwner)
@@ -318,7 +344,8 @@ private func temporaryFolder() throws -> String {
     #expect(status.st_mode & S_IFMT == S_IFSOCK)
     #expect(status.st_mode & 0o777 == 0o600)
     #expect(throws: SocketSetupFailure.pathTooLong) {
-        _ = try makeListeningSocket(location: SocketLocation(socketPath: "/" + String(repeating: "a", count: 103), isOverride: true))
+        _ = try makeListeningSocket(
+            location: SocketLocation(socketPath: "/" + String(repeating: "a", count: 103), isOverride: true))
     }
 }
 
@@ -327,19 +354,26 @@ private func temporaryFolder() throws -> String {
         "HOME": "/Users/x", "TMPDIR": "/var/t/", "LOG_LEVEL": "debug", "PATH": "/opt/evil:/usr/bin",
         "DYLD_INSERT_LIBRARIES": "/tmp/x.dylib", "SHERPA_APP_SOCKET": "/tmp/s",
     ])
-    #expect(environment == ["HOME": "/Users/x", "TMPDIR": "/var/t/", "LOG_LEVEL": "debug", "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"])
+    #expect(
+        environment == [
+            "HOME": "/Users/x", "TMPDIR": "/var/t/", "LOG_LEVEL": "debug", "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        ])
     #expect(AppServerConfiguration.coreEnvironment(from: ["HOME": "/h", "TMPDIR": "/t"])["LOG_LEVEL"] == nil)
 }
 
 @Test func usesTheBundleLayoutAndProductionRequirementsWithoutTestVariables() throws {
-    let configuration = try AppServerConfiguration.resolve(executableDirectory: "/Applications/Sherpa.app/Contents/MacOS", version: "1.0.0", environment: [:])
+    let configuration = try AppServerConfiguration.resolve(
+        executableDirectory: "/Applications/Sherpa.app/Contents/MacOS", version: "1.0.0", environment: [:])
     #expect(configuration.corePath == "/Applications/Sherpa.app/Contents/MacOS/sherpa-core")
     #expect(configuration.coreRequirement == SherpaCodeIdentity.core.requirement)
     #expect(configuration.relayRequirement == SherpaCodeIdentity.relay.requirement)
     #expect(!configuration.socket.isOverride)
-    let tested = try AppServerConfiguration.resolve(executableDirectory: "/x", version: "1.0.0", environment: [
-        "SHERPA_TEST_CORE_BIN": "/t/core", "SHERPA_RELAY_REQUIREMENT": "identifier \"r\"", "SHERPA_APP_SOCKET": "/t/s.sock",
-    ])
+    let tested = try AppServerConfiguration.resolve(
+        executableDirectory: "/x", version: "1.0.0",
+        environment: [
+            "SHERPA_TEST_CORE_BIN": "/t/core", "SHERPA_RELAY_REQUIREMENT": "identifier \"r\"",
+            "SHERPA_APP_SOCKET": "/t/s.sock",
+        ])
     #if DEBUG
     #expect(tested.corePath == "/t/core" && tested.relayRequirement == "identifier \"r\"" && tested.socket.isOverride)
     #else
@@ -372,10 +406,12 @@ private final class Weak: @unchecked Sendable {
 private func trackedChunk(_ count: Int, released: Flag) -> Data {
     let pointer = UnsafeMutableRawPointer.allocate(byteCount: count, alignment: 1)
     pointer.initializeMemory(as: UInt8.self, repeating: 0x61, count: count)
-    return Data(bytesNoCopy: pointer, count: count, deallocator: .custom { pointer, _ in
-        pointer.deallocate()
-        released.set()
-    })
+    return Data(
+        bytesNoCopy: pointer, count: count,
+        deallocator: .custom { pointer, _ in
+            pointer.deallocate()
+            released.set()
+        })
 }
 
 private func socketPair() throws -> (Int32, Int32) {
@@ -429,10 +465,12 @@ private func eventually(_ condition: () -> Bool) async -> Bool {
     let received = Counter()
     readToEnd(reader, into: received)
     let ended = Flag()
-    let outbox = Outbox(descriptor: writer, limit: nil, failed: { _ in }, ended: {
-        close(writer)
-        ended.set()
-    })
+    let outbox = Outbox(
+        descriptor: writer, limit: nil, failed: { _ in },
+        ended: {
+            close(writer)
+            ended.set()
+        })
     let released = (0..<3).map { _ in Flag() }
     for flag in released { #expect(outbox.enqueue(trackedChunk(256 * 1_024, released: flag))) }
     outbox.finish {}
@@ -485,31 +523,38 @@ private func eventually(_ condition: () -> Bool) async -> Bool {
 @Test func givesEachMeasuredAgentItsRegistrationCommands() {
     let relay = "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay"
     #expect(AgentSetup.Agent.allCases == [.claudeCode, .codex])
-    #expect(AgentSetup.steps(for: .claudeCode, relayPath: relay).map(\.command) == [
-        "claude mcp add --scope user sherpa -- /Applications/Sherpa.app/Contents/MacOS/sherpa-relay",
-    ])
-    #expect(AgentSetup.steps(for: .codex, relayPath: relay).map(\.command) == [
-        "codex features enable mcp_2026_07_28",
-        "codex mcp add --env CODEX_MCP_PROTOCOL_VERSION=2026-07-28 sherpa -- /Applications/Sherpa.app/Contents/MacOS/sherpa-relay",
-    ])
+    #expect(
+        AgentSetup.steps(for: .claudeCode, relayPath: relay).map(\.command) == [
+            "claude mcp add --scope user sherpa -- /Applications/Sherpa.app/Contents/MacOS/sherpa-relay"
+        ])
+    #expect(
+        AgentSetup.steps(for: .codex, relayPath: relay).map(\.command) == [
+            "codex features enable mcp_2026_07_28",
+            "codex mcp add --env CODEX_MCP_PROTOCOL_VERSION=2026-07-28 sherpa -- /Applications/Sherpa.app/Contents/MacOS/sherpa-relay",
+        ])
 }
 
 @Test func tellsEachAgentHowToConnectOnceRegistered() {
     // Claude Code: /mcp Reconnect, which holds whether or not it remembers a failed attempt
     // from while MCP was off; Codex: a new session (contract §6).
-    #expect(AgentSetup.Agent.claudeCode.afterRegistering
-        == "Then start Claude Code. If /mcp shows sherpa as failed, choose Reconnect there.")
+    #expect(
+        AgentSetup.Agent.claudeCode.afterRegistering
+            == "Then start Claude Code. If /mcp shows sherpa as failed, choose Reconnect there.")
     #expect(AgentSetup.Agent.codex.afterRegistering == "Then start a new Codex session.")
 }
 
 @Test func quotesARelayPathOnlyWhenAShellWouldReadItAsMoreThanAWord() {
-    #expect(AgentSetup.shellQuoted("/Applications/Sherpa.app/Contents/MacOS/sherpa-relay")
-        == "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay")
+    #expect(
+        AgentSetup.shellQuoted("/Applications/Sherpa.app/Contents/MacOS/sherpa-relay")
+            == "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay")
     #expect(AgentSetup.shellQuoted("/Users/a/My Apps/Sherpa.app") == "'/Users/a/My Apps/Sherpa.app'")
     #expect(AgentSetup.shellQuoted("/Volumes/Kim's/Sherpa.app") == #"'/Volumes/Kim'\''s/Sherpa.app'"#)
     #expect(AgentSetup.shellQuoted("") == "''")
-    #expect(AgentSetup.steps(for: .claudeCode, relayPath: "/Users/a/My Apps/Sherpa.app/Contents/MacOS/sherpa-relay")
-        .map(\.command) == ["claude mcp add --scope user sherpa -- '/Users/a/My Apps/Sherpa.app/Contents/MacOS/sherpa-relay'"])
+    #expect(
+        AgentSetup.steps(for: .claudeCode, relayPath: "/Users/a/My Apps/Sherpa.app/Contents/MacOS/sherpa-relay")
+            .map(\.command) == [
+                "claude mcp add --scope user sherpa -- '/Users/a/My Apps/Sherpa.app/Contents/MacOS/sherpa-relay'"
+            ])
 }
 
 /// What `shell -c 'printf %s <word>'` prints: the one argument a shell makes of `word`.

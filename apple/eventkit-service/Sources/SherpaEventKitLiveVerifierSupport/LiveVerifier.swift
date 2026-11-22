@@ -1,6 +1,6 @@
 import Foundation
-import SherpaWorkerProtocol
 @_exported import SherpaPlannerContract
+import SherpaWorkerProtocol
 
 public enum LiveVerifierError: Error, Equatable, Sendable {
     case usage, liveGate, workerUnavailable, authorizationRequired
@@ -111,7 +111,9 @@ public struct LiveVerifierMismatch: Equatable, Sendable {
     public let actual: String
 
     public init(field: LiveVerifierMismatchField, expected: String, actual: String) {
-        self.field = field; self.expected = expected; self.actual = actual
+        self.field = field
+        self.expected = expected
+        self.actual = actual
     }
 }
 
@@ -121,7 +123,9 @@ public struct LiveVerifierFailure: Error, Equatable, Sendable {
     public let mismatch: LiveVerifierMismatch?
 
     public init(stage: LiveVerifierStage, error: LiveVerifierError, mismatch: LiveVerifierMismatch? = nil) {
-        self.stage = stage; self.error = error; self.mismatch = mismatch
+        self.stage = stage
+        self.error = error
+        self.mismatch = mismatch
     }
 
     public var stableCode: String { error.stableCode }
@@ -156,13 +160,18 @@ public struct LiveVerifierConfiguration: Equatable {
         let expectedConfirmation: String
         let trailing = Array(arguments.dropFirst(2))
         if trailing.isEmpty {
-            mode = .disposable; expectedConfirmation = confirmation
+            mode = .disposable
+            expectedConfirmation = confirmation
         } else if trailing.count == 2, trailing[0] == "--expect-authorization-unavailable",
-                  let entity = LiveVerifierEntity(rawValue: trailing[1]) {
-            mode = .authorizationUnavailable(entity); expectedConfirmation = authorizationUnavailableConfirmation
+            let entity = LiveVerifierEntity(rawValue: trailing[1])
+        {
+            mode = .authorizationUnavailable(entity)
+            expectedConfirmation = authorizationUnavailableConfirmation
         } else if trailing == ["--verify-read-only-calendar"],
-                  let reference = boundedReference(environment["SHERPA_EVENTKIT_READ_ONLY_CALENDAR_REFERENCE"]) {
-            mode = .readOnlyCalendar(calendarReference: reference); expectedConfirmation = readOnlyConfirmation
+            let reference = boundedReference(environment["SHERPA_EVENTKIT_READ_ONLY_CALENDAR_REFERENCE"])
+        {
+            mode = .readOnlyCalendar(calendarReference: reference)
+            expectedConfirmation = readOnlyConfirmation
         } else {
             throw LiveVerifierError.usage
         }
@@ -171,7 +180,7 @@ public struct LiveVerifierConfiguration: Equatable {
         }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: arguments[1], isDirectory: &isDirectory),
-              !isDirectory.boolValue, FileManager.default.isExecutableFile(atPath: arguments[1])
+            !isDirectory.boolValue, FileManager.default.isExecutableFile(atPath: arguments[1])
         else { throw LiveVerifierError.workerUnavailable }
         return Self(workerPath: arguments[1], mode: mode)
     }
@@ -189,7 +198,8 @@ public struct EventKitLiveVerifier {
     private let mode: LiveVerifierMode
 
     public init(configuration: LiveVerifierConfiguration) {
-        client = WorkerClient(workerPath: configuration.workerPath); mode = configuration.mode
+        client = WorkerClient(workerPath: configuration.workerPath)
+        mode = configuration.mode
     }
 
     public func run() throws {
@@ -228,7 +238,8 @@ public struct EventKitLiveVerifier {
     private func verifyAuthorizationUnavailable(_ entity: LiveVerifierEntity) throws {
         let stage: LiveVerifierStage = entity == .calendar ? .authorization : .reminderAuthorization
         try at(stage) {
-            let capability: PlannerCapability = entity == .calendar
+            let capability: PlannerCapability =
+                entity == .calendar
                 ? .eventAuthorizationStatus : .reminderAuthorizationStatus
             let domain = entity == .calendar ? "event" : "reminder"
             let result: AuthorizationResult = try client.call(
@@ -321,11 +332,13 @@ public struct EventKitLiveVerifier {
         try at(.recurringReadback) {
             let snapshot = try event(nativeLocator)
             try expect(snapshot.title == title, .title, title, snapshot.title)
-            try expect(snapshot.eventCollection.nativeLocator == primary, .collectionNativeLocator,
-                       primary, snapshot.eventCollection.nativeLocator)
+            try expect(
+                snapshot.eventCollection.nativeLocator == primary, .collectionNativeLocator,
+                primary, snapshot.eventCollection.nativeLocator)
             try expect(snapshot.alarms.value?.count == 1, .alarmCount, "1", String(snapshot.alarms.value?.count ?? -1))
-            try expect(snapshot.recurrenceRules.value?.count == 1, .recurrenceRuleCount,
-                       "1", String(snapshot.recurrenceRules.value?.count ?? -1))
+            try expect(
+                snapshot.recurrenceRules.value?.count == 1, .recurrenceRuleCount,
+                "1", String(snapshot.recurrenceRules.value?.count ?? -1))
         }
         let updated: EventItemResult = try at(.timedUpdate) {
             try client.call(
@@ -342,8 +355,9 @@ public struct EventKitLiveVerifier {
             )
         }
         try at(.timedUpdateReadback) {
-            try expect(updated.event.eventCollection.nativeLocator == destination, .collectionNativeLocator,
-                       destination, updated.event.eventCollection.nativeLocator)
+            try expect(
+                updated.event.eventCollection.nativeLocator == destination, .collectionNativeLocator,
+                destination, updated.event.eventCollection.nativeLocator)
             // The adapter reports an empty collection as null (`collectionField`), never as [].
             let alarms = updated.event.alarms.value?.count ?? 0
             let rules = updated.event.recurrenceRules.value?.count ?? 0
@@ -367,7 +381,8 @@ public struct EventKitLiveVerifier {
         try at(.timedDelete) {
             let result: EventDeleteResult = try client.call(
                 capability: .eventDelete,
-                payload: EventDeleteRequest(schema: schema("event-delete"), nativeLocator: nativeLocator, span: "future"),
+                payload: EventDeleteRequest(
+                    schema: schema("event-delete"), nativeLocator: nativeLocator, span: "future"),
                 effect: .mutation
             )
             guard result.deleted else { throw LiveVerifierError.cleanupFailed }
@@ -449,8 +464,9 @@ public struct EventKitLiveVerifier {
             year: try require(components.year), month: try require(components.month),
             day: try require(components.day), hour: 15, minute: 30, timeZone: "Asia/Seoul"
         )
-        let rule = EventRecurrenceRule(frequency: "daily", interval: 1,
-                                       end: EventRecurrenceEnd(kind: "count", count: 2))
+        let rule = EventRecurrenceRule(
+            frequency: "daily", interval: 1,
+            end: EventRecurrenceEnd(kind: "count", count: 2))
         let title = "Sherpa Reminder synthetic \(UUID().uuidString)"
         let created: ReminderItemResult = try at(.reminderCreate) {
             try client.call(
@@ -468,11 +484,13 @@ public struct EventKitLiveVerifier {
         try at(.reminderReadback) {
             let snapshot = try reminder(reference)
             try expect(snapshot.title == title, .title, title, snapshot.title)
-            try expect(snapshot.collection.nativeLocator == primary, .collectionNativeLocator,
-                       primary, snapshot.collection.nativeLocator)
+            try expect(
+                snapshot.collection.nativeLocator == primary, .collectionNativeLocator,
+                primary, snapshot.collection.nativeLocator)
             try expect(snapshot.alarms.value?.count == 1, .alarmCount, "1", String(snapshot.alarms.value?.count ?? -1))
-            try expect(snapshot.recurrenceRules.value?.count == 1, .recurrenceRuleCount,
-                       "1", String(snapshot.recurrenceRules.value?.count ?? -1))
+            try expect(
+                snapshot.recurrenceRules.value?.count == 1, .recurrenceRuleCount,
+                "1", String(snapshot.recurrenceRules.value?.count ?? -1))
         }
         let completed: ReminderItemResult = try at(.reminderCompletion) {
             try client.call(
@@ -503,8 +521,9 @@ public struct EventKitLiveVerifier {
                 effect: .mutation
             )
         }
-        try expect(updated.reminder.collection.nativeLocator == destination, .collectionNativeLocator,
-                   destination, updated.reminder.collection.nativeLocator)
+        try expect(
+            updated.reminder.collection.nativeLocator == destination, .collectionNativeLocator,
+            destination, updated.reminder.collection.nativeLocator)
         try at(.reminderReadback) {
             let result: ReminderListResult = try client.call(
                 capability: .reminderList,
@@ -561,7 +580,8 @@ public struct EventKitLiveVerifier {
     }
 
     private func requireAuthorization(domain: String) throws {
-        let capability: PlannerCapability = domain == "event"
+        let capability: PlannerCapability =
+            domain == "event"
             ? .eventAuthorizationStatus : .reminderAuthorizationStatus
         let result: AuthorizationResult = try client.call(
             capability: capability,
@@ -571,13 +591,13 @@ public struct EventKitLiveVerifier {
     }
 
     private func at<T>(_ stage: LiveVerifierStage, operation: () throws -> T) throws -> T {
-        do { return try operation() }
-        catch let failure as LiveVerifierFailure { throw failure }
-        catch let check as LiveVerifierCheckFailure {
+        do { return try operation() } catch let failure as LiveVerifierFailure { throw failure } catch let check
+            as LiveVerifierCheckFailure
+        {
             throw LiveVerifierFailure(stage: stage, error: .verificationFailed, mismatch: check.mismatch)
+        } catch let error as LiveVerifierError { throw LiveVerifierFailure(stage: stage, error: error) } catch {
+            throw LiveVerifierFailure(stage: stage, error: .workerFailed)
         }
-        catch let error as LiveVerifierError { throw LiveVerifierFailure(stage: stage, error: error) }
-        catch { throw LiveVerifierFailure(stage: stage, error: .workerFailed) }
     }
 }
 
@@ -591,7 +611,11 @@ private struct FailureResult: Decodable {}
 private struct LivePolicy: Encodable {
     let effect: WorkerEffect
     let requiredEvidence: RequiredEvidence
-    enum CodingKeys: String, CodingKey { case effect; case requiredEvidence = "required_evidence"; case artifactDirectory = "artifact_directory" }
+    enum CodingKeys: String, CodingKey {
+        case effect
+        case requiredEvidence = "required_evidence"
+        case artifactDirectory = "artifact_directory"
+    }
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(effect, forKey: .effect)
@@ -610,9 +634,15 @@ private struct LiveRequest<Payload: Encodable>: Encodable {
     let idempotencyKey: String
     let policy: LivePolicy
     enum CodingKeys: String, CodingKey {
-        case kind; case protocolVersion = "protocol_version"; case applicationContract = "application_contract"
-        case requestID = "request_id"; case operationID = "operation_id"; case capability, payload
-        case deadlineMilliseconds = "deadline_ms"; case idempotencyKey = "idempotency_key"; case policy
+        case kind
+        case protocolVersion = "protocol_version"
+        case applicationContract = "application_contract"
+        case requestID = "request_id"
+        case operationID = "operation_id"
+        case capability, payload
+        case deadlineMilliseconds = "deadline_ms"
+        case idempotencyKey = "idempotency_key"
+        case policy
     }
 }
 
@@ -625,8 +655,12 @@ private struct LiveResponse<Result: Decodable>: Decodable {
     let error: WorkerError?
     let warnings: [JSONValue]
     enum CodingKeys: String, CodingKey {
-        case kind; case protocolVersion = "protocol_version"; case applicationContract = "application_contract"
-        case requestID = "request_id"; case operationID = "operation_id"; case capability, status, result
+        case kind
+        case protocolVersion = "protocol_version"
+        case applicationContract = "application_contract"
+        case requestID = "request_id"
+        case operationID = "operation_id"
+        case capability, status, result
         case effect, evidence, error, warnings
     }
 }
@@ -636,31 +670,34 @@ private struct WorkerClient {
     let processTimeZone: String?
 
     init(workerPath: String, processTimeZone: String? = nil) {
-        self.workerPath = workerPath; self.processTimeZone = processTimeZone
+        self.workerPath = workerPath
+        self.processTimeZone = processTimeZone
     }
 
     func call<Payload: Encodable, Result: Decodable>(
         capability: PlannerCapability, payload: Payload, effect: WorkerEffect
     ) throws -> Result {
         let identifier = "live-\(UUID().uuidString.lowercased())"
-        let evidence: RequiredEvidence = if effect == .read { .none }
-            else if capability.rawValue.hasSuffix(".delete") { .nativeAbsenceReadback }
-            else if effect == .authorizationPrompt { .authorizationReadback }
-            else { .nativeReadback }
+        let evidence: RequiredEvidence =
+            if effect == .read { .none } else if capability.rawValue.hasSuffix(".delete") {
+                .nativeAbsenceReadback
+            } else if effect == .authorizationPrompt { .authorizationReadback } else { .nativeReadback }
         let request = LiveRequest(
             requestID: identifier, operationID: identifier, capability: capability.rawValue,
             payload: payload, idempotencyKey: identifier,
             policy: LivePolicy(effect: effect, requiredEvidence: evidence)
         )
         let encoded: Data
-        do { encoded = try JSONEncoder().encode(request) }
-        catch { throw LiveVerifierError.invalidResponse }
+        do { encoded = try JSONEncoder().encode(request) } catch { throw LiveVerifierError.invalidResponse }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: workerPath)
         process.arguments = LiveVerifierConfiguration.workerArguments
         if let processTimeZone { process.environment = ["TZ": processTimeZone] }
-        let input = Pipe(); let output = Pipe()
-        process.standardInput = input; process.standardOutput = output; process.standardError = Pipe()
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = Pipe()
         do {
             try process.run()
             try input.fileHandleForWriting.write(contentsOf: encoded)
@@ -672,12 +709,13 @@ private struct WorkerClient {
             throw LiveVerifierError.workerFailed
         }
         let response: LiveResponse<Result>
-        do { response = try JSONDecoder().decode(LiveResponse<Result>.self, from: responseData) }
-        catch { throw LiveVerifierError.invalidResponse }
+        do { response = try JSONDecoder().decode(LiveResponse<Result>.self, from: responseData) } catch {
+            throw LiveVerifierError.invalidResponse
+        }
         guard response.kind == "response", response.protocolVersion == sherpaProtocolVersion,
-              response.applicationContract == "sherpa.planner.v2",
-              response.requestID == identifier, response.operationID == identifier,
-              response.capability == capability.rawValue
+            response.applicationContract == "sherpa.planner.v2",
+            response.requestID == identifier, response.operationID == identifier,
+            response.capability == capability.rawValue
         else { throw LiveVerifierError.invalidResponse }
         switch response.status {
         case .succeeded:
@@ -705,11 +743,14 @@ private extension EventKitLiveVerifier {
 
 private func schema(_ operation: String) -> String { "sherpa.planner.\(operation).request.v2" }
 
-private func mismatch(_ field: LiveVerifierMismatchField, _ expected: String, _ actual: String) -> LiveVerifierCheckFailure {
+private func mismatch(_ field: LiveVerifierMismatchField, _ expected: String, _ actual: String)
+    -> LiveVerifierCheckFailure
+{
     LiveVerifierCheckFailure(mismatch: LiveVerifierMismatch(field: field, expected: expected, actual: actual))
 }
 
-private func expect(_ condition: Bool, _ field: LiveVerifierMismatchField, _ expected: String, _ actual: String) throws {
+private func expect(_ condition: Bool, _ field: LiveVerifierMismatchField, _ expected: String, _ actual: String) throws
+{
     guard condition else { throw mismatch(field, expected, actual) }
 }
 
@@ -719,9 +760,10 @@ private func boundedReference(_ value: String?) -> String? {
 }
 
 private func safeCode(_ value: String) -> Bool {
-    !value.isEmpty && value.utf8.count <= 128 && value.unicodeScalars.allSatisfy {
-        CharacterSet.alphanumerics.contains($0) || $0 == "." || $0 == "_" || $0 == "-"
-    }
+    !value.isEmpty && value.utf8.count <= 128
+        && value.unicodeScalars.allSatisfy {
+            CharacterSet.alphanumerics.contains($0) || $0 == "." || $0 == "_" || $0 == "-"
+        }
 }
 
 private func require<T>(_ value: T?) throws -> T {
@@ -744,13 +786,15 @@ private func clockDate(hour: Int, on day: Date, calendar: Calendar) throws -> Da
 }
 
 private func wireDate(_ value: Date) -> String {
-    let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     return formatter.string(from: value)
 }
 
 private func parsedDate(_ value: String?) -> Date? {
     guard let value else { return nil }
-    let fractional = ISO8601DateFormatter(); fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
 }
 

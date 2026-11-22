@@ -1,19 +1,23 @@
-import SherpaWorkerProtocol
-import SherpaPlannerContract
 @preconcurrency import EventKit
 import Foundation
+import SherpaPlannerContract
+import SherpaWorkerProtocol
 
 func parseDate(_ value: String) -> Date? {
     makeWireDateFormatter().date(from: value) ?? ISO8601DateFormatter().date(from: value)
 }
 
 func eventSnapshot(_ event: EKEvent) throws -> EventSnapshot {
-    guard let start = wireDate(event.startDate), let end = wireDate(canonicalAllDayEnd(event.endDate, isAllDay: event.isAllDay, timeZone: event.timeZone ?? .current)) else { throw EventKitWorkerError.verificationFailed }
+    guard let start = wireDate(event.startDate),
+        let end = wireDate(
+            canonicalAllDayEnd(event.endDate, isAllDay: event.isAllDay, timeZone: event.timeZone ?? .current))
+    else { throw EventKitWorkerError.verificationFailed }
     return EventSnapshot(
         nativeLocator: try EventLocator(event: event).wireValue,
         eventCollection: eventCollectionSnapshot(event.calendar), title: event.title ?? "",
         start: start, end: end, allDay: event.isAllDay, timeZone: event.timeZone?.identifier,
-        notes: stringField(event.notes), location: stringField(event.location), url: stringField(event.url?.absoluteString),
+        notes: stringField(event.notes), location: stringField(event.location),
+        url: stringField(event.url?.absoluteString),
         occurrenceDate: wireDate(event.occurrenceDate), detached: event.isDetached,
         status: eventStatus(event.status), availability: eventAvailability(event.availability),
         alarms: collectionField(event.alarms?.map(alarmSnapshot)),
@@ -34,11 +38,15 @@ func reminderSnapshot(_ reminder: EKReminder) -> ReminderSnapshot {
 }
 
 func eventCollectionSnapshot(_ calendar: EKCalendar) -> EventCollectionSnapshot {
-    .init(nativeLocator: calendar.calendarIdentifier, title: calendar.title, type: calendarType(calendar.type), allowsContentModifications: calendar.allowsContentModifications)
+    .init(
+        nativeLocator: calendar.calendarIdentifier, title: calendar.title, type: calendarType(calendar.type),
+        allowsContentModifications: calendar.allowsContentModifications)
 }
 
 func reminderCollectionSnapshot(_ calendar: EKCalendar) -> ReminderCollectionSnapshot {
-    .init(nativeLocator: calendar.calendarIdentifier, title: calendar.title, type: calendarType(calendar.type), allowsContentModifications: calendar.allowsContentModifications)
+    .init(
+        nativeLocator: calendar.calendarIdentifier, title: calendar.title, type: calendarType(calendar.type),
+        allowsContentModifications: calendar.allowsContentModifications)
 }
 
 func calendarSnapshot(_ calendar: EKCalendar) -> ReminderCollectionSnapshot {
@@ -57,11 +65,13 @@ func reminderSortKey(_ reminder: EKReminder) -> String {
 func reminderSortKey(
     completed: Bool, due: DateComponents?, title: String, reference: String
 ) -> String {
-    let due = due.map { components in
-        String(format: "%04d-%02d-%02dT%02d:%02d", components.year ?? 0,
-               components.month ?? 0, components.day ?? 0, components.hour ?? 0,
-               components.minute ?? 0)
-    } ?? "9999-99-99T99:99"
+    let due =
+        due.map { components in
+            String(
+                format: "%04d-%02d-%02dT%02d:%02d", components.year ?? 0,
+                components.month ?? 0, components.day ?? 0, components.hour ?? 0,
+                components.minute ?? 0)
+        } ?? "9999-99-99T99:99"
     return "\(completed ? 1 : 0)|\(due)|\(title)|\(reference)"
 }
 
@@ -88,9 +98,9 @@ func canonicalAllDayEnd(
     calendar.timeZone = timeZone
     let components = calendar.dateComponents([.hour, .minute, .second, .nanosecond], from: value)
     guard components.hour == 23,
-          components.minute == 59,
-          components.second == 59,
-          components.nanosecond == 0
+        components.minute == 59,
+        components.second == 59,
+        components.nanosecond == 0
     else { return value }
     return calendar.date(byAdding: .second, value: 1, to: value)
 }
@@ -108,10 +118,10 @@ func eventKitAllDayEnd(
     calendar.timeZone = timeZone
     let components = calendar.dateComponents([.hour, .minute, .second, .nanosecond], from: value)
     guard components.hour == 0,
-          components.minute == 0,
-          components.second == 0,
-          components.nanosecond == 0,
-          let inclusive = calendar.date(byAdding: .second, value: -1, to: value)
+        components.minute == 0,
+        components.second == 0,
+        components.nanosecond == 0,
+        let inclusive = calendar.date(byAdding: .second, value: -1, to: value)
     else { return value }
     return inclusive
 }
@@ -125,22 +135,29 @@ func collectionField<T>(_ value: [T]?) -> SnapshotField<[T]> where T: Codable & 
 }
 
 private func alarmSnapshot(_ alarm: EKAlarm) -> AlarmSnapshot {
-    .init(absoluteDate: wireDate(alarm.absoluteDate), relativeOffsetSeconds: alarm.relativeOffset, proximity: alarmProximity(alarm.proximity), structuredLocation: alarm.structuredLocation?.title)
+    .init(
+        absoluteDate: wireDate(alarm.absoluteDate), relativeOffsetSeconds: alarm.relativeOffset,
+        proximity: alarmProximity(alarm.proximity), structuredLocation: alarm.structuredLocation?.title)
 }
 
 private func recurrenceSnapshot(_ rule: EKRecurrenceRule) -> RecurrenceSnapshot {
-    .init(frequency: recurrenceFrequency(rule.frequency), interval: rule.interval,
-          firstDayOfWeek: rule.firstDayOfTheWeek, occurrenceCount: rule.recurrenceEnd?.occurrenceCount ?? 0,
-          endDate: wireDate(rule.recurrenceEnd?.endDate),
-          daysOfWeek: rule.daysOfTheWeek?.map { .init(dayOfWeek: $0.dayOfTheWeek.rawValue, weekNumber: $0.weekNumber) } ?? [],
-          daysOfMonth: rule.daysOfTheMonth?.map(\.intValue) ?? [], monthsOfYear: rule.monthsOfTheYear?.map(\.intValue) ?? [],
-          weeksOfYear: rule.weeksOfTheYear?.map(\.intValue) ?? [], daysOfYear: rule.daysOfTheYear?.map(\.intValue) ?? [],
-          setPositions: rule.setPositions?.map(\.intValue) ?? [])
+    .init(
+        frequency: recurrenceFrequency(rule.frequency), interval: rule.interval,
+        firstDayOfWeek: rule.firstDayOfTheWeek, occurrenceCount: rule.recurrenceEnd?.occurrenceCount ?? 0,
+        endDate: wireDate(rule.recurrenceEnd?.endDate),
+        daysOfWeek: rule.daysOfTheWeek?.map { .init(dayOfWeek: $0.dayOfTheWeek.rawValue, weekNumber: $0.weekNumber) }
+            ?? [],
+        daysOfMonth: rule.daysOfTheMonth?.map(\.intValue) ?? [],
+        monthsOfYear: rule.monthsOfTheYear?.map(\.intValue) ?? [],
+        weeksOfYear: rule.weeksOfTheYear?.map(\.intValue) ?? [], daysOfYear: rule.daysOfTheYear?.map(\.intValue) ?? [],
+        setPositions: rule.setPositions?.map(\.intValue) ?? [])
 }
 
 private func reminderDate(_ value: DateComponents?) -> ReminderDate? {
     guard let value, let year = value.year, let month = value.month, let day = value.day else { return nil }
-    return ReminderDate(year: year, month: month, day: day, hour: value.hour, minute: value.minute, second: value.second, timeZone: value.timeZone?.identifier)
+    return ReminderDate(
+        year: year, month: month, day: day, hour: value.hour, minute: value.minute, second: value.second,
+        timeZone: value.timeZone?.identifier)
 }
 
 private func eventStatus(_ value: EKEventStatus) -> String {

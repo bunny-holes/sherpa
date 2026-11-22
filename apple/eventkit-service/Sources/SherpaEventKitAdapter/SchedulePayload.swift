@@ -1,7 +1,7 @@
-import SherpaWorkerProtocol
-import SherpaPlannerContract
 @preconcurrency import EventKit
 import Foundation
+import SherpaPlannerContract
+import SherpaWorkerProtocol
 
 func eventKitAlarms(_ values: [EventAlarm]?) throws -> [EKAlarm]? {
     guard let values else { return nil }
@@ -20,10 +20,14 @@ func eventKitRecurrenceRules(_ values: [EventRecurrenceRule]?) throws -> [EKRecu
 }
 
 private func eventKitRecurrenceRule(_ value: EventRecurrenceRule) throws -> EKRecurrenceRule {
-    let frequency: EKRecurrenceFrequency = switch value.frequency {
-    case "daily": .daily; case "weekly": .weekly; case "monthly": .monthly; case "yearly": .yearly
-    default: throw WorkerProtocolError.invalidPayload
-    }
+    let frequency: EKRecurrenceFrequency =
+        switch value.frequency {
+        case "daily": .daily
+        case "weekly": .weekly
+        case "monthly": .monthly
+        case "yearly": .yearly
+        default: throw WorkerProtocolError.invalidPayload
+        }
     let days = try value.daysOfWeek?.map { value in
         guard let weekday = EKWeekday(rawValue: value.dayOfWeek) else { throw WorkerProtocolError.invalidPayload }
         return EKRecurrenceDayOfWeek(weekday, weekNumber: value.weekNumber)
@@ -31,7 +35,9 @@ private func eventKitRecurrenceRule(_ value: EventRecurrenceRule) throws -> EKRe
     let end: EKRecurrenceEnd? = try value.end.map { value in
         switch value.kind {
         case "date":
-            guard let encoded = value.date, value.count == nil, let date = parseDate(encoded) else { throw WorkerProtocolError.invalidPayload }
+            guard let encoded = value.date, value.count == nil, let date = parseDate(encoded) else {
+                throw WorkerProtocolError.invalidPayload
+            }
             return EKRecurrenceEnd(end: date)
         case "count":
             guard value.date == nil, let count = value.count else { throw WorkerProtocolError.invalidPayload }

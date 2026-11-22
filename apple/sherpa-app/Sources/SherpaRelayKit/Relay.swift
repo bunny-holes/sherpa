@@ -17,8 +17,10 @@ public enum Relay {
             break
         case ["--version"]:
             guard let version else {
-                fail(RelayFailure(.software, scope: "relay:cli:version", reason: "version_unavailable",
-                                  remedy: "run the relay inside Sherpa.app"), logger: logger)
+                fail(
+                    RelayFailure(
+                        .software, scope: "relay:cli:version", reason: "version_unavailable",
+                        remedy: "run the relay inside Sherpa.app"), logger: logger)
             }
             print("sherpa-relay \(version)")
             exit(RelayExit.success.rawValue)
@@ -26,8 +28,10 @@ public enum Relay {
             print(help(version: version))
             exit(RelayExit.success.rawValue)
         default:
-            fail(RelayFailure(.usage, scope: "relay:cli:arguments", reason: "unknown_argument",
-                              remedy: "run sherpa-relay with no arguments"), logger: logger)
+            fail(
+                RelayFailure(
+                    .usage, scope: "relay:cli:arguments", reason: "unknown_argument",
+                    remedy: "run sherpa-relay with no arguments"), logger: logger)
         }
         do {
             let session = try connect(environment: environment, logger: logger)
@@ -35,8 +39,10 @@ public enum Relay {
         } catch let failure as RelayFailure {
             fail(failure, logger: logger)
         } catch {
-            fail(RelayFailure(.software, scope: "relay:session:open", reason: "internal_failure",
-                              remedy: "restart Sherpa.app"), logger: logger)
+            fail(
+                RelayFailure(
+                    .software, scope: "relay:session:open", reason: "internal_failure",
+                    remedy: "restart Sherpa.app"), logger: logger)
         }
     }
 
@@ -51,21 +57,24 @@ public enum Relay {
         do {
             location = try SocketLocation.resolve(environment: environment)
         } catch {
-            throw RelayFailure(.software, scope: "relay:socket:path", reason: "home_unavailable",
-                               remedy: "check the user account")
+            throw RelayFailure(
+                .software, scope: "relay:socket:path", reason: "home_unavailable",
+                remedy: "check the user account")
         }
         guard location.fitsSocketAddress, let address = unixSocketAddress(location.socketPath) else {
-            throw RelayFailure(.configuration, scope: "relay:socket:path", reason: "socket_path_too_long",
-                               fields: "socket=\(location.logValue) bytes=\(location.socketPath.utf8.count)",
-                               remedy: "use a home folder path of at most 48 bytes")
+            throw RelayFailure(
+                .configuration, scope: "relay:socket:path", reason: "socket_path_too_long",
+                fields: "socket=\(location.logValue) bytes=\(location.socketPath.utf8.count)",
+                remedy: "use a home folder path of at most 48 bytes")
         }
         let requirement = appRequirement(environment: environment)
 
         logger.debug("relay:socket:connect", "socket=\(location.logValue)")
         let socket = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
         guard socket >= 0 else {
-            throw RelayFailure(.software, scope: "relay:socket:create", reason: "socket_create_failed",
-                               fields: "errno=\(errno)", remedy: "restart the agent")
+            throw RelayFailure(
+                .software, scope: "relay:socket:create", reason: "socket_create_failed",
+                fields: "errno=\(errno)", remedy: "restart the agent")
         }
         var connectAddress = address
         let connected = withUnsafePointer(to: &connectAddress) {
@@ -85,8 +94,9 @@ public enum Relay {
             check = try CodeSignature.check(socket: socket, requirement: requirement)
         } catch {
             close(socket)
-            throw RelayFailure(.software, scope: "relay:signature:check", reason: "check_unavailable",
-                               fields: "error=\(error)", remedy: "restart Sherpa.app")
+            throw RelayFailure(
+                .software, scope: "relay:signature:check", reason: "check_unavailable",
+                fields: "error=\(error)", remedy: "restart Sherpa.app")
         }
         guard check.verdict == .accepted else {
             logger.warn("relay:signature:check", "status=rejected \(check.logFields)")
@@ -137,8 +147,9 @@ public enum Relay {
             let ready = poll(&descriptor, 1, remaining)
             if ready < 0 {
                 if errno == EINTR { continue }
-                throw RelayFailure(.ioError, scope: "relay:preface:read", reason: "socket_poll_failed",
-                                   fields: "errno=\(errno)", remedy: "restart Sherpa.app")
+                throw RelayFailure(
+                    .ioError, scope: "relay:preface:read", reason: "socket_poll_failed",
+                    fields: "errno=\(errno)", remedy: "restart Sherpa.app")
             }
             if ready == 0 { continue }
             let result = buffer.withUnsafeMutableBytes { FileDescriptorIO.read(socket, into: $0) }
@@ -148,8 +159,9 @@ public enum Relay {
             case .endOfFile:
                 throw RelayExitTable.prefaceMissing
             case let .failed(code):
-                throw RelayFailure(.ioError, scope: "relay:preface:read", reason: "socket_read_failed",
-                                   fields: "errno=\(code)", remedy: "restart Sherpa.app")
+                throw RelayFailure(
+                    .ioError, scope: "relay:preface:read", reason: "socket_read_failed",
+                    fields: "errno=\(code)", remedy: "restart Sherpa.app")
             }
         }
     }
@@ -226,13 +238,17 @@ final class CopySession: @unchecked Sendable {
                     }
                     guard let failed else { return .none }
                     if failed == EPIPE { return .some(RelayExitTable.appClosedSession) }
-                    return .some(RelayFailure(.ioError, scope: "relay:session:copy", reason: "socket_write_failed",
-                                              fields: "errno=\(failed)", remedy: "restart Sherpa.app"))
+                    return .some(
+                        RelayFailure(
+                            .ioError, scope: "relay:session:copy", reason: "socket_write_failed",
+                            fields: "errno=\(failed)", remedy: "restart Sherpa.app"))
                 case .endOfFile:
                     return .some(nil)
                 case let .failed(code):
-                    return .some(RelayFailure(.ioError, scope: "relay:session:copy", reason: "stdin_read_failed",
-                                              fields: "errno=\(code)", remedy: "restart the agent"))
+                    return .some(
+                        RelayFailure(
+                            .ioError, scope: "relay:session:copy", reason: "stdin_read_failed",
+                            fields: "errno=\(code)", remedy: "restart the agent"))
                 }
             }
             switch step {
@@ -271,8 +287,10 @@ final class CopySession: @unchecked Sendable {
                 case .endOfFile:
                     return true
                 case let .failed(code):
-                    finish(RelayFailure(.ioError, scope: "relay:session:copy", reason: "socket_read_failed",
-                                        fields: "errno=\(code)", remedy: "restart Sherpa.app"))
+                    finish(
+                        RelayFailure(
+                            .ioError, scope: "relay:session:copy", reason: "socket_read_failed",
+                            fields: "errno=\(code)", remedy: "restart Sherpa.app"))
                 }
             }
             if ended {
@@ -288,7 +306,9 @@ final class CopySession: @unchecked Sendable {
             logger.debug("relay:session:copy", "stdout=closed")
             finish(nil)
         }
-        finish(RelayFailure(.ioError, scope: "relay:session:copy", reason: "stdout_write_failed",
-                            fields: "errno=\(code)", remedy: "restart the agent"))
+        finish(
+            RelayFailure(
+                .ioError, scope: "relay:session:copy", reason: "stdout_write_failed",
+                fields: "errno=\(code)", remedy: "restart the agent"))
     }
 }

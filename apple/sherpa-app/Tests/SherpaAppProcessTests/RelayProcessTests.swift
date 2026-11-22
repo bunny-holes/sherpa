@@ -107,7 +107,8 @@ struct PrefaceCase: Sendable, CustomTestStringConvertible {
         PrefaceCase(
             preface: #"{"sherpa_app":1,"status":"unavailable","reason":"mcp_disabled","version":"0.9.0"}"#,
             behaviour: "silent", exit: 75,
-            errorLine: #"reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP in Sherpa.app, then reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)""#
+            errorLine:
+                #"reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP in Sherpa.app, then reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)""#
         ),
         PrefaceCase(
             preface: #"{"sherpa_app":1,"status":"refused","reason":"peer_signature","version":"0.9.0"}"#,
