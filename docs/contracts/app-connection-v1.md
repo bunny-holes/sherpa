@@ -931,10 +931,20 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   같다. [계약; 문서: `ai` 7.0.179 `src/generate-text/execute-tools-from-stream.ts`,
   `src/generate-text/stream-text.ts`, `src/prompt/convert-to-language-model-prompt.ts`; 실측:
   `core/tests/chat-tools.test.ts`]
-- 출력 토큰 한도가 인자 JSON 한가운데를 끊은 호출은 AI SDK 가 잘못 만든 호출로 읽는다(`chat.invalid_call`). 한 단계의
-  호출이 모두 결과(AI SDK 의 오류도 결과다)를 가지면 AI SDK 는 끝난 까닭과 관계없이 다음 단계를 보내므로, 모델은 같은
-  차례의 다음 요청에서 그 오류를 읽고 차례가 이어진다. OpenAI 호환과 Anthropic 패키지는 끊긴 인자를 그대로 넘겨 이
-  길로 간다. [실측: `core/tests/chat-tools.test.ts`; 문서: `ai` 7.0.179 `src/generate-text/stream-text.ts`]
+- `stop`·`tool-calls` 밖의 까닭으로 끝난 단계 뒤에는 요청하지 않는다. 그 단계의 호출은 결과(AI SDK 의 오류나
+  `chat.not_run`)와 함께 남고, 차례는 그 까닭의 `done` 으로 끝난다(`content-filter` 는 남기지 않는다). 흐름이 보낸
+  오류로 끝난 단계도 남지 않고, 차례는 그 오류의 `error` 로 끝난다. AI SDK 는 한 단계의 호출이 모두 결과(AI SDK 가
+  거절한 호출의 오류도 결과다)를 가지면, 끝난 까닭이 `interrupted` 가 아닌 한 `length`·`content-filter`·`error`·
+  `other` 여도 `stopWhen` 만 보고 다음 요청을 보내므로, 코어가 `stopWhen` 에 이 조건을 둔다. 같은 파일의
+  `StopCondition` 주석은 `tool-calls` 밖의 까닭이면 멈춘다고 적지만 코드는 그렇지 않다. 그대로 두면 출력 토큰 한도에
+  인자가 끊긴 호출은 다시 불러도 같은 한도에 다시 끊기기 쉬워 단계마다 출력 한도만큼 쓰며 20번째 요청까지 가고
+  [추론], 거절이나 오류로 끝나 대화에 남지 않는 단계 위에서 다음 요청이 나가 그 답이 대화에 남는다. [계약; 문서: `ai`
+  7.0.179 `src/generate-text/stream-text.ts` 의 `shouldStartNextStep`, `src/generate-text/stop-condition.ts`; 실측:
+  `core/tests/chat-tools.test.ts`]
+- 출력 토큰 한도가 인자 JSON 한가운데를 끊은 호출은 AI SDK 가 잘못 만든 호출로 읽는다(`chat.invalid_call`). 차례는
+  그 요청 하나로 `done` `length` 로 끝나고, 대화는 그 호출과 AI SDK 의 오류를 결과로 간직해 다음 차례의 요청이 그
+  오류를 싣는다. OpenAI 호환과 Anthropic 패키지는 끊긴 인자를 그대로 넘겨 이 길로 간다. [실측:
+  `core/tests/chat-tools.test.ts`]
 - 한계: 도구를 부른 응답을 `tool_calls`·`function_call`·`stop` 밖의 까닭으로 끝내는 OpenAI 호환 서버에서는 도구가
   하나도 돌지 않고, 그 차례는 `chat.not_run` 과 `done` `other` 로 끝난다. `@ai-sdk/openai-compatible` 3.0.94 는 그
   셋 밖의 까닭을 `other` 로, `length` 를 `length` 로 읽는다. 어느 서버가 그런지는 확인하지 않았다(§16). [문서:
@@ -1578,8 +1588,11 @@ result         object | null
   `cancel`(기다리는 창을 거둠, planner 읽기를 끊음, 청한 변경은 끝까지 기다림, core 의 보내기와 읽기는 끝까지 돎,
   응답이 끝나기 전에는 아무것도 돌지 않고 남지 않음), 호출 중 닫힌 채널, AI SDK 가 돌리지 않은 호출(OpenAI 호환과
   Anthropic 의 `length`, OpenAI 호환의 모르는 까닭에서 `chat.not_run` 봉투와 `tool` 둘과 warn 줄과 다음 차례의
-  요청, 앞의 글이 먼저 감, 잘못 만든 호출과 섞이면 결과가 호출 차례대로, 번호가 이어짐), 인자 한가운데서 끊긴 호출은
-  잘못 만든 호출로 읽혀 차례가 이어짐, 결과 없는 호출이 든 대화는 요청 없이 `internal` 과 error 줄 하나, Anthropic 의
+  요청, 앞의 글이 먼저 감, 잘못 만든 호출과 섞이면 결과가 호출 차례대로, 번호가 이어짐), `stop`·`tool-calls` 밖의
+  까닭으로 끝난 단계 뒤의 요청 없음(인자 한가운데서 끊긴 호출은 잘못 만든 호출로 읽히고 요청 하나로 `done` `length`
+  이며 다음 차례의 요청이 그 호출과 오류를 실음, 잘못 만든 호출이 든 OpenAI 호환의 `content_filter` 와 Anthropic 의
+  거절은 `done` `content-filter` 이고 대화에 남는 것이 없음, 모르는 까닭은 `done` `other`, 흐름의 오류는 `error` 이고
+  남는 것이 없음), 결과 없는 호출이 든 대화는 요청 없이 `internal` 과 error 줄 하나, Anthropic 의
   맨 위 `cache_control` 과 표시 없는 도구, 로그에 인자·결과·지어낸 이름이 없음. 기대하지 않은 AI SDK 경고가 하나라도
   나오면 실패한다.
 - 호출의 되돌릴 수 없는 때(`mcp-tools.test.ts`): planner 변경은 요청을 보내는 같은 차례에, 삭제와 보내기는 허용 뒤 그

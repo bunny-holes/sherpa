@@ -137,8 +137,14 @@ Anything not listed here is not proven by the gate.
     `tool` events, the warn line and the next turn's request after
     OpenAI-compatible and Anthropic `length` and an OpenAI-compatible unknown
     reason; the text before them first; results in call order beside a
-    malformed call; call numbers that go on); a call cut in the middle of its
-    arguments read as malformed, the turn going on; a conversation holding a
+    malformed call; call numbers that go on); no request after a step that
+    ended for a reason other than `stop` or `tool-calls` (a call cut in the
+    middle of its arguments read as malformed, the turn ending with `length`
+    after one request and the next turn's request carrying the call and its
+    error; a malformed call in an OpenAI-compatible `content_filter` answer or
+    an Anthropic refusal ending with `content-filter` and nothing kept, in an
+    answer ending for a reason the package does not know with `other`, and
+    before a stream error with `error` and nothing kept); a conversation holding a
     call without its result ending `internal` with one error line and no
     request; Anthropic's top-level `cache_control` and tools without a mark;
     and no arguments, results or made-up tool names in a log line. A test

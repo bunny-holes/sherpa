@@ -19,7 +19,10 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > 위의 자동 캐시를 쓴다. 지시문의 표시가 도구 정의를 덮기 때문이다. AI SDK 는 `stop`·`tool-calls` 밖의 까닭으로 끝난
 > 단계의 호출을 돌리지 않고, 결과 없는 호출이 든 대화는 요청 전에 거절한다. 그대로 두면 그 채팅의 뒤 차례가 모두
 > 실패하므로 코어가 그런 호출에 `chat.not_run` 결과를 달고, 코어가 만든 대화를 SDK 가 거절하면 `internal` 로 읽는다.
-> [실측: `core/tests/chat-tools.test.ts`] 대화 한도는 차례를 시작할 때만 보므로 차례 하나가 도구 결과로 2 MiB 넘게
+> SDK 는 또 단계의 호출이 모두 결과(거절한 호출의 오류 포함)를 가지면 끝난 까닭과 관계없이 다음 요청을 보낸다. 그
+> `StopCondition` 주석은 `tool-calls` 밖의 까닭이면 멈춘다고 적지만 코드는 그렇지 않다. 그래서 코어는 `stop`·
+> `tool-calls` 밖의 까닭으로 끝난 단계 뒤에는 요청하지 않는다. 그 단계의 호출은 결과와 함께 남고 차례는 그 까닭의
+> `done` 으로 끝난다(`content-filter` 는 남기지 않는다). [실측: `core/tests/chat-tools.test.ts`] 대화 한도는 차례를 시작할 때만 보므로 차례 하나가 도구 결과로 2 MiB 넘게
 > 더할 수 있고, 대화 상태(`state`)를 넣는 다음 작업이 그 크기를 다룬다. 고친 곳은 상태 줄, "앱과 코어 사이 채널",
 > "스트리밍", "중단", "재시도", "도구", "확인 흐름", "상태를 넘기는 때", "비용과 모델 선택", "실측", "구현 단계" 4,
 > "아직 확인 전" 이다.
@@ -320,7 +323,9 @@ macOS 시스템 인증서 저장소를 믿는 빌드는 PR #97 로, 글 차례�
   [streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text) 의 `stopWhen`, `ai` 7.0.179
   `docs/07-reference/01-ai-sdk-core/16-tool-loop-agent.mdx`] [설계] (정정 2026-11-23, #66, 도구: N 은 20 이다.
   [소유자, 2026-11-22] 스무째 요청이 도구를 불러 그 결과로 끝나면 차례는 `done` `step-limit` 이다. [실측:
-  `core/tests/chat-tools.test.ts`])
+  `core/tests/chat-tools.test.ts`] `stop`·`tool-calls` 밖의 까닭으로 끝난 단계 뒤에도 멈춘다(`stopWhen` 의 셋째
+  조건). AI SDK 는 그 단계의 호출이 모두 결과를 가지면 끝난 까닭을 보지 않고 다음 요청을 보내기 때문이다. [문서: `ai`
+  7.0.179 `src/generate-text/stream-text.ts` 의 `shouldStartNextStep`; 계약 §7.11 "도구"])
 - 멈춘 스트림은 `timeout` 의 `firstChunkMs`·`chunkMs` 로 끊는다. `toolMs` 는 핸들러 자신의 한도(확인 30초,
   미리보기 읽기 마감 5초)보다 짧게 두지 않는다. 값은 구현 이슈에서 정한다. [문서:
   [Settings](https://ai-sdk.dev/docs/ai-sdk-core/settings)] [설계] (정정 2026-11-22, #66, 글 차례: `firstChunkMs` 는 쓰지
@@ -720,7 +725,8 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   도구를 부른 단계는 호출과 그 결과를 함께 더한다. AI SDK 가 돌리지 않은 호출(끝난 까닭 `length`·`other`)에는 코어가
   `chat.not_run` 결과를 호출의 차례대로 단다. 결과 없는 호출이 든 대화는 SDK 가 요청 전에 거절하기 때문이다. [문서: `ai`
   7.0.179 `src/prompt/convert-to-language-model-prompt.ts`; 실측: `core/tests/chat-tools.test.ts`] 그래서 단계 한도,
-  호출 중의 `cancel`, 돌지 않은 호출로 끝난 차례의 대화는 도구 결과로 끝난다.)
+  호출 중의 `cancel`, 돌지 않은 호출이나 `length`·`other` 로 끝난 단계의 잘못 만든 호출로 끝난 차례의 대화는 도구
+  결과로 끝난다. 그런 단계 뒤에는 요청하지 않는다. [계약 §7.11 "도구"])
 - 거절(`content-filter`)로 끝난 단계는 넣지 않는다. Anthropic 은 거절 앞의 부분 출력을 끝나지 않은 것으로 보고
   버리라고 적는다. [문서: [Refusals and
   fallback](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback), "treat any partial
