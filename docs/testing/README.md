@@ -48,6 +48,14 @@ Anything not listed here is not proven by the gate.
     of native identifiers in KakaoTalk output, the local checkpoint semantics,
     and KakaoTalk key derivation against kakaocli's published test vectors.
     Sends run against a fake `osascript`; no test sends a real message.
+  - `chat-egress.test.ts` (ADR-0012) proves without a socket that the global
+    `fetch` and `WebSocket` refuse every call and connection and cannot be
+    put back, that a turn fetch lets out only HTTPS to its origin with
+    `redirect: "error"` and the turn's signal, and which base URLs are refused.
+  - `tools-call.test.ts` proves the tool call lifecycle
+    (`core/src/tools/call.ts`): its start and end lines, the set of active
+    calls, a thrown handler as a core failure, an abandoned call left
+    unanswered, and the outcome fitted to the caller's limit.
 - **Core static checks**: `vp check` (format, lint with type-aware rules, type
   check) over `core/`.
 - **Core stdio tests** (`core/tests/stdio`, `bun run test:stdio`, right after
@@ -63,10 +71,10 @@ Anything not listed here is not proven by the gate.
     the test process's own listener and the core's descriptors 0–2, sees no
     internet socket and no listening Unix socket in the core from the hello
     through two MCP sessions and a delete waiting for the person; `--version`
-    starts with the global `fetch` refused too. Its redirect test runs
-    `core/src/chat/egress.ts` on the test's own Bun, the declared one, against
-    local servers: `redirect: "error"` refuses a 307 and a 302 that a turn
-    fetch forwards, and the redirect target sees no request.
+    starts with the global `fetch` and `WebSocket` refused too. Its redirect
+    test runs `core/src/chat/egress.ts` on the test's own Bun, the declared one,
+    against local servers: `redirect: "error"` refuses a 307 and a 302 that a
+    turn fetch forwards, and the redirect target sees no request.
   - `waits.test.ts`: the 30 s confirmation and 5 s discovery waits on the real
     clock.
   - `cli.test.ts`: the built CLI checks every argument before it opens a store.
