@@ -30,8 +30,8 @@ const appHello = z.strictObject({
 });
 const closeBody = z.strictObject({ reason: z.string().max(256) });
 
-/** The channel kinds this core serves (§7.3). Stage 4 of ADR-0012 adds `chat`. */
-export type ChannelKind = "mcp";
+/** The channel kinds this core serves (§7.3): a relay connection (§7.6) and a chat (§7.11). */
+export type ChannelKind = "mcp" | "chat";
 
 /** An `open` body: one kind, a word of the frame type grammar (§7.2, §7.3). */
 const openBody = z.strictObject({ kind: z.string().regex(/^[a-z-]{1,16}$/) });

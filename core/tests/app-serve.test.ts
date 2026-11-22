@@ -2,6 +2,7 @@ import { InMemoryTransport, type JSONRPCMessage } from "@modelcontextprotocol/se
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { describe, expect, test } from "vite-plus/test";
 import { serveConnection } from "../src/app/serve.ts";
+import { type Fetch, installEgress } from "../src/chat/egress.ts";
 import type { CoreCommands } from "../src/commands.ts";
 import type { MailMessage } from "../src/mail/outbound.ts";
 import { coreEntries } from "../src/mcp/core-tools.ts";
@@ -10,8 +11,9 @@ import type { ResolvedTool } from "../src/mcp/tools.ts";
 import { type AgentInfo, MCP_REVISION, withEnvelope } from "./support/mcp.ts";
 import { CollectingSink, PushInput, tick } from "./support/pipes.ts";
 
-// The whole `app serve` stack in one process (mux, control, transport, SDK, tools)
-// with core commands that record instead of sending (app-connection-v1 §7, §9).
+// The whole `app serve` stack in one process (mux, control, transport, SDK, tools, chat) with
+// core commands that record instead of sending and a runtime fetch that records instead of
+// connecting (app-connection-v1 §7, §9).
 
 const unexpected = (): never => {
   throw new Error("unexpected command");
@@ -36,7 +38,22 @@ function parse(line: string): Frame {
 const mail = { to: ["a@example.com"], cc: [], bcc: [], subject: "s", body: "b" };
 const agent: AgentInfo = { name: "agent", version: "1.0" };
 
-function start() {
+/** The runtime fetch behind the egress: what reaches it, and what it answers. */
+function runtime(answer: (url: string) => Response = () => Response.json({ data: [] })) {
+  const reached: string[] = [];
+  const fetch: Fetch = Object.assign(
+    async (input: string | URL | Request) => {
+      // The egress hands on the URL it checked, as a string.
+      if (typeof input !== "string") throw new TypeError("expected the checked URL");
+      reached.push(input);
+      return answer(input);
+    },
+    { preconnect: () => {} },
+  );
+  return { reached, fetch };
+}
+
+function start(network = runtime()) {
   const input = new PushInput();
   const sink = new CollectingSink();
   const sent: MailMessage[] = [];
@@ -63,7 +80,12 @@ function start() {
     },
     operationsList: async () => "[]",
   };
-  const exit = serveConnection({ input, output: sink, commands });
+  const exit = serveConnection({
+    input,
+    output: sink,
+    commands,
+    egress: installEgress({ fetch: network.fetch }),
+  });
   const frames = () => sink.lines.map(parse);
   const next = async (match: (frame: Frame) => boolean) =>
     parse(await sink.next((line) => match(parse(line))));
@@ -352,4 +374,44 @@ test("closing a session ends every waiting call, even two the SDK holds under on
   session.abort();
   await side.close();
   expect(signals.map((signal) => signal.aborted)).toEqual([true, true]);
+});
+
+describe("chat channels (§7.11)", () => {
+  const listOpenAI = { type: "list_models", provider: "openai", api_key: "sk-test" };
+
+  test("a chat channel answers list_models through the egress, next to a relay channel", async () => {
+    const network = runtime(() => Response.json({ data: [{ id: "m-1" }, { id: "m-2" }] }));
+    const app = start(network);
+    await app.ready();
+    app.input.push('2\topen\t{"kind":"chat"}\n');
+    app.data(2, listOpenAI);
+    const answer = await app.next((frame) => frame.channel === 2 && frame.type === "data");
+    expect(answer.body).toEqual({ type: "models", models: ["m-1", "m-2"], truncated: false });
+    expect(network.reached).toEqual(["https://api.openai.com/v1/models"]);
+    // The relay channel goes on beside it.
+    app.call(1, 2, "operations_list", { limit: 1 });
+    expect((await app.answer(1, 2)).body).toHaveProperty(
+      "result.structuredContent.status",
+      "succeeded",
+    );
+    app.input.end();
+    expect(await app.exit).toBe(0);
+  });
+
+  test("the fifth chat channel is closed with chat_limit, and a closed one frees its place", async () => {
+    const app = start();
+    await app.opened();
+    for (const channel of [2, 3, 4, 5, 6]) app.input.push(`${channel}\topen\t{"kind":"chat"}\n`);
+    expect((await app.next((frame) => frame.channel === 6 && frame.type === "close")).body).toEqual(
+      { reason: "chat_limit" },
+    );
+    app.input.push('2\tclose\n7\topen\t{"kind":"chat"}\n');
+    app.data(7, listOpenAI);
+    expect(
+      (await app.next((frame) => frame.channel === 7 && frame.type === "data")).body,
+    ).toMatchObject({ type: "models" });
+    expect(app.frames().filter((frame) => frame.type === "close")).toHaveLength(1);
+    app.input.end();
+    expect(await app.exit).toBe(0);
+  });
 });

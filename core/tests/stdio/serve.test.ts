@@ -179,9 +179,9 @@ describe("Mux 3 (§7.3, §7.5)", () => {
     });
   });
 
-  test("an open of the chat kind is closed, and the same core serves the next relay channel", async () => {
+  test("an open of a kind the core does not serve is closed, and the same core serves the next relay channel", async () => {
     const app = await ready();
-    app.frame(1, "open", { kind: "chat" });
+    app.frame(1, "open", { kind: "no-such-kind" });
     expect(await app.next((frame) => frame.channel === 1)).toEqual({
       channel: 1,
       type: "close",
@@ -194,7 +194,7 @@ describe("Mux 3 (§7.3, §7.5)", () => {
     app.closeInput();
     expect(await app.exited).toBe(0);
     expect(app.stderr.join("")).toContain(
-      "[core:mux:open] refused channel=1 kind=chat reason=unsupported_kind",
+      "[core:mux:open] refused channel=1 kind=no-such-kind reason=unsupported_kind",
     );
   });
 });

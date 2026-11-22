@@ -45,11 +45,7 @@ function connect() {
     output: sink,
     handlers: {
       ready: () => {},
-      open: {
-        mcp: (channel) => {
-          channels.push(channel);
-        },
-      },
+      open: { mcp: (channel) => channels.push(channel), chat: (channel) => channels.push(channel) },
     },
   });
   return { input, sink, channels, connection, exit: connection.run() };
@@ -191,7 +187,7 @@ describe("§14 violations end the core with fatal and 65", () => {
     ["open of a closed number", `${open(1)}1\tclose\n${open(1)}`, "mux.unexpected_frame"],
     [
       "open of the number of a refused kind",
-      `1\topen\t{"kind":"chat"}\n${open(1)}`,
+      `1\topen\t{"kind":"no-such-kind"}\n${open(1)}`,
       "mux.unexpected_frame",
     ],
     ["an open without a body, as Mux 1 wrote it", "1\topen\n", "mux.frame_invalid"],
@@ -248,7 +244,7 @@ describe("§14 frames that are not violations", () => {
     expect(sink.lines).toHaveLength(1);
   });
 
-  test.each(["chat", "constructor"])(
+  test.each(["no-such-kind", "constructor"])(
     "an open of the kind %s, which the core does not serve, closes that channel only",
     async (kind) => {
       const { input, sink, channels, exit } = connect();

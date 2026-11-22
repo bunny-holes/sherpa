@@ -1,4 +1,6 @@
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import type { Egress } from "../chat/egress.ts";
+import { type ChatOptions, ChatSessions } from "../chat/session.ts";
 import { type CoreCommands, systemCommands } from "../commands.ts";
 import { log } from "../log.ts";
 import { type ResolvedTool, resolveTools } from "../mcp/tools.ts";
@@ -109,11 +111,17 @@ export class ToolBasis {
 export interface ServeOptions {
   input: AsyncIterable<Uint8Array>;
   output: FrameSink;
+  /** The chat channels' only way to the network (ADR-0012 "네트워크"). */
+  egress: Egress;
   commands?: CoreCommands;
   discoveryWaitMs?: number;
+  chat?: ChatOptions;
 }
 
-/** Runs one app connection, one MCP connection per `mcp` channel, until EOF (0) or a violation (65). */
+/**
+ * Runs one app connection, one MCP connection per `mcp` channel and one chat per `chat` channel,
+ * until EOF (0) or a violation (65).
+ */
 export async function serveConnection(options: ServeOptions): Promise<number> {
   let connection: AppConnection;
   const planner: PlannerPort = {
@@ -129,6 +137,7 @@ export async function serveConnection(options: ServeOptions): Promise<number> {
       }),
     options.discoveryWaitMs,
   );
+  const chats = new ChatSessions(options.egress, options.chat);
   connection = new AppConnection({
     version: SHERPA_VERSION,
     input: options.input,
@@ -159,6 +168,8 @@ export async function serveConnection(options: ServeOptions): Promise<number> {
             },
           );
         },
+        // One chat (§7.11).
+        chat: (channel: MuxChannel) => chats.serve(channel),
       },
     },
   });
@@ -173,9 +184,10 @@ export async function serveConnection(options: ServeOptions): Promise<number> {
 /**
  * `sherpa app serve` (§7.1): the long-lived core Sherpa.app starts. It reads
  * only its standard input, writes only frames to standard output and owns
- * the process, so it exits itself once the last frame is flushed.
+ * the process, so it exits itself once the last frame is flushed. Its chat
+ * channels reach the network only through `egress`.
  */
-export async function serveApp(): Promise<number> {
+export async function serveApp(egress: Egress): Promise<number> {
   const exit = (code: number) => {
     process.stdout.write("", () => process.exit(code));
   };
@@ -196,7 +208,7 @@ export async function serveApp(): Promise<number> {
   log.info(`[core:app-serve:start] version=${SHERPA_VERSION}`);
   let code: number;
   try {
-    code = await serveConnection({ input: Bun.stdin.stream(), output: process.stdout });
+    code = await serveConnection({ input: Bun.stdin.stream(), output: process.stdout, egress });
   } catch (error) {
     log.error(
       `[core:app-serve:internal] failure error_type=${error instanceof Error ? error.name : typeof error}`,

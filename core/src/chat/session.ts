@@ -1,0 +1,171 @@
+/**
+ * The chat channels of one app connection (app-connection-v1 §7.11, ADR-0012 "앱과 코어 사이
+ * 채널"): at most four open at once, each answering the messages of its own channel. A message
+ * that fails ends in an `error` on its channel and a log line; none ends the channel or the core.
+ */
+import { log } from "../log.ts";
+import { type AllowedOrigin, allowedOrigin, type Egress, EgressDeniedError } from "./egress.ts";
+import { ChatFailure } from "./errors.ts";
+import { listModels, type ModelSource } from "./models.ts";
+import {
+  type ChatEvent,
+  chatLimits,
+  errorEvent,
+  type ListModelsRequest,
+  readMessage,
+} from "./protocol.ts";
+import { FIXED_BASE_URLS } from "./providers.ts";
+
+/** What a chat needs of its channel: one JSON message per `data` frame each way. */
+export interface ChatChannel {
+  readonly id: number;
+  /** One `data` body from the app. */
+  onmessage?: (body: Uint8Array) => void;
+  /** The app closed the channel, or the core is stopping. */
+  onclose?: () => void;
+  send(body: string): Promise<void>;
+  close(reason: string): Promise<void>;
+}
+
+export interface ChatOptions {
+  /** How long one `list_models` may take, every page included (§7.11: 30 s). */
+  listMs?: number;
+}
+
+const errorType = (error: unknown) => (error instanceof Error ? error.name : typeof error);
+
+/**
+ * Where a `list_models` goes: the origin the egress lets out and the base its path joins. The
+ * person's base URL is refused here, before anything leaves, unless the egress allows it.
+ */
+function modelSource(request: ListModelsRequest): ModelSource & { origin: AllowedOrigin } {
+  const raw =
+    request.provider === "openai-compatible" ? request.base_url : FIXED_BASE_URLS[request.provider];
+  const origin = allowedOrigin(raw);
+  return {
+    provider: request.provider,
+    base: URL.parse(raw)!.href.replace(/\/+$/, ""),
+    apiKey: request.api_key,
+    origin,
+  };
+}
+
+/** What a failed `list_models` ends with; anything unforeseen is a core defect. */
+function failureOf(error: unknown): ChatFailure {
+  if (error instanceof ChatFailure) return error;
+  return new ChatFailure(error instanceof EgressDeniedError ? "egress_denied" : "internal");
+}
+
+class ChatSession {
+  private readonly ended = new AbortController();
+  private listing = false;
+
+  constructor(
+    private readonly channel: ChatChannel,
+    private readonly egress: Egress,
+    private readonly listMs: number,
+    onEnd: () => void,
+  ) {
+    channel.onmessage = (body) => this.receive(body);
+    channel.onclose = () => {
+      this.ended.abort();
+      onEnd();
+    };
+  }
+
+  private receive(body: Uint8Array): void {
+    const message = readMessage(body);
+    if (message.type === "refused") {
+      log.warn(
+        `[core:chat:message] refused channel=${this.channel.id} reason=${message.reason} bytes=${body.byteLength}`,
+      );
+      this.reply(errorEvent(message.inReplyTo, "invalid_message"));
+      return;
+    }
+    if (this.listing) {
+      log.warn(`[core:chat:list-models] refused channel=${this.channel.id} reason=busy`);
+      this.reply(errorEvent("list_models", "busy"));
+      return;
+    }
+    // The next list is taken once this one is answered, so the app may send it on the answer.
+    this.listing = true;
+    void this.list(message.request).then((answer) => {
+      this.listing = false;
+      if (answer) this.reply(answer);
+    });
+  }
+
+  /** One `list_models`: its `models` or `error`, or `null` when the channel ended first. */
+  private async list(request: ListModelsRequest): Promise<ChatEvent | null> {
+    const fields = `channel=${this.channel.id} provider=${request.provider}`;
+    const started = Date.now();
+    const timeout = AbortSignal.timeout(this.listMs);
+    log.info(`[core:chat:list-models] start ${fields}`);
+    try {
+      const source = modelSource(request);
+      const signal = AbortSignal.any([this.ended.signal, timeout]);
+      const list = await listModels(source, this.egress.turnFetch(source.origin, signal));
+      log.info(
+        `[core:chat:list-models] success ${fields} models=${list.models.length} pages=${list.pages} skipped=${list.skipped} truncated=${list.truncated} ms=${Date.now() - started}`,
+      );
+      return { type: "models", models: list.models, truncated: list.truncated };
+    } catch (error) {
+      const ms = Date.now() - started;
+      if (this.ended.signal.aborted) {
+        log.info(`[core:chat:list-models] abandoned ${fields} ms=${ms}`);
+        return null;
+      }
+      const failure = timeout.aborted ? new ChatFailure("timeout") : failureOf(error);
+      if (failure.code === "internal") {
+        log.error(
+          `[core:chat:list-models] failure ${fields} code=internal error_type=${errorType(error)} ms=${ms}`,
+        );
+      } else {
+        log.warn(
+          `[core:chat:list-models] failure ${fields} code=${failure.code} status=${failure.status ?? "none"} ms=${ms}`,
+        );
+      }
+      return errorEvent("list_models", failure.code, failure.status);
+    }
+  }
+
+  private reply(event: ChatEvent): void {
+    this.channel.send(JSON.stringify(event)).catch((error: unknown) => {
+      log.error(
+        `[core:chat:send] failure channel=${this.channel.id} error_type=${errorType(error)}`,
+      );
+    });
+  }
+}
+
+/** The chat channels of one app connection, which share its egress. */
+export class ChatSessions {
+  private readonly open = new Set<ChatSession>();
+
+  constructor(
+    private readonly egress: Egress,
+    private readonly options: ChatOptions = {},
+  ) {}
+
+  /** Serves a channel the app opened as `chat`, or closes it when four are open already. */
+  serve(channel: ChatChannel): void {
+    if (this.open.size >= chatLimits.channels) {
+      log.warn(
+        `[core:chat:open] refused channel=${channel.id} reason=chat_limit chats=${this.open.size}`,
+      );
+      channel.close("chat_limit").catch((error: unknown) => {
+        log.error(
+          `[core:chat:open] write_failure channel=${channel.id} error_type=${errorType(error)}`,
+        );
+      });
+      return;
+    }
+    const session: ChatSession = new ChatSession(
+      channel,
+      this.egress,
+      this.options.listMs ?? chatLimits.listMs,
+      () => this.open.delete(session),
+    );
+    this.open.add(session);
+  }
+}

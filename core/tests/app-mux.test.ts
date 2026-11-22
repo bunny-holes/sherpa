@@ -11,21 +11,17 @@ function connect() {
   const channels: MuxChannel[] = [];
   const events: string[] = [];
   const hellos: unknown[] = [];
+  const serve = (channel: MuxChannel) => {
+    channels.push(channel);
+    channel.onmessage = (body) =>
+      events.push(`${channel.id}:data:${new TextDecoder().decode(body)}`);
+    channel.onclose = () => events.push(`${channel.id}:closed`);
+  };
   const connection = new AppConnection({
     version: "0.9.0",
     input,
     output: sink,
-    handlers: {
-      ready: (hello) => hellos.push(hello),
-      open: {
-        mcp: (channel) => {
-          channels.push(channel);
-          channel.onmessage = (body) =>
-            events.push(`${channel.id}:data:${new TextDecoder().decode(body)}`);
-          channel.onclose = () => events.push(`${channel.id}:closed`);
-        },
-      },
-    },
+    handlers: { ready: (hello) => hellos.push(hello), open: { mcp: serve, chat: serve } },
   });
   return { input, sink, channels, events, hellos, connection, exit: connection.run() };
 }
@@ -110,11 +106,24 @@ test("EOF inside a frame drops the partial frame and exits 0", async () => {
   expect(events).toEqual(["1:closed"]);
 });
 
+test("an open of each kind the core serves reaches the handler of that kind (§7.3)", async () => {
+  const { input, channels, exit } = connect();
+  input.push(APP_HELLO);
+  input.push(`${open(1)}2\topen\t{"kind":"chat"}\n`);
+  await tick();
+  expect(channels.map((channel) => [channel.id, channel.kind])).toEqual([
+    [1, "mcp"],
+    [2, "chat"],
+  ]);
+  input.end();
+  expect(await exit).toBe(0);
+});
+
 test("an open of a kind the core does not serve closes that channel and the rest go on (§7.3)", async () => {
   const { input, sink, channels, events, connection, exit } = connect();
   input.push(APP_HELLO);
   input.push(open(1));
-  input.push('2\topen\t{"kind":"chat"}\n');
+  input.push('2\topen\t{"kind":"no-such-kind"}\n');
   input.push('2\tdata\t{"crossed":true}\n1\tdata\t{"n":1}\n2\tclose\n');
   input.push(open(3));
   await tick();
