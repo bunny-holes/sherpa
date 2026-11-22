@@ -72,6 +72,11 @@ Anything not listed here is not proven by the gate.
   - `egress-lint.test.ts` (ADR-0012) lints fixtures that break the egress and
     AI SDK rules of `core/vite.config.ts` on purpose and expects each form
     caught and nothing else, so a rule that stops matching fails the gate.
+  - `build.test.ts` (contract §7.1) reads the build command in
+    `core/package.json`: all four `--no-compile-autoload-*` flags and no flag
+    that turns one back on. Bun 1.4.5 reads `tsconfig.json` and
+    `package.json` only together with `.env` files, so the built core's
+    behaviour cannot show those two flags.
   - `chat-session.test.ts` and `chat-models.test.ts` (contract §7.11) prove
     a chat channel on a fake runtime fetch behind the egress: the message
     shapes and limits, `invalid_message` and what it answers, each provider's
@@ -119,10 +124,13 @@ Anything not listed here is not proven by the gate.
   - `waits.test.ts`: the 30 s confirmation and 5 s discovery waits on the real
     clock.
   - `cli.test.ts`: the built CLI checks every argument before it opens a store,
-    and reads no configuration from the directory it runs in or from `HOME`:
-    with `.env` files, `bunfig.toml`, `tsconfig.json` and `package.json` in
-    that directory and a `.bunfig.toml` in `HOME`, each of which writes to
-    standard error once read, `--version` leaves standard error empty.
+    and reads no configuration from the directory it runs in, `HOME` or
+    `XDG_CONFIG_HOME`: with `.env` files, `bunfig.toml`, `tsconfig.json` and
+    `package.json` in that directory and a `.bunfig.toml` in each of the other
+    two, each of which writes to standard error once read, `--version` leaves
+    standard error empty. A Bun 1.4.5 standalone executable reads the
+    `.bunfig.toml` of neither `HOME` nor `XDG_CONFIG_HOME`, even built without
+    the flags, so those two cases guard a later Bun.
 - **Swift format check** (`swift format lint --strict`, the gate's second step):
   every Swift file Git sees, tracked or untracked and not ignored, is already in
   the form `swift format --in-place` gives it under the root `.swift-format`:
