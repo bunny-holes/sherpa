@@ -5,8 +5,8 @@ import { defineConfig } from "vite-plus";
 // tests/egress-lint.test.ts lints tests/fixtures/egress/ with them and checks each form is caught.
 const NETWORK =
   "The core opens no connection of its own: it sends only through src/chat/egress.ts.";
-// Bun 1.4.4 resolves each of these without an install: Node's socket and name-lookup modules with
-// their legacy internals, and shims that bring a fetch or a WebSocket of their own.
+// Bun 1.4.4 and 1.4.5 resolve each of these without an install: Node's socket and name-lookup
+// modules with their legacy internals, and shims that bring a fetch or a WebSocket of their own.
 const networkModules = [
   {
     regex: "^(node:)?(net|tls|https?|http2|dgram|dns|_http_\\w+|_tls_\\w+)(/.*)?$",
@@ -14,9 +14,9 @@ const networkModules = [
   },
   { regex: "^(ws|undici|node-fetch|isomorphic-fetch|cross-fetch)(/.*)?$", message: NETWORK },
 ];
-// Bun's network surface on `Bun` and in "bun" (Bun 1.4.4): sockets, its own fetch and fetch
-// sessions, which replacing the global fetch does not reach, name lookups, and its S3, SQL and
-// Redis clients.
+// Bun's network surface on `Bun` and in "bun" (Bun 1.4.4 and 1.4.5): sockets, its own fetch and
+// fetch sessions, which replacing the global fetch does not reach, name lookups, and its S3, SQL
+// and Redis clients.
 const bunNetwork = [
   "FetchSession",
   "RedisClient",

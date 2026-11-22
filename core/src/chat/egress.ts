@@ -9,8 +9,9 @@
  * leaves, with an `EgressDeniedError` and a `[core:egress:…] refused` line.
  *
  * Replacing the global reaches neither `Bun.fetch`, a separate read-only binding, nor the
- * `fetch` of a Worker's own global scope (Bun 1.4.4). The lint rules in `vite.config.ts` keep
- * both, and every other network API, out of the code under `src/`, a worker's body included.
+ * `fetch` of a Worker's own global scope (Bun 1.4.4 and 1.4.5). The lint rules in
+ * `vite.config.ts` keep both, and every other network API, out of the code under `src/`, a
+ * worker's body included.
  */
 import { SherpaError } from "../cli/errors.ts";
 import { log } from "../log.ts";
