@@ -20,10 +20,10 @@ No external messaging CLI (`imsg`, `kakaocli`) is used. See
 
 ## Build and test
 
-One gate covers everything — the format of every Swift source, the core's
-format, lint, type check and tests, all three Swift packages, the `--version`
-format the Formula's test parses, the agent plugin, the documents, and the
-Homebrew release smoke:
+One gate covers everything — the Bun version the core declares, the format of
+every Swift source, the core's format, lint, type check and tests, all four
+Swift packages, the `--version` format the Formula's test parses, the agent
+plugin, the documents, and the Homebrew release smoke:
 
 ```bash
 bash scripts/check-all.sh
@@ -65,7 +65,7 @@ git ls-files -z --cached --others --exclude-standard -- '*.swift' \
 
 The gate requires a macOS 26 or newer host. `apple/foundation-models-service`
 declares `platforms: [.macOS(.v26)]` and imports `FoundationModels`; the other
-two packages declare `.macOS(.v14)`. That one package therefore sets the floor
+three packages declare `.macOS(.v14)`. That one package therefore sets the floor
 for the whole gate. What an older host actually does — a build failure, or
 something subtler — has not been observed, because no such machine was
 available; the floor is read off the declared platform, not off a failed run.

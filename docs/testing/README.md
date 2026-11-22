@@ -14,14 +14,14 @@ manner: "One level per bullet; live evidence and the verification matrix stay in
 These are the deterministic proofs that exist and run in `bash scripts/check-all.sh`.
 Anything not listed here is not proven by the gate.
 
-- **Toolchain pin** (before any build): the first `bun` on `PATH` is the version
-  `devEngines.packageManager` in `core/package.json` declares, or the gate stops
-  with `bun_version_mismatch`; Bun itself ignores that field
-  (bunny-holes/sherpa#71). After the build, `BUN_BE_BUN=1 dist/sherpa --version`
-  must print the same version, so the compiled core carries that runtime. The
-  release notice that runs before the builds proves nothing: it warns about newer
-  Bun, core dependency, Claude Code and Codex releases from the npm registry and
-  `bun outdated`, and never fails the gate.
+- **Toolchain pin** (the gate's first step, before any build): the first `bun`
+  on `PATH` is the version `devEngines.packageManager` in `core/package.json`
+  declares, or the gate stops with `bun_version_mismatch`; Bun itself ignores
+  that field (bunny-holes/sherpa#71). After the build,
+  `BUN_BE_BUN=1 dist/sherpa --version` must print the same version, so the
+  compiled core carries that runtime. The release notice that runs next proves
+  nothing: it warns about newer Bun, core dependency, Claude Code and Codex
+  releases from the npm registry and `bun outdated`, and never fails the gate.
 - **Core unit tests** (`core/tests`, vitest on the Bun runtime with
   `bun --bun vitest run`). They use synthetic fixtures only:
   - `mail.test.ts` builds a fixture envelope index and proves the keyset cursor
@@ -45,7 +45,7 @@ Anything not listed here is not proven by the gate.
     Sends run against a fake `osascript`; no test sends a real message.
 - **Core static checks**: `vp check` (format, lint with type-aware rules, type
   check) over `core/`.
-- **Swift format check** (`swift format lint --strict`, the gate's first step):
+- **Swift format check** (`swift format lint --strict`, the gate's second step):
   every Swift file Git sees, tracked or untracked and not ignored, is already in
   the form `swift format --in-place` gives it under the root `.swift-format`:
   4-space indentation, 120 columns, unindented `#if` bodies, and the default
@@ -65,6 +65,15 @@ Anything not listed here is not proven by the gate.
   `reminder.list` with omitted optional keys, recurrence and occurrence logic,
   the journal store's single terminal transition, and the in-process Mail and
   ReminderKit shims answering `capabilities` without a worker.
+- **App package tests** (`swift build`, then `swift test`, for `sherpa-app`, the
+  fourth package of `SWIFT_PACKAGES` in `scripts/check-all.sh`): Mux frame
+  vectors and line bounds, the relay preface and its exit codes, the code
+  requirement with the team compiled in, the core restart backoff, the private
+  run folder and socket, the four variables the core receives, and process
+  tests that run `sherpa-app-testhost` and `sherpa-relay` against
+  `sherpa-fake-core`: one channel per relay; refusing a direct connection, code
+  that fails the requirement and a seventeenth session; confirmations; and the
+  MCP switch.
 - **CLI contract probes** in `scripts/check-all.sh`: the `--version` shape the
   Formula test parses, and that an invalid planner request ends in the named
   error `protocol.invalid_envelope` through the core and the helper.
