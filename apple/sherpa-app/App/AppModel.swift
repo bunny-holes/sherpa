@@ -67,12 +67,6 @@ final class AppModel {
         switchQueue.async { server.setMCPEnabled(enabled) }
     }
 
-    var mcpSummary: String {
-        guard mcpEnabled else { return "Off. Agents that start Sherpa are turned away until you turn it on." }
-        let sessions = status.sessions
-        return "On. \(sessions) agent session\(sessions == 1 ? "" : "s") connected."
-    }
-
     var canRestartCore: Bool {
         server != nil && (status.core == .failed || status.core == .incompatible)
     }
@@ -118,4 +112,5 @@ final class AppModel {
     /// Where an agent's MCP configuration points (contract §2): this app's own relay.
     var relayPath: String {
         Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/sherpa-relay").path
-    }}
+    }
+}
