@@ -9,6 +9,30 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — The released 0.8.6 CLI reads no configuration from the directory it runs in (bunny-holes/sherpa#92)
+
+This Mac (macOS 27.3 26C5035r, Homebrew 7.0.15, Bun 1.4.5), run by the main
+session between 11:31Z and 11:48Z. No model call was made.
+
+- `scripts/package.sh --publish` ran on a clean checkout of the `v0.8.6` tag
+  (`main` `22b34ac`, bunny-holes/sherpa#94). It logged
+  `[release:package:autoload] core reads no configuration from its working directory`,
+  uploaded `sherpa-0.8.6-aarch64-apple-darwin.tar.gz` and read the asset back
+  with the same SHA-256 (`ae1ff24e…f0b4`). `XIYO/homebrew-tap` `3ee4e2b` took
+  the rendered Formula, which also names `bunny-holes` for the homepage, the
+  asset and the plug-hole marketplace.
+- `brew update` and `brew upgrade xiyo/tap/sherpa` installed 0.8.6.
+  `sherpa --version` printed `sherpa 0.8.6`, `BUN_BE_BUN=1 sherpa --version`
+  printed `1.4.5`, and `brew test xiyo/tap/sherpa` passed.
+- A scratch directory held a `bunfig.toml` and a `.env` (`LOG_LEVEL=debug`),
+  each of which leaves a trace when read: the `bunfig.toml` a file, the `.env`
+  a `debug [core:egress:install]` line. `env -i PATH=/usr/bin:/bin
+  /opt/homebrew/bin/sherpa --version` run there printed only `sherpa 0.8.6`,
+  and no file appeared. With `LOG_LEVEL=debug` given for real, the same
+  command printed the `debug [core:egress:install]` line. The same
+  `bunfig.toml` check on the Homebrew 0.8.5 at 10:52Z left its file.
+- Not covered: other Macs, and upgrades from versions before 0.8.5.
+
 ## 2026-11-22 — The released 0.8.5 CLI read configuration from the directory it ran in (bunny-holes/sherpa#92)
 
 This Mac (macOS 27.3 26C5035r, Bun 1.4.5), run by the bunny-holes/sherpa#66
