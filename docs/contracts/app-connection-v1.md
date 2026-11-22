@@ -269,7 +269,11 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   Codex 는 서버 시작을 `startup_timeout_sec`(기본 10초)까지 기다린다. [문서: Codex MCP] 시험 빌드의 MCP
   프로브는 `tools/list` 응답까지 31–36 ms 였다. [실측] 코어가 이미 떠 있으면 연결은 그 안에 끝나고, 코어를
   처음 띄우는 동안 온 Codex 연결은 그 한도에 걸릴 수 있다. [추론]
-- 정상 종료: 리스너를 닫고 소켓 파일을 지우고 잠금 파일 설명자를 닫는다. [계약]
+- 정상 종료: 리스너를 닫고 소켓 파일을 지우고, 잠금을 `flock(LOCK_UN)` 으로 푼 뒤 잠금 파일 설명자를 닫는다.
+  [계약] 닫기만 하면 그 열린 파일을 가리키는 마지막 설명자가 닫힐 때에야 잠금이 풀린다. [문서: `man 2 close`,
+  `man 2 flock`] 같은 프로세스의 다른 스레드가 `posix_spawn`·`fork` 로 만드는 자식은 `O_CLOEXEC` 설명자까지
+  복사해 쥐다가 exec 에서 닫으므로, 그 사이에는 닫은 잠금이 풀리지 않았다.
+  [실측: live-evidence 2026-11-22 "The instance lock outlived its close", bunny-holes/sherpa#78]
 - 동시 세션은 16 개까지다. 넘치는 연결은 머리말 `unavailable`·`too_many_sessions` 로 돌려보낸다. [계약] 실측은
   동시 3개, 8분 동안 연이어 48개다. [실측]
 - 소켓과 파이프를 읽는 루프는 반복마다 autorelease 풀을 비운다. 시험 빌드의 첫 20분 실행에서 풀 없는 읽기
@@ -1004,6 +1008,8 @@ MCP stdio 명령 시험(빌드한 `core/dist/sherpa app serve` 를 가짜 앱 �
 - 머리말의 직렬화와 중계의 해석, 종료 코드를 고르는 표. `mcp_disabled` 는 75 와 MCP 를 켜라는 `remedy`, 모르는 사유는
   `status` 대로 75·77 과 일반 `remedy`, 사유 모양이 아니면 76.
 - 소켓 경로 계산(홈은 사용자 데이터베이스에서), 103 바이트 경계.
+- 단일 인스턴스 잠금(§3): 한 번만 잡히고 `run/` 은 0700, `app.lock` 은 0600 이며, 풀면 다시 잡힌다. 같은 열린
+  파일을 가리키는 설명자 사본이 열려 있어도 풀린다(bunny-holes/sherpa#78).
 - MCP 스위치 값(§2): 값이 없는 defaults 에서 꺼짐, 쓴 값을 읽음. 에이전트 명령: Claude Code 와 Codex 의 명령 글,
   경로 따옴표, 따옴표 친 경로를 `/bin/sh`·`/bin/zsh`·`/bin/bash` 가 한 낱말 그대로 받음(빈칸, 작은따옴표, `$`,
   역따옴표, `*`, `~`, 한글).
