@@ -297,6 +297,12 @@ const order = (messages: Record<string, unknown>[]) =>
     );
   });
 
+/** Whether each state the channel wrote says the chat is full. */
+const fulls = (channel: FakeChannel) =>
+  channel.states.map(
+    (state) => (JSON.parse(Buffer.from(state, "base64").toString()) as { full: boolean }).full,
+  );
+
 /** The outcomes an OpenAI-compatible request gives the model, each with its call's id. */
 function outcomes(sent: Sent): Record<string, unknown>[] {
   return (sent.body.messages as { role: string; tool_call_id?: string; content: string }[])
@@ -915,7 +921,11 @@ describe("a prompt the core built wrong", () => {
         ],
         room: new TurnRoom(0, () => {}),
       },
-      { said: false, keep: (messages) => void kept.push(messages), state: () => () => {} },
+      {
+        said: false,
+        keep: (messages) => void kept.push(messages),
+        state: () => ({ full: false, write: () => {} }),
+      },
     );
     expect(end).toEqual({
       type: "error",
@@ -1416,6 +1426,8 @@ describe("the conversation's limit within a turn that calls tools", () => {
     expect(deltas(frames)).toBe(big);
     expect(asked()).toEqual([]);
     expect(sent).toHaveLength(1);
+    // The state of the step that kept the refused call says the chat is full: no other follows.
+    expect(fulls(channel)).toEqual([false, true]);
     expect(lines).toContain(
       "warn [core:chat:tool-call] refused channel=1 tool=event_list reason=conversation_limit\n",
     );
@@ -1431,6 +1443,7 @@ describe("the conversation's limit within a turn that calls tools", () => {
     channel.write(compatible("그리고"));
     expect(await channel.next()).toEqual(limit);
     expect(sent).toHaveLength(1);
+    expect(channel.states).toHaveLength(2);
   });
 
   test("a call's result counts: the call after it in the step does not run", async () => {
@@ -1484,7 +1497,7 @@ describe("the conversation's limit within a turn that calls tools", () => {
     ).toBe(true);
   });
 
-  test("a step past it by its end's measure alone stays with its call's result, and no request follows it", async () => {
+  test("a step past it by its end's measure alone stays with its call's result, its state says the chat is full, and no request follows it", async () => {
     // The answer's count bounds what a step keeps, so only a count that falls short leaves the
     // step's end to find the limit passed: a room that counts no answer stands for one here.
     class Uncounted extends TurnRoom {
@@ -1519,13 +1532,23 @@ describe("the conversation's limit within a turn that calls tools", () => {
       callNumber: () => 1,
     });
     const kept: { role: string }[][] = [];
+    // Whether each state the turn wrote says the chat is full, as the session's say it when they
+    // are made.
+    const states: boolean[] = [];
     const end = await chatTurn.run(
       {
         target: { provider: "openai-compatible", baseURL: BASE, apiKey: KEY, model: "m-1" },
         messages: [{ role: "user", content: TEXT }],
         room,
       },
-      { said: false, keep: (messages) => void kept.push(messages), state: () => () => {} },
+      {
+        said: false,
+        keep: (messages) => void kept.push(messages),
+        state: () => {
+          const full = room.passed;
+          return { full, write: () => void states.push(full) };
+        },
+      },
     );
     expect(end).toEqual({
       type: "error",
@@ -1545,6 +1568,8 @@ describe("the conversation's limit within a turn that calls tools", () => {
     ]);
     expect(room.passed).toBe(true);
     expect(filled).toBe(1);
+    // The step's state is the one that says so: no other follows it.
+    expect(states).toEqual([true]);
     expect(
       logged(
         "warn [core:chat:turn] failure channel=1 provider=openai-compatible code=conversation_limit status=none steps=1 ms=",

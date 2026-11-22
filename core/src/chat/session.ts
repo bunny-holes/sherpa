@@ -96,6 +96,11 @@ class ChatSession {
   private resuming = false;
   /** The tool calls this channel has made: a `tool` message's number (§7.11). */
   private calls = 0;
+  /**
+   * The fingerprint of the chat's last `state`, or of what its `resume` was checked against: what
+   * a `state` the chat writes outside a turn carries. `null` while the app holds no state of it.
+   */
+  private fingerprint: string | null = null;
 
   constructor(
     private readonly channel: ChatChannel,
@@ -217,23 +222,32 @@ class ChatSession {
     const bytes = Buffer.byteLength(value);
     let taken:
       | { refusal: string }
-      | { identity: ChatIdentity; messages: ModelMessage[]; same: boolean; pruned: number };
+      | {
+          identity: ChatIdentity;
+          full: boolean;
+          messages: ModelMessage[];
+          fingerprint: string;
+          same: boolean;
+          pruned: number;
+        };
     try {
       const decoded = decodeState(value);
       if ("refusal" in decoded) {
         taken = decoded;
       } else {
         const [{ state: sdk }, tools] = await Promise.all([loadChat(), this.tools()]);
-        const { identity, fingerprint, messages } = decoded.state;
+        const { identity, fingerprint, full, messages } = decoded.state;
         const checked = sdk.checkMessages(messages);
         if ("refusal" in checked) {
           taken = checked;
         } else {
-          const same = (await sdk.fingerprint(tools)) === fingerprint;
+          const current = await sdk.fingerprint(tools);
+          const same = current === fingerprint;
+          const chat = { identity, full, fingerprint: current, same };
           taken =
             !same && identity.provider === "anthropic"
-              ? { identity, ...sdk.withoutReasoning(checked.messages), same }
-              : { identity, messages: checked.messages, same, pruned: 0 };
+              ? { ...chat, ...sdk.withoutReasoning(checked.messages) }
+              : { ...chat, messages: checked.messages, pruned: 0 };
         }
       }
     } catch (error) {
@@ -248,9 +262,10 @@ class ChatSession {
       log.warn(`[core:chat:resume] refused channel=${id} reason=${taken.refusal} bytes=${bytes}`);
       return errorEvent("resume", "chat_state_invalid");
     }
-    this.conversation.resume(taken.identity, taken.messages);
+    this.conversation.resume(taken.identity, taken.messages, taken.full);
+    this.fingerprint = taken.fingerprint;
     log.info(
-      `[core:chat:resume] success channel=${id} provider=${taken.identity.provider} messages=${taken.messages.length} bytes=${bytes} fingerprint=${taken.same ? "same" : "changed"} pruned=${taken.pruned} ms=${Date.now() - started}`,
+      `[core:chat:resume] success channel=${id} provider=${taken.identity.provider} messages=${taken.messages.length} bytes=${bytes} fingerprint=${taken.same ? "same" : "changed"} pruned=${taken.pruned} full=${taken.full} ms=${Date.now() - started}`,
     );
     return { type: "resumed", resend: this.conversation.resendable() };
   }
@@ -264,7 +279,8 @@ class ChatSession {
    * Starts a turn, or refuses it at once: one runs already or a `resume` is being checked, the
    * base URL is not allowed, the turn is for another chat, a turn without text has nothing to
    * send again, or the conversation is full. A refused turn sends nothing and leaves the
-   * conversation as it was.
+   * conversation as it was, but the refusal that fills the chat says so first in a `state`
+   * (§7.11 "대화 한도").
    */
   private startTurn(request: TurnRequest): void {
     const id = this.channel.id;
@@ -295,6 +311,15 @@ class ChatSession {
         ? this.conversation.again(identity)
         : this.conversation.start(identity, request.text, timeNote(this.clock(), this.timeZone()));
     if (start.type === "refused") {
+      // A chat whose app holds no state of it has none to correct.
+      if (start.filled && this.fingerprint !== null) {
+        const state = this.stateWriter(identity, this.fingerprint);
+        if (state === null) {
+          refuse(start.reason, errorEvent("turn", "internal"));
+          return;
+        }
+        state.write();
+      }
       refuse(start.reason, errorEvent("turn", REFUSAL_CODES[start.reason]));
       return;
     }
@@ -341,15 +366,19 @@ class ChatSession {
   }
 
   /**
-   * The conversation's `state` as it stands (§7.11 "대화 상태"), to write once what comes before
-   * it is out, or `null` when it would not fit one `data` (§7.4): the chat then takes no later
-   * turn, and the turn ends.
+   * The conversation's `state` as it stands (§7.11 "대화 상태"): whether it says the chat is
+   * full, and what writes it once what comes before it is out; or `null` when it would not fit
+   * one `data` (§7.4): the chat then takes no later turn, and the turn ends.
    */
-  private stateWriter(identity: ChatIdentity, fingerprint: string): (() => void) | null {
+  private stateWriter(
+    identity: ChatIdentity,
+    fingerprint: string,
+  ): { full: boolean; write(): void } | null {
     const messages = this.conversation.kept;
+    const full = this.conversation.full;
     const event: ChatEvent = {
       type: "state",
-      state: encodeState({ identity, fingerprint, messages }),
+      state: encodeState({ identity, fingerprint, full, messages }),
     };
     const body = JSON.stringify(event);
     // Base64 and the keys around it are ASCII: each character is a byte.
@@ -359,10 +388,14 @@ class ChatSession {
       this.conversation.fill();
       return null;
     }
+    this.fingerprint = fingerprint;
     const count = messages.length;
-    return () => {
-      log.debug(`[core:chat:state] sent ${fields} messages=${count} pending=0`);
-      this.write(body);
+    return {
+      full,
+      write: () => {
+        log.debug(`[core:chat:state] sent ${fields} messages=${count} full=${full} pending=0`);
+        this.write(body);
+      },
     };
   }
 

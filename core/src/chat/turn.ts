@@ -195,10 +195,10 @@ export interface TurnChat {
   /** Keeps the messages of a step that finished. */
   keep(messages: ModelMessage[]): void;
   /**
-   * The conversation's `state` as it stands, to write once what comes before it is out, or
-   * `null` when it would not fit one `data` (§7.4).
+   * The conversation's `state` as it stands: whether it says the chat is full, and what writes it
+   * once what comes before it is out; or `null` when it would not fit one `data` (§7.4).
    */
-  state(fingerprint: string): (() => void) | null;
+  state(fingerprint: string): { full: boolean; write(): void } | null;
 }
 
 /**
@@ -232,7 +232,8 @@ export class ChatTurn {
    * Runs the turn. Resolves its `done` or `error`, or `null` when the channel closed first.
    * The messages of each step that finished go to the chat as it finishes, and the
    * conversation's `state` goes out once the person's text is in it and after each step it
-   * keeps, after the text before it: `done` and `error` come after the turn's last `state`.
+   * keeps, after the text before it, and once more when the turn filled the chat and no `state`
+   * said so: `done` and `error` come after the turn's last `state`.
    */
   async run(
     call: Omit<TurnCall, "fetch" | "signal" | "chunkMs" | "steps" | "tools">,
@@ -254,17 +255,22 @@ export class ChatTurn {
     try {
       const [sdk, tools] = await Promise.all([loadChat(), this.context.tools()]);
       const fingerprint = await sdk.state.fingerprint(tools);
+      // A `state` of the turn said the chat is full, or one would not fit.
+      let toldFull = false;
+      let stateFailed = false;
       const state = () => {
-        const write = chat.state(fingerprint);
-        return (
-          write &&
-          (() => {
-            // The channel closed: nothing more goes out.
-            if (this.context.ended.aborted) return;
-            deltas.flush();
-            write();
-          })
-        );
+        const made = chat.state(fingerprint);
+        if (made === null) {
+          stateFailed = true;
+          return null;
+        }
+        if (made.full) toldFull = true;
+        return () => {
+          // The channel closed: nothing more goes out.
+          if (this.context.ended.aborted) return;
+          deltas.flush();
+          made.write();
+        };
       };
       const calls = new TurnCalls({
         channel,
@@ -309,6 +315,22 @@ export class ChatTurn {
             },
           },
         );
+        // The chat is full once, in a `state` before what ends the turn (§7.11 "대화 한도"): the
+        // state of the step that passed the limit says so already, but an answer cut there, or
+        // a turn that ended before its step's end, left none that does.
+        if (call.room.passed && !toldFull && !stateFailed) {
+          const last = state();
+          if (last === null) {
+            outcome = {
+              type: "failed",
+              failure: new ChatFailure("internal"),
+              error: new StateTooLarge(),
+              steps: outcome.steps,
+            };
+          } else {
+            last();
+          }
+        }
       }
     } catch (error) {
       // Only loading the AI SDK or the tools, or their fingerprint, can throw here: `streamTurn`

@@ -4,6 +4,7 @@
     "provider": "anthropic",
     "model": "claude-sonnet-5-5",
     "fingerprint": "d4d87d11f5838957098a7591a357e468d5a4e4050d30aba20af2cdf5657be130",
+    "full": false,
     "pending": [],
     "messages": [
       {
@@ -48,6 +49,7 @@
     "provider": "openai",
     "model": "gpt-5.1",
     "fingerprint": "d4d87d11f5838957098a7591a357e468d5a4e4050d30aba20af2cdf5657be130",
+    "full": false,
     "pending": [],
     "messages": [
       {
@@ -85,6 +87,7 @@
     "provider": "google",
     "model": "gemini-3.5-flash",
     "fingerprint": "d4d87d11f5838957098a7591a357e468d5a4e4050d30aba20af2cdf5657be130",
+    "full": false,
     "pending": [],
     "messages": [
       {
@@ -117,6 +120,7 @@
     "base_url": "https://models.example/v1",
     "model": "m-1",
     "fingerprint": "d4d87d11f5838957098a7591a357e468d5a4e4050d30aba20af2cdf5657be130",
+    "full": false,
     "pending": [],
     "messages": [
       {

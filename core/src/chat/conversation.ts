@@ -29,7 +29,11 @@ export type TurnRefusal =
   | "conversation_limit";
 
 export type TurnStart =
-  | { type: "refused"; reason: TurnRefusal }
+  /**
+   * `filled`: the refusal filled the chat, which took turns until then (§7.11 "대화 한도"): the
+   * chat says so once, in a `state`.
+   */
+  | { type: "refused"; reason: TurnRefusal; filled: boolean }
   /**
    * The messages to send: the conversation, the person's text of the turn last when it has one;
    * and what the conversation's limit leaves the turn.
@@ -107,7 +111,7 @@ export class TurnRoom {
 export class Conversation {
   private readonly messages: ModelMessage[] = [];
   private identity: ChatIdentity | null = null;
-  private full = false;
+  private isFull = false;
   /** A `resume` gave the chat back, and its state fixed it. */
   private resumed = false;
 
@@ -117,19 +121,28 @@ export class Conversation {
   }
 
   /**
-   * Takes the conversation a `resume` gave back, which fixes the chat as its first turn would
-   * (§7.11 "이어 쓰기"). The session takes a `resume` only before the channel's first turn, so
-   * the conversation holds nothing yet.
+   * The chat takes no later turn: a turn passed its limit, or would at its start, or its state
+   * would not fit one `data` (§7.4). A `state` carries it.
    */
-  resume(identity: ChatIdentity, messages: readonly ModelMessage[]): void {
+  get full(): boolean {
+    return this.isFull;
+  }
+
+  /**
+   * Takes the conversation a `resume` gave back, which fixes the chat as its first turn would
+   * (§7.11 "이어 쓰기"), and full when its state says so. The session takes a `resume` only
+   * before the channel's first turn, so the conversation holds nothing yet.
+   */
+  resume(identity: ChatIdentity, messages: readonly ModelMessage[], full: boolean): void {
     this.identity = identity;
     this.messages.push(...messages);
     this.resumed = true;
+    this.isFull = full;
   }
 
   /** The chat takes no later turn: its state would not fit one `data` (§7.4). */
   fill(): void {
-    this.full = true;
+    this.isFull = true;
   }
 
   /**
@@ -167,17 +180,22 @@ export class Conversation {
         chat.baseURL !== identity.baseURL ||
         chat.model !== identity.model)
     ) {
-      return { type: "refused", reason: this.resumed ? "state_mismatch" : "other_chat" };
+      return {
+        type: "refused",
+        reason: this.resumed ? "state_mismatch" : "other_chat",
+        filled: false,
+      };
     }
     const measured = this.measure(said);
     if ("refusal" in measured) {
-      if (measured.refusal === "conversation_limit") this.full = true;
-      return { type: "refused", reason: measured.refusal };
+      const filled = measured.refusal === "conversation_limit" && !this.isFull;
+      if (filled) this.isFull = true;
+      return { type: "refused", reason: measured.refusal, filled };
     }
     this.identity ??= identity;
     if (said !== null) this.messages.push(said);
     const room = new TurnRoom(measured.bytes, () => {
-      this.full = true;
+      this.isFull = true;
     });
     return { type: "started", messages: [...this.messages], room };
   }
@@ -190,7 +208,7 @@ export class Conversation {
   private measure(
     said: ModelMessage | null,
   ): { refusal: Exclude<TurnRefusal, "other_chat" | "state_mismatch"> } | { bytes: number } {
-    if (this.full) return { refusal: "conversation_limit" };
+    if (this.isFull) return { refusal: "conversation_limit" };
     if (said === null && !answerable(this.messages.at(-1))) return { refusal: "nothing_to_retry" };
     const bytes = jsonBytes(said === null ? this.messages : [...this.messages, said]);
     return bytes > chatLimits.conversationBytes ? { refusal: "conversation_limit" } : { bytes };

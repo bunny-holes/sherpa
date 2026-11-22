@@ -142,6 +142,7 @@ const compatibleState = (messages: unknown[], extra: Record<string, unknown> = {
   base_url: BASE,
   model: "m-1",
   fingerprint: PRINT,
+  full: false,
   pending: [],
   messages,
   ...extra,
@@ -165,6 +166,21 @@ afterEach(() => {
 
 const logged = (start: string) => lines.some((line) => line.startsWith(start));
 
+/** The messages of a turn up to and including the `done` or `error` that ends it. */
+async function ending(channel: FakeChannel): Promise<Record<string, unknown>[]> {
+  const messages: Record<string, unknown>[] = [];
+  for (;;) {
+    const message = await channel.next();
+    messages.push(message);
+    if (message.type === "done" || message.type === "error") return messages;
+  }
+}
+
+/** Whether each state the channel wrote says the chat is full. */
+const fulls = (channel: FakeChannel) => channel.states.map((state) => opened(state).full);
+/** The body of the `state` message that carries this state. */
+const stateBytes = (state: string) => JSON.stringify({ type: "state", state }).length;
+
 describe("the state a chat writes", () => {
   test("goes once the person's text is in the conversation, before the request, and after each step it keeps, after the step's text", async () => {
     let channel!: FakeChannel;
@@ -186,6 +202,7 @@ describe("the state a chat writes", () => {
       "base_url",
       "model",
       "fingerprint",
+      "full",
       "pending",
       "messages",
     ]);
@@ -199,10 +216,10 @@ describe("the state a chat writes", () => {
     expect(await channel.next()).toEqual(done());
     expect(out).toEqual([1]);
     expect(lines).toContain(
-      `debug [core:chat:state] sent channel=1 bytes=${channel.bodies[0]!.length} messages=1 pending=0\n`,
+      `debug [core:chat:state] sent channel=1 bytes=${channel.bodies[0]!.length} messages=1 full=false pending=0\n`,
     );
     expect(lines).toContain(
-      `debug [core:chat:state] sent channel=1 bytes=${channel.bodies[2]!.length} messages=2 pending=0\n`,
+      `debug [core:chat:state] sent channel=1 bytes=${channel.bodies[2]!.length} messages=2 full=false pending=0\n`,
     );
   });
 
@@ -217,6 +234,7 @@ describe("the state a chat writes", () => {
       "provider",
       "model",
       "fingerprint",
+      "full",
       "pending",
       "messages",
     ]);
@@ -306,6 +324,155 @@ describe("a state that would not fit one data", () => {
     expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
     expect(sent).toHaveLength(1);
   });
+
+  // A `resume` is read whatever its size, so its chat may hold a state larger than one `data`.
+  test("that says a turn's start filled the chat answers the turn internal, and the state before it stays the app's", async () => {
+    const { sent, open } = chats(() => sse(chat(["Hi"])), { dataBytes: 1000 });
+    const channel = open(1, true);
+    const room = [{ role: "user", content: "x".repeat(chatLimits.conversationBytes - 1000) }, hi];
+    channel.write(resume(sealed(compatibleState(room))));
+    expect(await channel.next()).toEqual({ type: "resumed", resend: false });
+    channel.write(compatible({ text: "a".repeat(2000) }));
+    expect(await channel.next()).toEqual(error("internal", false, null, false));
+    expect(channel.states).toEqual([]);
+    expect(lines.filter((line) => line.startsWith("error "))).toEqual([
+      expect.stringMatching(
+        /^error \[core:chat:state\] failure channel=1 bytes=\d+ reason=too_large\n$/,
+      ),
+    ]);
+    channel.write(compatible({ text: "짧게" }));
+    expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
+    expect(channel.states).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+
+  test("that says a turn filled the chat ends the turn as internal, and the state before it stays the app's", async () => {
+    // The answer passes the limit with its first piece, so none of it goes out.
+    const { sent, open } = chats(() => sse(chat(["가".repeat(1000)])), { dataBytes: 1000 });
+    const channel = open(1, true);
+    const room = [{ role: "user", content: "x".repeat(chatLimits.conversationBytes - 1000) }];
+    channel.write(resume(sealed(compatibleState(room))));
+    expect(await channel.next()).toEqual({ type: "resumed", resend: true });
+    // A turn without text writes no state before its request.
+    channel.write(again());
+    expect(await channel.next()).toEqual(error("internal", false, null, false));
+    expect(channel.states).toEqual([]);
+    expect(sent).toHaveLength(1);
+    expect(lines.filter((line) => line.startsWith("error "))).toEqual([
+      expect.stringMatching(
+        /^error \[core:chat:state\] failure channel=1 bytes=\d+ reason=too_large\n$/,
+      ),
+      expect.stringMatching(
+        /^error \[core:chat:turn\] failure channel=1 provider=openai-compatible code=internal error_type=StateTooLarge steps=1 ms=\d+\n$/,
+      ),
+    ]);
+    channel.write(again());
+    expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
+    expect(sent).toHaveLength(1);
+  });
+});
+
+// §7.11 "대화 한도": the chat says once that it is full, in a `state` before the message that ends
+// the turn that filled it, and a chat given back with that state takes no turn.
+describe("a full chat's state", () => {
+  const limit = error("conversation_limit", false, null, false);
+
+  test("goes before the error of a turn that passed the limit; given back, the chat has nothing to send again and takes no turn", async () => {
+    // The first piece fits; with the second the conversation would pass 2 MiB, so the answer is
+    // cut there and its step leaves nothing.
+    const first = "가".repeat(400_000);
+    const { sent, open } = chats(() => sse(chat([first, "나".repeat(350_000)])));
+    const channel = open(1, true);
+    channel.write(compatible());
+    const frames = await ending(channel);
+    const others = frames.filter((frame) => frame.type !== "delta");
+    expect(others.map((frame) => frame.type)).toEqual(["state", "state", "error"]);
+    expect(others.at(-1)).toEqual(limit);
+    // The text before the cut goes before the state.
+    const at = frames.indexOf(others[1]!);
+    expect(
+      frames
+        .slice(1, at)
+        .map((frame) => frame.text)
+        .join(""),
+    ).toBe(first);
+    expect(fulls(channel)).toEqual([false, true]);
+    const full = channel.states[1]!;
+    expect(opened(full)).toEqual(
+      compatibleState([{ role: "user", content: said(TEXT) }], { full: true }),
+    );
+    expect(lines).toContain(
+      `debug [core:chat:state] sent channel=1 bytes=${stateBytes(full)} messages=1 full=true pending=0\n`,
+    );
+    const resumed = open(2, true);
+    resumed.write(resume(full));
+    expect(await resumed.next()).toEqual({ type: "resumed", resend: false });
+    expect(
+      logged(
+        `info [core:chat:resume] success channel=2 provider=openai-compatible messages=1 bytes=${full.length} fingerprint=same pruned=0 full=true ms=`,
+      ),
+    ).toBe(true);
+    resumed.write(compatible({ text: SECOND }));
+    expect(await resumed.next()).toEqual(limit);
+    resumed.write(again());
+    expect(await resumed.next()).toEqual(limit);
+    expect(resumed.states).toEqual([]);
+    expect(sent).toHaveLength(1);
+  });
+
+  test("of a turn whose text would pass the limit goes alone before its error, without the text, and once", async () => {
+    // The answer leaves less than the largest text: the next turn's text would pass the 2 MiB.
+    const big = "가".repeat(Math.floor((chatLimits.conversationBytes - chatLimits.textBytes) / 3));
+    const { sent, open } = chats(() => sse(chat([big])));
+    const channel = open(1, true);
+    channel.write(compatible({ text: "one" }));
+    expect((await ending(channel)).at(-1)).toEqual(done());
+    expect(fulls(channel)).toEqual([false, false]);
+    const before = opened(channel.states[1]!);
+    channel.write(compatible({ text: "a".repeat(chatLimits.textBytes) }));
+    const state = await channel.next();
+    expect(state.type).toBe("state");
+    expect(opened(state.state as string)).toEqual({ ...before, full: true });
+    expect(await channel.next()).toEqual(limit);
+    expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=conversation_limit\n");
+    // A chat full already writes no state when it refuses again.
+    channel.write(compatible({ text: "4" }));
+    expect(await channel.next()).toEqual(limit);
+    channel.write(again());
+    expect(await channel.next()).toEqual(limit);
+    expect(fulls(channel)).toEqual([false, false, true]);
+    expect(sent).toHaveLength(1);
+    const resumed = open(2);
+    resumed.write(resume(state.state as string));
+    expect(await resumed.next()).toEqual({ type: "resumed", resend: false });
+    resumed.write(compatible({ text: "4" }));
+    expect(await resumed.next()).toEqual(limit);
+    expect(resumed.states).toEqual([]);
+    expect(sent).toHaveLength(1);
+  });
+
+  test("is not written for a chat whose app holds no state of it", async () => {
+    // Each turn fails before its first state, as the tools fail, and its text stays.
+    const { sent, open } = chats(
+      () => sse(chat(["Hi"])),
+      {},
+      async () => {
+        throw new Error("no tools");
+      },
+    );
+    const channel = open(1, true);
+    const answers: Record<string, unknown>[] = [];
+    while (answers.length < 40 && answers.at(-1)?.code !== "conversation_limit") {
+      channel.write(compatible({ text: "a".repeat(chatLimits.textBytes) }));
+      answers.push(await channel.next());
+    }
+    expect(answers.at(-1)).toEqual(limit);
+    expect(new Set(answers.slice(0, -1).map((answer) => JSON.stringify(answer)))).toEqual(
+      new Set([JSON.stringify(error("internal", false, null, true))]),
+    );
+    expect(channel.states).toEqual([]);
+    expect(sent).toEqual([]);
+  });
 });
 
 /** The v1 states a core wrote, one for each provider (tests/fixtures/chat-state). */
@@ -372,7 +539,7 @@ describe("a state given back on a new channel", () => {
       expect(JSON.stringify(sent[1]!.body)).toContain(kept);
       expect(
         logged(
-          `info [core:chat:resume] success channel=2 provider=${name} messages=2 bytes=${state.length} fingerprint=same pruned=0 ms=`,
+          `info [core:chat:resume] success channel=2 provider=${name} messages=2 bytes=${state.length} fingerprint=same pruned=0 full=false ms=`,
         ),
       ).toBe(true);
       // A state the core wrote with this format before reads as today's. Its fingerprint is of the
@@ -532,6 +699,12 @@ describe("a state given back on a new channel", () => {
       sealed(compatibleState([user], { fingerprint: PRINT.toUpperCase() })),
       "envelope",
     ],
+    [
+      "no word on whether the chat is full",
+      sealed({ ...compatibleState([user]), full: undefined }),
+      "envelope",
+    ],
+    ["a full that is no boolean", sealed(compatibleState([user], { full: "false" })), "envelope"],
     ["an operation in flight", sealed(compatibleState([user], { pending: [{}] })), "envelope"],
     [
       "a provider it does not know",
@@ -716,28 +889,33 @@ describe("a state given back on a new channel", () => {
       messages: [{ role: "user", content: said(TEXT) }, hi],
       resend: false,
       next: error("invalid_message", false, null, false),
+      states: [],
     },
     {
       name: "the person's text",
       messages: [{ role: "user", content: said(TEXT) }],
       resend: true,
       next: null,
+      states: [false],
     },
     {
       name: "the results of the tools",
       messages: [{ role: "user", content: said(TEXT) }, call, result],
       resend: true,
       next: null,
+      states: [false],
     },
     {
+      // Its state says it is not full, so the refusal fills it, and says so first.
       name: "the person's text past the conversation's limit",
       messages: [{ role: "user", content: "x".repeat(chatLimits.conversationBytes) }],
       resend: false,
       next: error("conversation_limit", false, null, false),
+      states: [true],
     },
   ])(
     "resumed with a conversation that ends with $name says resend $resend, as the turn without text after it finds",
-    async ({ messages, resend, next }) => {
+    async ({ messages, resend, next, states }) => {
       const { sent, open } = chats(() => sse(chat(["Hi"])));
       const channel = open();
       channel.write(resume(sealed(compatibleState(messages))));
@@ -750,6 +928,7 @@ describe("a state given back on a new channel", () => {
         expect(await channel.untilEnd()).toEqual([{ type: "delta", text: "Hi" }, done()]);
         expect(sent[0]!.body.messages).toHaveLength(messages.length + 1);
       }
+      expect(fulls(channel)).toEqual(states);
     },
   );
 
@@ -782,7 +961,9 @@ describe("a state given back on a new channel", () => {
     expect(
       logged("info [core:chat:resume] success channel=1 provider=anthropic messages=3 bytes="),
     ).toBe(true);
-    expect(lines.some((line) => /fingerprint=changed pruned=2 ms=\d+\n$/.test(line))).toBe(true);
+    expect(
+      lines.some((line) => /fingerprint=changed pruned=2 full=false ms=\d+\n$/.test(line)),
+    ).toBe(true);
     const gpt = open(2);
     gpt.write(resume(sealed({ ...WRITTEN.openai, fingerprint: other })));
     expect(await gpt.next()).toEqual({ type: "resumed", resend: false });
@@ -793,7 +974,9 @@ describe("a state given back on a new channel", () => {
       logged("info [core:chat:resume] success channel=2 provider=openai messages=2 bytes="),
     ).toBe(true);
     expect(
-      lines.some((line) => /channel=2 .*fingerprint=changed pruned=0 ms=\d+\n$/.test(line)),
+      lines.some((line) =>
+        /channel=2 .*fingerprint=changed pruned=0 full=false ms=\d+\n$/.test(line),
+      ),
     ).toBe(true);
   });
 

@@ -277,12 +277,13 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
           unrun.push(toolCall.toolName);
           return calls.unrun(toolCall.toolName);
         });
+        // A step that passes the limit stays, as its calls ran; no request follows it, and its
+        // state says the chat is full.
+        call.room.keep(messages);
         const write = hooks.step(messages);
         if (write === null) stateFailed = true;
         ended.push({ step: steps, unrun, write });
         tellEnded();
-        // A step that passes the limit stays, as its calls ran; no request follows it.
-        call.room.keep(messages);
       },
     });
     for await (const part of result.stream) {

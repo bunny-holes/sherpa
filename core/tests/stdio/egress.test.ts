@@ -702,12 +702,12 @@ test("a chat's state from one channel of the built core resumes on another, whos
     const stderr = app.stderr.join("");
     for (const [n, state] of states.entries()) {
       expect(stderr).toContain(
-        `debug [core:chat:state] sent channel=1 bytes=${JSON.stringify({ type: "state", state }).length} messages=${n + 1} pending=0\n`,
+        `debug [core:chat:state] sent channel=1 bytes=${JSON.stringify({ type: "state", state }).length} messages=${n + 1} full=false pending=0\n`,
       );
     }
     expect(stderr).toMatch(
       new RegExp(
-        `info \\[core:chat:resume\\] success channel=2 provider=openai-compatible messages=2 bytes=${states[1]!.length} fingerprint=same pruned=0 ms=\\d+\\n`,
+        `info \\[core:chat:resume\\] success channel=2 provider=openai-compatible messages=2 bytes=${states[1]!.length} fingerprint=same pruned=0 full=false ms=\\d+\\n`,
       ),
     );
     expect(stderr).not.toContain("[core:chat:sdk-warning]");

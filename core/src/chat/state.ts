@@ -1,9 +1,9 @@
 /**
  * A chat's state (app-connection-v1 §7.11 "대화 상태", ADR-0012 "무엇을 저장하나"): the JSON of
- * what fixes the chat, the fingerprint of what every turn sends besides the conversation, and the
- * conversation's model messages, in the base64 a `state` carries. The app keeps it as it came and
- * gives it back in a `resume`, so the core reads it as strictly as it writes it. The check of the
- * messages and the fingerprint need the AI SDK (src/chat/sdk/state.ts).
+ * what fixes the chat, the fingerprint of what every turn sends besides the conversation, whether
+ * the chat is full, and the conversation's model messages, in the base64 a `state` carries. The
+ * app keeps it as it came and gives it back in a `resume`, so the core reads it as strictly as it
+ * writes it. The check of the messages and the fingerprint need the AI SDK (src/chat/sdk/state.ts).
  */
 import type { ModelMessage } from "ai";
 import { z } from "zod";
@@ -20,6 +20,7 @@ const kept = {
   format: z.literal(STATE_FORMAT),
   model: modelId,
   fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+  full: z.boolean(),
   pending: z.tuple([]),
   messages: z.array(z.unknown()).min(1),
 };
@@ -33,15 +34,17 @@ const envelope = z.union([
   }),
 ]);
 
-/** A chat's state: what fixes it, the fingerprint, and the messages. */
+/** A chat's state: what fixes it, the fingerprint, whether it is full, and the messages. */
 export interface ChatState<Messages = readonly ModelMessage[]> {
   identity: ChatIdentity;
   fingerprint: string;
+  /** The chat takes no later turn (§7.11 "대화 한도"). */
+  full: boolean;
   messages: Messages;
 }
 
 /** The base64 of a chat's state, which a `state` carries. */
-export function encodeState({ identity, fingerprint, messages }: ChatState): string {
+export function encodeState({ identity, fingerprint, full, messages }: ChatState): string {
   const { provider, baseURL: base, model } = identity;
   const json = JSON.stringify({
     format: STATE_FORMAT,
@@ -49,6 +52,7 @@ export function encodeState({ identity, fingerprint, messages }: ChatState): str
     ...(provider === "openai-compatible" ? { base_url: base } : {}),
     model,
     fingerprint,
+    full,
     pending: [],
     messages,
   });
@@ -77,12 +81,12 @@ export function decodeState(
   }
   const parsed = envelope.safeParse(json);
   if (!parsed.success) return { refusal: "envelope" };
-  const { provider, model, fingerprint, messages } = parsed.data;
+  const { provider, model, fingerprint, full, messages } = parsed.data;
   const base =
     parsed.data.provider === "openai-compatible"
       ? parsed.data.base_url
       : requestBase(FIXED_BASE_URLS[parsed.data.provider])!;
-  return { state: { identity: { provider, baseURL: base, model }, fingerprint, messages } };
+  return { state: { identity: { provider, baseURL: base, model }, fingerprint, full, messages } };
 }
 
 /**

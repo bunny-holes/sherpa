@@ -37,6 +37,12 @@ interface Sent {
   signal: AbortSignal | null | undefined;
 }
 
+/** Whether each state the channel wrote says the chat is full. */
+const fulls = (channel: FakeChannel) =>
+  channel.states.map(
+    (state) => (JSON.parse(Buffer.from(state, "base64").toString()) as { full: boolean }).full,
+  );
+
 /** Most tests read a whole answer as one `delta`: it goes when the turn ends, under 4 KiB. */
 const WHOLE: ChatOptions = { turn: { deltaMs: 60_000 } };
 
@@ -513,8 +519,11 @@ describe("the conversation", () => {
     ).toBeLessThanOrEqual(chatLimits.deltaBytes);
     channel.write(compatible({ text: "a".repeat(chatLimits.textBytes) }));
     expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
+    // The refusal that filled the chat said so in a state before it (§7.11 "대화 한도").
+    expect(fulls(channel)).toEqual([false, false, true]);
     channel.write(compatible({ text: "4" }));
     expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
+    expect(channel.states).toHaveLength(3);
     expect(sent).toHaveLength(1);
     expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=conversation_limit\n");
     expect(chatLimits.conversationBytes).toBe(2 * 1024 * 1024);
@@ -551,6 +560,8 @@ describe("an answer that would pass the conversation's limit", () => {
           .join(""),
       ).toBe(first);
       expect(sent).toHaveLength(1);
+      // The state before the error says the chat is full (§7.11 "대화 한도").
+      expect(fulls(channel)).toEqual([false, true]);
       expect(
         logged(
           `warn [core:chat:turn] failure channel=1 provider=${name} code=conversation_limit status=none steps=1 ms=`,
@@ -561,6 +572,7 @@ describe("an answer that would pass the conversation's limit", () => {
       channel.write({ ...message, text: undefined });
       expect(await channel.next()).toEqual(limit);
       expect(sent).toHaveLength(1);
+      expect(channel.states).toHaveLength(2);
       expect(lines).toContain(
         "warn [core:chat:turn] refused channel=1 reason=conversation_limit\n",
       );
