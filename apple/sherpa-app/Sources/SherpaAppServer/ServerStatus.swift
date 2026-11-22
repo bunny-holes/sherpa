@@ -15,6 +15,8 @@ public struct ServerStatus: Sendable, Equatable {
     public var core: Core = .stopped
     public var listener: Listener = .starting
     public var sessions = 0
+    /// The MCP switch (contract §2). Off: relays are turned away with `mcp_disabled`.
+    public var mcpEnabled = false
     public var shuttingDown = false
     public let version: String
 

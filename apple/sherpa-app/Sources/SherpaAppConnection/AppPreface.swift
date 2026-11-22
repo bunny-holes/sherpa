@@ -13,6 +13,8 @@ public struct AppPreface: Equatable, Sendable {
     public enum Reason: String, Sendable, CaseIterable {
         case peerSignature = "peer_signature"
         case peerUser = "peer_user"
+        /// The person has MCP turned off in the app (contract §2 "MCP 켜기와 연결 안내").
+        case mcpDisabled = "mcp_disabled"
         case coreStarting = "core_starting"
         case coreFailed = "core_failed"
         case coreIncompatible = "core_incompatible"

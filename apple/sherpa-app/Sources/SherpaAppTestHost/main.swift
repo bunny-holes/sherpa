@@ -8,6 +8,9 @@ import SherpaAppServer
 // §13.2. It reads the same DEBUG test variables as the app and answers confirmations with a
 // scripted decision. A release build only prints the configuration it resolves, so the gate
 // can give it every test variable and see that a release build ignores them.
+//
+// The MCP switch starts as `--mcp on|off` says, off without it as in the app's first launch,
+// and a line `mcp on` or `mcp off` on standard input turns it as the app's toggle does.
 
 /// `--print-configuration`: what this build resolves from its environment, one field a line.
 func printConfiguration() -> Never {
@@ -54,6 +57,7 @@ let logger = SherpaLogger.standardError(threshold: LogLevel.threshold(environmen
 var version = "0.0.0"
 var decision: ConfirmationDecision? = .approved
 var timing = ServerTiming()
+var mcpEnabled = false
 var arguments = Array(CommandLine.arguments.dropFirst())
 while !arguments.isEmpty {
     let name = arguments.removeFirst()
@@ -68,6 +72,12 @@ while !arguments.isEmpty {
     case "--restart-scale": timing.restartScale = Double(value) ?? 1
     case "--hello-timeout": timing.helloTimeout = Double(value) ?? 10
     case "--exit-handling-delay": timing.exitHandlingDelay = Double(value) ?? 0
+    case "--mcp":
+        guard value == "on" || value == "off" else {
+            logger.error("testhost:cli:arguments", "reason=invalid_mcp_value")
+            exit(64)
+        }
+        mcpEnabled = value == "on"
     default:
         logger.error("testhost:cli:arguments", "reason=unknown_argument")
         exit(64)
@@ -99,7 +109,7 @@ case let .failed(step, code):
 }
 
 let server = AppServer(
-    configuration: configuration, lock: lock, planner: InProcessPlanner(environment: environment),
+    configuration: configuration, lock: lock, mcpEnabled: mcpEnabled, planner: InProcessPlanner(environment: environment),
     confirmations: ScriptedConfirmations(decision: decision, logger: logger), logger: logger,
     coreLogger: { @Sendable line in FileHandle.standardError.write(Data(("core: " + line + "\n").utf8)) },
     observe: { @Sendable status in
@@ -113,6 +123,15 @@ terminate.setEventHandler { @Sendable in
     exit(0)
 }
 terminate.resume()
+Thread.detachNewThread {
+    while let line = readLine() {
+        switch line {
+        case "mcp on": server.setMCPEnabled(true)
+        case "mcp off": server.setMCPEnabled(false)
+        default: logger.warn("testhost:control:read", "reason=unknown_command")
+        }
+    }
+}
 server.start()
 dispatchMain()
 #else

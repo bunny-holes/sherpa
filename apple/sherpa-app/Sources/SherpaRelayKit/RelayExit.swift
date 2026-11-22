@@ -99,8 +99,10 @@ public enum RelayExitTable {
         )
     }
 
+    /// A reason this relay does not know still ends with 75; only its remedy is generic (§5).
     static func unavailableRemedy(_ reason: String) -> String {
         switch reason {
+        case AppPreface.Reason.mcpDisabled.rawValue: "turn on MCP in the Sherpa menu or status window, then reconnect"
         case AppPreface.Reason.coreStarting.rawValue: "wait a few seconds and reconnect"
         case AppPreface.Reason.coreFailed.rawValue: "restart the core from the Sherpa menu, then reconnect"
         case AppPreface.Reason.coreIncompatible.rawValue: "reinstall Sherpa.app"

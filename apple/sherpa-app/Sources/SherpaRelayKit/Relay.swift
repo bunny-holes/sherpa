@@ -167,8 +167,9 @@ public enum Relay {
           sherpa-relay --help     print this help
 
         Exit codes: 0 session ended, 64 unknown argument, 69 Sherpa.app not running,
-        70 internal error, 74 I/O error, 75 app unavailable or session ended by the app,
-        76 app protocol error, 77 signature rejected, 78 socket path too long.
+        70 internal error, 74 I/O error, 75 app unavailable (MCP turned off in Sherpa.app,
+        core not ready, too many sessions) or session ended by the app, 76 app protocol
+        error, 77 signature rejected, 78 socket path too long.
         """
     }
 }

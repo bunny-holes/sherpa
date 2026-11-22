@@ -466,3 +466,18 @@ private func eventually(_ condition: () -> Bool) async -> Bool {
     }
     #expect(await eventually { held.allSatisfy { $0.value == nil } })
 }
+
+// MARK: the MCP switch (contract §2)
+
+@Test func startsWithMCPOffWhenTheDefaultsHoldNoValue() throws {
+    let suite = "dev.xiyo.sherpa.tests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    #expect(defaults.object(forKey: MCPSetting.key) == nil)
+    #expect(!MCPSetting.isEnabled(in: defaults))
+    MCPSetting.set(true, in: defaults)
+    #expect(MCPSetting.isEnabled(in: defaults))
+    MCPSetting.set(false, in: defaults)
+    #expect(!MCPSetting.isEnabled(in: defaults))
+    #expect(MCPSetting.key == "mcpEnabled")
+}

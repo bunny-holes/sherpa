@@ -375,6 +375,86 @@ private let capabilities = #"{"kind":"request","protocol_version":"2.0.0","appli
         #expect(host.errorLines(containing: "[testhost:status]").last == "debug [testhost:status] core=stopped sessions=0")
     }
 
+    // MARK: the MCP switch (contract §2, §5, §7.6, §9)
+
+    @Test func turnsEveryRelayAwayWhileMCPIsOffAsAtTheFirstLaunch() async throws {
+        let rig = try Rig()
+        defer { rig.tearDown() }
+        let host = try await rig.startHost(mcp: nil)
+        // The signature comes first: a connection that is not the relay is refused for that.
+        #expect(try rig.directPreface() == #"{"sherpa_app":1,"status":"refused","reason":"peer_signature","version":"0.9.0"}"#)
+        let relay = try rig.startRelay()
+        #expect(await relay.exitStatus() == 75)
+        #expect(relay.errorText.contains(#"reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP"#))
+        #expect(await host.waitForError("[app:session:open] status=unavailable reason=mcp_disabled"))
+        #expect(rig.coreLog.allSatisfy { !$0.hasPrefix("open ") })
+    }
+
+    @Test func servesRelaysOnceMCPIsTurnedOn() async throws {
+        let rig = try Rig()
+        defer { rig.tearDown() }
+        let host = try await rig.startHost(mcp: false)
+        let refused = try rig.startRelay()
+        #expect(await refused.exitStatus() == 75)
+        #expect(refused.errorText.contains("app_reason=mcp_disabled"))
+
+        try host.send("mcp on")
+        #expect(await host.waitForError("[app:mcp:switch] enabled=true sessions_closed=0 confirmations_withdrawn=0"))
+        let relay = try rig.startRelay()
+        #expect(try await relay.echo()?.channel == 1)
+        #expect(await relay.waitForError("[relay:session:open]"))
+    }
+
+    @Test func closesEveryOpenSessionWhenMCPIsTurnedOff() async throws {
+        let rig = try Rig()
+        defer { rig.tearDown() }
+        let host = try await rig.startHost(["--confirm", "ignore"])
+        let first = try rig.startRelay()
+        let second = try rig.startRelay()
+        let before = try #require(try await first.echo())
+        _ = try #require(try await second.echo())
+        // A confirmation the person has not answered yet.
+        try first.send(MCP.call(2, "confirm"))
+        #expect(await host.waitForError("[testhost:confirm:present] id=1"))
+
+        try host.send("mcp off")
+        #expect(await first.exitStatus() == 75)
+        #expect(await second.exitStatus() == 75)
+        #expect(first.errorText.contains("reason=app_closed_session"))
+        #expect(await host.waitForError("[app:mcp:switch] enabled=false sessions_closed=2 confirmations_withdrawn=1"))
+        #expect(await host.waitForError("[testhost:confirm:withdraw-all]"))
+        #expect(await rig.waitForCoreLog { lines in
+            lines.contains("close 1 reason=mcp_disabled") && lines.contains("close 2 reason=mcp_disabled")
+        })
+        let late = try rig.startRelay()
+        #expect(await late.exitStatus() == 75)
+        #expect(late.errorText.contains("app_reason=mcp_disabled"))
+
+        // On again: the same core serves the next relay on a new channel.
+        try host.send("mcp on")
+        #expect(await host.waitForError("[app:mcp:switch] enabled=true"))
+        let again = try rig.startRelay()
+        let after = try #require(try await again.echo())
+        #expect(after.pid == before.pid)
+        #expect(after.channel == 3)
+    }
+
+    @Test func answersAConfirmationThatComesAfterMCPIsOffUnavailable() async throws {
+        let rig = try Rig()
+        defer { rig.tearDown() }
+        let host = try await rig.startHost(["--confirm", "approved"])
+        let relay = try rig.startRelay()
+        #expect(try await relay.echo() != nil)
+        // The core asks only after a slow preview read, by then for a closed channel.
+        try relay.send(MCP.call(2, "confirm", #"{"delay_ms":1500}"#))
+        #expect(await rig.waitForCoreLog { $0.contains { $0.hasPrefix("data 1 method=confirm") } })
+        try host.send("mcp off")
+        #expect(await host.waitForError("[app:mcp:switch] enabled=false sessions_closed=1"))
+        #expect(await rig.waitForCoreLog { $0.contains("confirmation 1 unavailable") })
+        #expect(await host.waitForError("[app:confirm:request] id=1 status=refused reason=mcp_disabled decision=unavailable"))
+        #expect(host.errorLines(containing: "[testhost:confirm:present]").isEmpty)
+    }
+
     @Test func passesLinesThroughUnparsedAndDropsEmptyOnes() async throws {
         let rig = try Rig()
         defer { rig.tearDown() }

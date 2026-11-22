@@ -106,7 +106,16 @@ func handleMessage(_ channel: UInt64, _ body: Data) {
         waitingConfirmations[requestID] = (channel, id)
         let lines = params["lines"] ?? [["label": "Reminder", "value": "test"]]
         let title = params["title"] ?? "Delete a reminder"
-        emit(channel: 0, type: "confirm", json: #"{"id":\#(requestID),"tool":"reminder_delete","operation_id":"op-test","client":{"name":"fake","version":"0"},"title":\#(encode(title)),"lines":\#(encode(lines)),"timeout_ms":30000}"#)
+        let frame = #"{"id":\#(requestID),"tool":"reminder_delete","operation_id":"op-test","client":{"name":"fake","version":"0"},"title":\#(encode(title)),"lines":\#(encode(lines)),"timeout_ms":30000}"#
+        // `delay_ms`: the request goes out later, as one whose preview read was slow.
+        if let delay = params["delay_ms"]?.integer {
+            state.asyncAfter(deadline: .now() + .milliseconds(delay)) {
+                record("confirm \(requestID) sent")
+                emit(channel: 0, type: "confirm", json: frame)
+            }
+        } else {
+            emit(channel: 0, type: "confirm", json: frame)
+        }
         if let after = params["withdraw_after_ms"]?.integer {
             state.asyncAfter(deadline: .now() + .milliseconds(after)) {
                 guard let waiting = waitingConfirmations.removeValue(forKey: requestID) else { return }

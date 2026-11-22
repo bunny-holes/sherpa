@@ -14,16 +14,22 @@ final class AppModel {
 
     let version: String
     private(set) var status: ServerStatus
+    /// The MCP switch as the person set it (contract §2), the toggle's own value: the server
+    /// learns of a change on `switchQueue`, in order.
+    private(set) var mcpEnabled: Bool
     private(set) var setupFailure: String?
     let permissions = PermissionCenter()
     @ObservationIgnored private var server: AppServer?
     @ObservationIgnored private let confirmationWindows = ConfirmationWindows()
     @ObservationIgnored private var refreshTimer: Timer?
+    @ObservationIgnored private let switchQueue = DispatchQueue(label: "dev.xiyo.sherpa.app-model.mcp-switch")
 
     private init() {
         let bootstrap = AppBootstrap.shared!
         version = bootstrap.version
         status = ServerStatus(version: bootstrap.version)
+        mcpEnabled = MCPSetting.isEnabled(in: .standard)
+        status.mcpEnabled = mcpEnabled
         setupFailure = bootstrap.setupFailure
         if let failure = bootstrap.setupFailure {
             status.listener = .failed(reason: failure)
@@ -39,7 +45,7 @@ final class AppModel {
         }
         guard let configuration = bootstrap.configuration, let lock = bootstrap.lock else { return }
         let server = AppServer(
-            configuration: configuration, lock: lock,
+            configuration: configuration, lock: lock, mcpEnabled: mcpEnabled,
             planner: InProcessPlanner(environment: ProcessInfo.processInfo.environment),
             confirmations: ConfirmationPresenter(windows: confirmationWindows),
             logger: AppBootstrap.logger,
@@ -50,6 +56,21 @@ final class AppModel {
         )
         self.server = server
         DispatchQueue.global().async { server.start() }
+    }
+
+    /// The toggle in the menu and the status window. Off closes every agent session (§7.6).
+    func setMCPEnabled(_ enabled: Bool) {
+        guard enabled != mcpEnabled else { return }
+        mcpEnabled = enabled
+        MCPSetting.set(enabled, in: .standard)
+        guard let server else { return }
+        switchQueue.async { server.setMCPEnabled(enabled) }
+    }
+
+    var mcpSummary: String {
+        guard mcpEnabled else { return "Off. Agents that start Sherpa are turned away until you turn it on." }
+        let sessions = status.sessions
+        return "On. \(sessions) agent session\(sessions == 1 ? "" : "s") connected."
     }
 
     var canRestartCore: Bool {
@@ -94,8 +115,7 @@ final class AppModel {
         }
     }
 
-    /// Where an agent's MCP configuration points (contract §2).
+    /// Where an agent's MCP configuration points (contract §2): this app's own relay.
     var relayPath: String {
         Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/sherpa-relay").path
-    }
-}
+    }}
