@@ -7,8 +7,8 @@ import {
   installEgress,
 } from "../src/chat/egress.ts";
 
-// ADR-0012 "시험으로 지키기": the egress without a socket. The runtime's fetch is a fake that
-// records whatever reaches it.
+// ADR-0012 "시험으로 지키기": the egress without a socket. The runtime's fetch and WebSocket are
+// fakes that record whatever reaches them.
 interface Sent {
   input: string | URL | Request;
   init: BunFetchRequestInit | undefined;
@@ -23,9 +23,21 @@ function runtime(answer: (sent: Sent) => Promise<Response> = async () => new Res
     },
     { preconnect: () => sent.push({ input: "preconnect", init: undefined }) },
   );
-  const scope: { fetch: Fetch } = { fetch: fake };
+  class Socket {
+    constructor(url: string | URL) {
+      sent.push({ input: String(url), init: undefined });
+    }
+  }
+  const scope: { fetch: Fetch; WebSocket?: unknown } = { fetch: fake, WebSocket: Socket };
   return { scope, sent, egress: installEgress(scope) };
 }
+
+/** The constructor shape the AI SDK's WebSocket helper calls (`@ai-sdk/provider-utils` 5.0.83). */
+type WebSocketConstructor = new (
+  url: string | URL,
+  protocols?: string | string[],
+  options?: { headers?: Record<string, string> },
+) => object;
 
 const ANTHROPIC = allowedOrigin("https://api.anthropic.com/v1");
 const MESSAGES = "https://api.anthropic.com/v1/messages";
@@ -71,6 +83,48 @@ describe("the global fetch", () => {
     expect(() => installEgress(scope)).toThrow(TypeError);
     await expect(scope.fetch(MESSAGES)).rejects.toMatchObject({ reason: "global_fetch" });
     expect(sent).toEqual([]);
+  });
+});
+
+describe("the global WebSocket", () => {
+  test("refuses every connection, a subclass's and a call included, before the runtime sees it", () => {
+    const { scope, sent } = runtime();
+    const WebSocket = scope.WebSocket as WebSocketConstructor;
+    const denied = expect.objectContaining({
+      name: "EgressDeniedError",
+      code: "egress_denied",
+      reason: "global_websocket",
+    });
+    const realtime = "wss://api.openai.com/v1/realtime";
+    expect(() => new WebSocket(realtime, [], { headers: { authorization: "Bearer k" } })).toThrow(
+      denied,
+    );
+    class Reconnecting extends WebSocket {}
+    expect(() => new Reconnecting(realtime)).toThrow(EgressDeniedError);
+    expect(() => (scope.WebSocket as () => unknown)()).toThrow(EgressDeniedError);
+    expect(sent).toEqual([]);
+    expect(lines).toEqual(Array(3).fill(refused("websocket", "global_websocket")));
+  });
+
+  test("cannot be assigned back or redefined", () => {
+    const { scope, sent } = runtime();
+    class Bypass {}
+    expect(() => {
+      scope.WebSocket = Bypass;
+    }).toThrow(TypeError);
+    expect(() => Object.defineProperty(scope, "WebSocket", { value: Bypass })).toThrow(TypeError);
+    expect(() => new (scope.WebSocket as WebSocketConstructor)("wss://models.example")).toThrow(
+      EgressDeniedError,
+    );
+    expect(sent).toEqual([]);
+  });
+
+  test("is replaced together with the global fetch, and the install says so at debug", () => {
+    vi.stubEnv("LOG_LEVEL", "debug");
+    runtime();
+    expect(lines).toEqual([
+      "debug [core:egress:install] success global_fetch=refused global_websocket=refused\n",
+    ]);
   });
 });
 

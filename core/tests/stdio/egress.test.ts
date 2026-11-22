@@ -46,7 +46,8 @@ function sockets(pid: number) {
 }
 
 const QUIET = { descriptors: 3, internet: "", unixListeners: [] };
-const INSTALLED = "debug [core:egress:install] success global_fetch=refused";
+const INSTALLED =
+  "debug [core:egress:install] success global_fetch=refused global_websocket=refused";
 const range = { from: "2026-11-21T00:00:00+09:00", to: "2026-11-22T00:00:00+09:00" };
 const isConfirm = (frame: CoreFrame) => frame.channel === 0 && frame.type === "confirm";
 
@@ -77,7 +78,7 @@ test("the built core holds no internet socket and listens on nothing while it se
   expect(app.stderr.join("")).toContain(INSTALLED);
 });
 
-test("a command other than app serve starts with the global fetch refused too", () => {
+test("a command other than app serve starts with the global fetch and WebSocket refused too", () => {
   const child = Bun.spawnSync([BINARY, "--version"], {
     env: { HOME: scratchHome(), PATH: "/usr/bin:/bin:/usr/sbin:/sbin", LOG_LEVEL: "debug" },
   });
