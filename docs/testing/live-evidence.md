@@ -9,6 +9,63 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — The plugin's `.mcp.json` registers the app's relay with both agents (bunny-holes/sherpa#55)
+
+This Mac, run by the plugin worker. No model was called, and neither agent's
+own configuration was changed: Claude Code loaded a copy of `plugins/sherpa/`
+with `--plugin-dir`, and Codex ran with a scratch `CODEX_HOME`. In the copies
+the relay command pointed at the exported
+`apple/sherpa-app/.build/export/Sherpa.app` (0.8.5, Developer ID, not
+notarized) instead of `/Applications`, while the `main` build of the app ran.
+
+- Claude Code 2.1.326, interactive in a pty for 25 s with
+  `--debug=mcp --debug-file`, no prompt sent:
+  - `claude plugin validate plugins/sherpa` passed and listed
+    `mcpServers: sherpa stdio /Applications/Sherpa.app/Contents/MacOS/sherpa-relay []`.
+    `claude --plugin-dir <copy> plugin details sherpa` showed plugin 0.9.0,
+    `Skills (5)`, `Hooks (0)`, `MCP servers (1) sherpa`.
+  - The server is `plugin:sherpa:sherpa`: `Successfully connected (transport:
+    stdio) in 71ms`, `serverVersion` sherpa 0.8.5, `protocolEra` `modern`,
+    `negotiatedProtocolVersion` `2026-07-28`. The entry's
+    `CODEX_MCP_PROTOCOL_VERSION` value did not change Claude Code's opening.
+  - With the shipped command and no `/Applications/Sherpa.app`:
+    `Connection failed after 15ms`, `ENOENT: no such file or directory,
+    posix_spawn`. The startup screen showed no notice.
+  - With a debug relay pointed at a socket nobody served, the relay logged
+    `reason=app_not_running` with `remedy="start Sherpa.app"` and exited 69.
+    Claude Code's first request was `server/discover` with the 2026-07-28
+    envelope. After the exit it logged that the server exited during
+    initialize after the version negotiation probe timed out and restarted it
+    once without the probe, with `initialize` `protocolVersion` `2025-11-25`.
+  - A session started within 15 minutes of that failure did not start the
+    server and logged `Skipping connection (recent failure cached…)`. After
+    the server entry changed, a new session started it again,
+    `server/discover` first.
+- Codex 0.171.0 `codex app-server` with a scratch `CODEX_HOME`, a local
+  marketplace holding the copy, `codex plugin marketplace add` and
+  `codex plugin add`:
+  - Plugin 0.9.0 with `"mcpServers": "./.mcp.json"` was installed under
+    `plugins/cache/<marketplace>/sherpa/0.9.0+codex.20261122095024`.
+    `codex mcp list` showed `sherpa` with `CODEX_MCP_PROTOCOL_VERSION=*****`,
+    enabled. The 0.8.4 manifest without `mcpServers` loaded the same root
+    `.mcp.json` as well.
+  - `-c features.mcp_2026_07_28=true`: `runtimeStatus` `connected`,
+    `pluginId` `sherpa@<marketplace>`, `serverInfo` sherpa 0.8.5, 35 tools.
+    `mcpServer/tool/call` of `reminder_authorization_status` returned
+    `succeeded`. Codex also sent the warning `Under-development features
+    enabled: mcp_2026_07_28 …`.
+  - Feature off: `failed`, `toolsError` `MCP startup failed: handshaking
+    with MCP server failed: JSON-RPC error: -32022: Unsupported protocol
+    version: 2025-06-18(...)`.
+  - Relay path missing: `failed`, `MCP startup failed: No such file or
+    directory (os error 2)`.
+- Not measured: the tool names each model sees (they come from Claude Code's
+  documentation and Codex's source), a tool call from Claude Code through the
+  plugin (it needs a model call), `/mcp` Reconnect clearing the 15-minute skip
+  (documented, for plugin stdio servers only), the app's MCP switch
+  (bunny-holes/sherpa#54, not in the running build), and installing 0.9.0
+  through `plug-hole`.
+
 ## 2026-11-22 — Claude Code against a relay turned away with `mcp_disabled` (bunny-holes/sherpa#54)
 
 This Mac, run by the main session. Claude Code 2.1.326 ran interactively in a
@@ -1878,63 +1935,6 @@ before and after the second native read and were identical. No Calendar,
 Reminder, message, or mail mutation was attempted. This proves the first
 archive-free live read boundary only; checkpoint, overlap, specialist routing,
 and Planner reconciliation remain separate migration gates.
-
-## 2026-11-22 — The plugin's `.mcp.json` registers the app's relay with both agents (bunny-holes/sherpa#55)
-
-This Mac, run by the plugin worker. No model was called, and neither agent's
-own configuration was changed: Claude Code loaded a copy of `plugins/sherpa/`
-with `--plugin-dir`, and Codex ran with a scratch `CODEX_HOME`. In the copies
-the relay command pointed at the exported
-`apple/sherpa-app/.build/export/Sherpa.app` (0.8.5, Developer ID, not
-notarized) instead of `/Applications`, while the `main` build of the app ran.
-
-- Claude Code 2.1.326, interactive in a pty for 25 s with
-  `--debug=mcp --debug-file`, no prompt sent:
-  - `claude plugin validate plugins/sherpa` passed and listed
-    `mcpServers: sherpa stdio /Applications/Sherpa.app/Contents/MacOS/sherpa-relay []`.
-    `claude --plugin-dir <copy> plugin details sherpa` showed plugin 0.9.0,
-    `Skills (5)`, `Hooks (0)`, `MCP servers (1) sherpa`.
-  - The server is `plugin:sherpa:sherpa`: `Successfully connected (transport:
-    stdio) in 71ms`, `serverVersion` sherpa 0.8.5, `protocolEra` `modern`,
-    `negotiatedProtocolVersion` `2026-07-28`. The entry's
-    `CODEX_MCP_PROTOCOL_VERSION` value did not change Claude Code's opening.
-  - With the shipped command and no `/Applications/Sherpa.app`:
-    `Connection failed after 15ms`, `ENOENT: no such file or directory,
-    posix_spawn`. The startup screen showed no notice.
-  - With a debug relay pointed at a socket nobody served, the relay logged
-    `reason=app_not_running` with `remedy="start Sherpa.app"` and exited 69.
-    Claude Code's first request was `server/discover` with the 2026-07-28
-    envelope. After the exit it logged that the server exited during
-    initialize after the version negotiation probe timed out and restarted it
-    once without the probe, with `initialize` `protocolVersion` `2025-11-25`.
-  - A session started within 15 minutes of that failure did not start the
-    server and logged `Skipping connection (recent failure cached…)`. After
-    the server entry changed, a new session started it again,
-    `server/discover` first.
-- Codex 0.171.0 `codex app-server` with a scratch `CODEX_HOME`, a local
-  marketplace holding the copy, `codex plugin marketplace add` and
-  `codex plugin add`:
-  - Plugin 0.9.0 with `"mcpServers": "./.mcp.json"` was installed under
-    `plugins/cache/<marketplace>/sherpa/0.9.0+codex.20261122095024`.
-    `codex mcp list` showed `sherpa` with `CODEX_MCP_PROTOCOL_VERSION=*****`,
-    enabled. The 0.8.4 manifest without `mcpServers` loaded the same root
-    `.mcp.json` as well.
-  - `-c features.mcp_2026_07_28=true`: `runtimeStatus` `connected`,
-    `pluginId` `sherpa@<marketplace>`, `serverInfo` sherpa 0.8.5, 35 tools.
-    `mcpServer/tool/call` of `reminder_authorization_status` returned
-    `succeeded`. Codex also sent the warning `Under-development features
-    enabled: mcp_2026_07_28 …`.
-  - Feature off: `failed`, `toolsError` `MCP startup failed: handshaking
-    with MCP server failed: JSON-RPC error: -32022: Unsupported protocol
-    version: 2025-06-18(...)`.
-  - Relay path missing: `failed`, `MCP startup failed: No such file or
-    directory (os error 2)`.
-- Not measured: the tool names each model sees (they come from Claude Code's
-  documentation and Codex's source), a tool call from Claude Code through the
-  plugin (it needs a model call), `/mcp` Reconnect clearing the 15-minute skip
-  (documented, for plugin stdio servers only), the app's MCP switch
-  (bunny-holes/sherpa#54, not in the running build), and installing 0.9.0
-  through `plug-hole`.
 
 ## Related
 

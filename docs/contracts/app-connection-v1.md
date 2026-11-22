@@ -1151,7 +1151,8 @@ not json\n                                                                      
   2025-06-18 로 내려가는 조건(ADR-0011 의 위험). 2026-11-22 `--mcp-config` 동적 서버에서는 머리말 단계에서 끝난 중계
   뒤에도 7일 생략이 일어나지 않았다(§6).
 - 사용자 범위(`claude mcp add --scope user`)와 플러그인 범위의 Claude Code 서버에서, 머리말 단계에서 끝난 중계 뒤의
-  옛 규격 고정이나 실패 캐시가 다음 세션에 남는지(§6). 플러그인 서버의 실패 캐시는 bunny-holes/sherpa#55 가 다룬다.
+  옛 규격 고정이나 실패 캐시가 다음 세션에 남는지(§6). 플러그인 서버의 15분 실패 캐시는 실측했다(§2 "플러그인의 MCP
+  등록", ADR-0011 "아직 확인 전"). 항목이 같은 채로 고정이 남는지는 재지 않았다.
 - 이 Mac 의 선 위에서 Claude Code 와 Codex 가 2026-07-28 봉투의 `clientCapabilities` 에 선언하는 elicitation(Claude
   Code 는 문서에, Codex 는 소스에 있다).
 - Claude Code 2.1.326 의 `anthropic/requiresUserInteraction` 지원.
