@@ -56,17 +56,22 @@ Anything not listed here is not proven by the gate.
     (`core/src/tools/call.ts`): its start and end lines, the set of active
     calls, a thrown handler as a core failure, an abandoned call left
     unanswered, and the outcome fitted to the caller's limit.
+  - `app-control.test.ts` proves the control channel (contract §8, §9): work
+    requests and confirmations correlated by id, timeouts and withdrawals,
+    bounded prompts, and a `confirm` body of exactly the keys the app reads,
+    the channel of the call among them.
 - **Core static checks**: `vp check` (format, lint with type-aware rules, type
   check) over `core/`.
 - **Core stdio tests** (`core/tests/stdio`, `bun run test:stdio`, right after
   the core build). They start the built `core/dist/sherpa` with a scratch
   `HOME` and drive it through its pipes:
   - `serve.test.ts` drives `sherpa app serve` with a fake app written from the
-    app connection contract (§7, §14): Mux 2 hellos and `mcp` channels, three
+    app connection contract (§7, §14): Mux 3 hellos and `mcp` channels, three
     concurrent MCP 2026-07-28 sessions, the refusal of 2025-era requests, the
-    delete confirmation, a close during a call, and frame violations. A Mux 1
-    app hello and an `open` without a body end the core with 65; an `open` of
-    the `chat` kind closes only that channel with `unsupported_kind`.
+    delete confirmation and the channel it names, a close during a call, and
+    frame violations. A Mux 2 app hello and an `open` without a body end the
+    core with 65; an `open` of the `chat` kind closes only that channel with
+    `unsupported_kind`.
   - `egress.test.ts` (ADR-0012, contract §7.1): `lsof`, which must first see
     the test process's own listener and the core's descriptors 0–2, sees no
     internet socket and no listening Unix socket in the core from the hello
@@ -104,9 +109,14 @@ Anything not listed here is not proven by the gate.
   requirement with the team compiled in, the core restart backoff, the private
   run folder and socket, the four variables the core receives, and process
   tests that run `sherpa-app-testhost` and `sherpa-relay` against
-  `sherpa-fake-core`: one `mcp` channel per relay; a Mux 1 core stopped as
+  `sherpa-fake-core`: one `mcp` channel per relay; a Mux 2 core stopped as
   incompatible without a restart; refusing a direct connection, code that fails
-  the requirement and a seventeenth session; confirmations; and the MCP switch.
+  the requirement and a seventeenth session; confirmations, shown with their
+  channel's kind and answered `unavailable` without a window when that channel
+  is closed or unknown or the body has no usable channel; and the MCP switch,
+  which closes the `mcp` channels' confirmation windows one id at a time. No
+  test yet shows a chat channel's confirmation while MCP is off, because the
+  app opens no chat channel before bunny-holes/sherpa#67.
 - **App release-build checks** (`check:app-release`, after the package tests):
   `swift build -c release` builds `sherpa-relay` and `sherpa-app-testhost`.
   The relay's test variables, which move its socket and its code requirement
