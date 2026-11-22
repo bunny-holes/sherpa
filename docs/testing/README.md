@@ -118,7 +118,11 @@ Anything not listed here is not proven by the gate.
     `egress_denied`, and the redirect target sees no request.
   - `waits.test.ts`: the 30 s confirmation and 5 s discovery waits on the real
     clock.
-  - `cli.test.ts`: the built CLI checks every argument before it opens a store.
+  - `cli.test.ts`: the built CLI checks every argument before it opens a store,
+    and reads no configuration from the directory it runs in or from `HOME`:
+    with `.env` files, `bunfig.toml`, `tsconfig.json` and `package.json` in
+    that directory and a `.bunfig.toml` in `HOME`, each of which writes to
+    standard error once read, `--version` leaves standard error empty.
 - **Swift format check** (`swift format lint --strict`, the gate's second step):
   every Swift file Git sees, tracked or untracked and not ignored, is already in
   the form `swift format --in-place` gives it under the root `.swift-format`:
@@ -195,7 +199,9 @@ Anything not listed here is not proven by the gate.
 - **Release smoke** (`scripts/check-release.sh`): packages the archive with
   exactly `bin/sherpa` and `libexec/SherpaHelper.app`, renders both Formulas,
   installs the local one with Homebrew, checks the installed bundle signature,
-  and runs the installed CLI.
+  and runs the installed CLI. `package.sh` first runs the core it packages in a
+  directory holding the files `cli.test.ts` uses and stops with
+  `core_reads_working_directory` if any of them is read.
 
 ## Live tests
 

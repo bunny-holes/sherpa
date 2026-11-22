@@ -37,9 +37,12 @@ names the one Bun the core installs, tests and compiles with, and
 `bun build --compile` puts that runtime into `dist/sherpa`. Bun itself does not
 enforce the field, so the gate and `scripts/package.sh` stop with
 `bun_version_mismatch` when the first `bun` on `PATH` is another version, and
-with `core_runtime_mismatch` when a compiled core carries another runtime. The
-gate also warns, without failing, about newer releases of Bun, the core's
-packages, Claude Code and Codex. Move `vite-plus` and the `vite` alias of
+with `core_runtime_mismatch` when a compiled core carries another runtime.
+`bun run build` also turns off the `.env`, `bunfig.toml`, `tsconfig.json` and
+`package.json` files that a compiled executable can read from the directory it
+runs in, so that directory configures nothing in the core. The gate also warns,
+without failing, about newer releases of Bun, the core's packages, Claude Code
+and Codex. Move `vite-plus` and the `vite` alias of
 `@voidzero-dev/vite-plus-core` together:
 `bun info vite-plus@<version> dependencies.vite` prints the alias a release
 expects.

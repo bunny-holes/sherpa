@@ -16,6 +16,11 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 >
 > **정정 (2026-11-20, CLI 0.8.2).** 헬퍼는 `libexec/sherpa-apple` 이 아니라 Developer ID 로 서명한
 > `libexec/SherpaHelper.app` 번들이고, 코어는 그 안의 `Contents/MacOS/sherpa-apple` 을 찾는다(ADR-0009).
+>
+> **정정 (2026-11-22, 단일 실행 파일이 읽는 설정, bunny-holes/sherpa#92).** `bun build --compile` 의 실행
+> 파일은 빌드가 끄지 않으면 실행한 폴더의 `.env` 파일과 `bunfig.toml` 을 읽어 코어에 적용한다. Bun 코어를 낸 CLI
+> 0.8.0~0.8.5 가 그렇게 빌드됐고 0.8.5 에서 재현했다(`live-evidence.md` 같은 날짜 항목). `bun run build` 는 이제
+> 그것과 `tsconfig.json`·`package.json` 의 자동 읽기를 모두 끈다(app-connection-v1 §7.1). 결정은 그대로다.
 
 ## 맥락
 
