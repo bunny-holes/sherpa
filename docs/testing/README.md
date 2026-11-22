@@ -82,6 +82,24 @@ Anything not listed here is not proven by the gate.
     the codes of HTTP statuses, certificates and broken connections, `busy`,
     the 30 s timeout, a close that stops a list, the fifth channel's
     `chat_limit`, and no key in a log line or another frame.
+  - `chat-turn.test.ts` (contract §7.11) runs text turns through the AI SDK
+    and the four provider packages against hand-written server-sent events
+    behind the egress: each provider's request (the URL, the key only in its
+    header, Anthropic's version and cached instructions without sampling
+    settings, OpenAI's `store: false` and the old `include` only for
+    reasoning models, Google's Interactions, OpenAI-compatible's
+    `stream_options`) and the tokens of `done`; `delta`s gathered for 50 ms
+    and cut at 4 KiB between code points; the conversation, which drops a
+    step that failed, broke off or was refused and keeps reasoning with its
+    signature without sending it to the app; the code of an answer that
+    closes early on each provider; the time line before the person's text;
+    another chat's `turn`, `busy`, `cancel` and a close; the retries (503
+    and 429 three requests; 401, 403, 400, 404, a certificate and a redirect
+    one; a refused connection again after 2 s and 4 s; a stream error before
+    output three requests on OpenAI and Anthropic, after output one); the
+    first-output and between-output limits made short, with the wait after a
+    failure status outside them; the 2 MiB conversation limit; no key, text
+    or answer in a log line; and no AI SDK warning.
   - `tools-call.test.ts` proves the tool call lifecycle
     (`core/src/tools/call.ts`): its start and end lines, the set of active
     calls, a thrown handler as a core failure, an abandoned call left
@@ -122,7 +140,13 @@ Anything not listed here is not proven by the gate.
     answer, every internet socket of the core is a connection to that server
     and the key is only in that request's `authorization` header. A 307 to
     another origin and a 302 to the same one from there end with
-    `egress_denied`, and the redirect target sees no request.
+    `egress_denied`, and the redirect target sees no request. A text turn to
+    such a server streams two `delta`s and `done`, and while the server
+    holds the rest of the answer every internet socket of the core is a
+    connection to that server. The built core now carries the AI Gateway's
+    OIDC code, which rewrites an expired Vercel CLI login; the turn runs with
+    one in the core's `HOME` and a `.vercel/project.json` in its working
+    directory, and both files stay as they were.
   - `waits.test.ts`: the 30 s confirmation and 5 s discovery waits on the real
     clock.
   - `cli.test.ts`: the built CLI checks every argument before it opens a store,

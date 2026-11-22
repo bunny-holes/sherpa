@@ -51,7 +51,8 @@ sherpa — Bun + TypeScript core (one compiled executable, core/)
     |-- kakaotalk/ -------- KakaoTalk SQLCipher reads, key derivation, setup,
     |                       local-text checkpoint
     |-- chat/ ------------- egress, the core's only way to the network (ADR-0012);
-    |                       chat sessions and model lists (app-connection-v1 §7.11)
+    |                       chat sessions, model lists, and text turns through
+    |                       the AI SDK (app-connection-v1 §7.11)
     `-- apple/ ------------ hands Worker Protocol V2 requests to the helper
             |
             v
@@ -109,8 +110,9 @@ never writes an agent's configuration (contract §2 "MCP 켜기와 연결 안내
 bunny-holes/sherpa#31), and the CLI keeps the helper path above until then.
 
 The one network connection a Sherpa process makes is the core's HTTPS request
-to the provider origin the person chose, and today only a chat channel's model
-list (`list_models`, contract §7.11) sends one. The core reads only the pipes
+to the provider origin the person chose, and today a chat channel's model list
+(`list_models`) and text turn (`turn`, contract §7.11) send one; the app opens
+no chat channel yet (bunny-holes/sherpa#67). The core reads only the pipes
 the app opened for it (contract §7.1), listens on no socket, and reads no
 configuration from the directory it runs in: its build turns off the `.env`,
 `bunfig.toml`, `tsconfig.json` and `package.json` files a Bun standalone
@@ -119,30 +121,32 @@ command starts with `globalThis.fetch` refusing every call,
 `globalThis.WebSocket` refusing every connection, and the AI SDK's default
 provider (`globalThis.AI_SDK_DEFAULT_PROVIDER`) refusing every model, so a
 bundled package that falls back to one of them reaches nothing and a model id
-given as a string never reaches the Vercel AI Gateway; a model list leaves
-only through the turn fetch in `core/src/chat/egress.ts`, as HTTPS to that one
-origin without following a redirect. Lint rules keep `fetch` out of every
+given as a string never reaches the Vercel AI Gateway, which the built core
+carries inside the AI SDK; a model list or a turn leaves only through the turn
+fetch in `core/src/chat/egress.ts`, as HTTPS to that one origin without
+following a redirect. Lint rules keep `fetch` out of every
 other module, every socket, HTTP, WebSocket, and name-lookup API out of
 `core/src`, and the AI SDK's values inside `core/src/chat/sdk/`; a unit test
 reads the bundled packages for the same modules and Bun's own network API, as
 patterns. Stdio tests check with `lsof` that the built core holds no internet
 or listening socket while it serves MCP or refuses a model list for a
 plain-HTTP origin, and no socket but its connection to the origin whose
-certificate a test made it trust. The app listens only on its
-Unix socket for relays, and the relay connects only to that socket. [ADR-0012](../adr/0012-in-app-chat.md)
+certificate a test made it trust while a model list or a turn waits on it. The
+app listens only on its Unix socket for relays, and the relay connects only to
+that socket. [ADR-0012](../adr/0012-in-app-chat.md)
 (owner decision 2026-11-22, bunny-holes/sherpa#59) amends ADR-0010 decision 2
-for an in-app chat whose turns are not built yet. When they land,
-`sherpa app serve` runs the chat loop in `core/src/chat/` on the Vercel AI SDK v7. The chat
+for an in-app chat. `sherpa app serve` answers a chat channel's text turns in
+`core/src/chat/` with the Vercel AI SDK v7 and sends each turn to the one
+provider the person chose. Tools are not built yet; when they land, the chat
 calls the same 35-tool registry as MCP, with the same app-window confirmation
-for deletes and sends, and sends each turn, with the tool results it reads, to
-the one provider the person chose. Outbound HTTPS to that provider's origin
-stays the only connection the core opens; every other outbound connection and
-every listening socket stays forbidden. The API key lives in the app's data
-protection keychain and reaches the core only inside the message that needs it
-(a model list now, a turn later) on the pipe. The owner decided on 2026-11-22
+for deletes and sends, and sends the tool results it reads to that provider
+too. Outbound HTTPS to that provider's origin stays the only connection the
+core opens; every other outbound connection and every listening socket stays
+forbidden. The API key reaches the core only inside the message that needs it
+(a model list or a turn) on the pipe; the app is to keep it in its data
+protection keychain (bunny-holes/sherpa#65). The owner decided on 2026-11-22
 that the app stores chat history, within the exception to the content-archive
-rule below. Until the turns land, the current behavior above and contract §7.1
-stand.
+rule below.
 
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of
 truth for Calendar and Reminders; Messages, KakaoTalk, and Mail.app remain the

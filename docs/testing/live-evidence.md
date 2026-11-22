@@ -9,6 +9,40 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — The core that answers text turns: its size, start time and idle memory, and the AI Gateway's OIDC code it now carries (bunny-holes/sherpa#66)
+
+This Mac (macOS 27.3 26C5035r, Bun 1.4.5), run by the bunny-holes/sherpa#66
+worker between 13:05Z and 13:27Z, with `ai` 7.0.179, `@ai-sdk/gateway`
+4.0.152 and `@vercel/oidc` 3.2.0. No model call was made and nothing left
+the loopback interface. The cores were built with `bun run build` from
+`ee8c29d` (before the AI SDK was pinned), `main` `89976a9` and the
+text-turn commit `1bc7539`, and each ran in `/` with only `HOME` (a
+scratch directory) and `PATH=/usr/bin:/bin`, as the app starts the core.
+
+- Sizes: 90,200,322 bytes for `ee8c29d` and `89976a9`, and 92,198,274 for
+  `1bc7539` (+1,997,952). Bun bundled 161, 162 and 204 modules, and
+  `bun build src/main.ts --target=bun` grew from 1,046,549 bytes on
+  `89976a9` to 3,022,266 on `1bc7539`. There the `import()` of the turn
+  module became `Promise.resolve().then(() => (init_turn(), exports_turn))`,
+  so the AI SDK sits in the same bundle and is evaluated on the first turn.
+- `--version`, and `app serve` until its hello, 80 runs of each core
+  interleaved after 5 warm-ups, median (p90): `ee8c29d` 29.73 (32.51) and
+  29.29 (31.28) ms, `89976a9` 29.91 (32.21) and 29.31 (31.84) ms,
+  `1bc7539` 42.76 (46.20) and 42.49 (44.90) ms. A run of 40 just before
+  gave differences of 12.5 and 11.9 ms over `89976a9`. That parsing the
+  larger bundle is the cost is inferred, not measured.
+- Idle after its hello, 5 runs of each, median: RSS 38.7, 38.8 and 43.5 MB,
+  and physical footprint (`vmmap --summary`) 17.5, 17.5 and 19.8 MB.
+- `getVercelOidcToken` of `@vercel/oidc` 3.2.0, run by Bun with `fetch`
+  replaced by a counting function that throws, in a scratch directory
+  holding `.vercel/project.json`, with `HOME` at a scratch home whose
+  `Library/Application Support/com.vercel.cli/auth.json` held a token that
+  had expired and no refresh token: it threw `VercelOidcTokenError`, called
+  `fetch` 0 times, and rewrote that file to `{}`.
+- Not covered: memory once the first turn has loaded the AI SDK, the
+  hardened runtime of the core inside `Sherpa.app`, and a long
+  conversation.
+
 ## 2026-11-22 — The core built with `--use-system-ca`: its certificate stores, the trust settings they come from, and its start time (bunny-holes/sherpa#66)
 
 This Mac (macOS 27.3 26C5035r, Bun 1.4.5), run by the bunny-holes/sherpa#66
