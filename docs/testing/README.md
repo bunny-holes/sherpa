@@ -197,21 +197,28 @@ Anything not listed here is not proven by the gate.
     reasoning whose signature comes last, metadata that changes as it
     streams, files, and a call that runs, one that runs with the provider's
     metadata, one to a tool the core does not have, one whose input does not
-    parse, one its schema refuses, one whose error writes its numbers longer
-    than the input did, two with 2,000 issues, and one whose input is no
-    object); that the words on why a schema refused a call follow the AI
-    SDK's frame in at most 2 KiB, for 2,000 alarms that are numbers the first
-    issues in order, the first with its path and message, and a count of the
-    rest, for 2,000 keys the tool does not know the one issue zod finds, cut;
-    that input that does not parse keeps the AI SDK's own words; that the
-    words keep zod's order and notation, are the same for the same input, cut
-    before a character of four bytes that 2 KiB falls inside, cut a line to
-    the room left beside the count, count a line of which not one character
-    fits, and measure the bytes JSON writes; and that the middleware passes
-    what fits, cuts with one `error` part carrying `ChatFailure`
-    `conversation_limit` and cancels the response, at once when the first
-    part already passes, which the SDK sends once even with `maxRetries: 2`
-    and ends as an `error` step.
+    parse, one its schema refuses, one of 2,000 `9e20` whose error writes its
+    numbers longer than the input did, two with 2,000 issues, two whose
+    unknown key 2 KiB falls inside, of emoji and of quotes and control
+    characters, and one whose input is no object), and that the count of a
+    call its schema refused is within 512 bytes of what the step keeps, one
+    reason of the three and not all; that the words on why a schema refused
+    a call follow the AI SDK's frame in at most 2 KiB, for 2,000 alarms that
+    are numbers the first issues in order, the first with its path and
+    message, and a count of the rest, for 2,000 keys the tool does not know
+    the one issue zod finds, cut, for a key of emoji before the one 2 KiB
+    falls in, and for a key of quotes and control characters in the bytes
+    JSON writes; that input that does not parse keeps the AI SDK's own words,
+    which JSC cuts to 260 bytes where it quotes an identifier, and a call to
+    a tool the core does not have the names of its 35 tools, 658 bytes; that
+    the words keep zod's order and notation, are the same for the same input,
+    cut before a character of four bytes that 2 KiB falls inside, cut a line
+    to the room left beside the count, count a line of which not one
+    character fits, and measure the bytes JSON writes; and that the
+    middleware passes what fits, cuts with one `error` part carrying
+    `ChatFailure` `conversation_limit` and cancels the response, at once
+    when the first part already passes, which the SDK sends once even with
+    `maxRetries: 2` and ends as an `error` step.
   - `mcp-tools.test.ts` proves when each call becomes irreversible: a
     planner change reports `committed` in the same tick it sends its request,
     an allowed delete or send right before its request or command, a core

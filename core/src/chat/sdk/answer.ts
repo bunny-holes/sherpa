@@ -25,14 +25,34 @@ const MESSAGES = 64;
 const PART = 64;
 /**
  * The keys of a call's part in the assistant's message and of its result in the tools' message,
- * besides the call's id, name, input and metadata and the result's outcome; and the AI SDK's own
- * words in the error of a call it refuses before it runs: the names of the tools for one the core
- * does not have (ai 7.0.179 no-such-tool-error.ts: 658 bytes for the 35 tools), or the frame of
- * the error for input that does not parse or that its schema refuses (invalid-tool-input-error.ts,
- * @ai-sdk/provider 4.0.39 json-parse-error.ts, type-validation-error.ts), Bun's words on the JSON
- * included.
+ * besides the call's id, name, input and metadata and the result's outcome: at most 172 bytes with
+ * the metadata's keys, as ai 7.0.179 writes them (to-response-messages.ts).
  */
-const CALL = 2048;
+const CALL_KEYS = 256;
+/**
+ * The AI SDK's own words in the error of a call it refuses before it runs, besides the tool's
+ * name, the input again and why: 124 bytes for input its schema refuses, 115 for input that does
+ * not parse, 79 for a tool the core does not have (ai 7.0.179 invalid-tool-input-error.ts,
+ * no-such-tool-error.ts, @ai-sdk/provider 4.0.39 type-validation-error.ts, json-parse-error.ts).
+ */
+const REFUSAL_FRAME = 128;
+/**
+ * Bun's words on input that does not parse, at most: JSC cuts an identifier it quotes and marks
+ * the cut, to 258 characters in all, which JSON writes in 260 bytes (Bun 1.4.5).
+ */
+const PARSE_WORDS = 260;
+/**
+ * The names of the core's tools, which the error of a call to one it does not have lists: 658
+ * bytes for the 35 tools.
+ */
+const TOOL_NAMES = 658;
+/**
+ * What a call adds besides its id, name, input and metadata: the keys, and the error of a call the
+ * AI SDK refuses, which gives one reason and never two: why its schema refused the input in the
+ * core's words (`toolIssueBytes`, ./tools.ts), Bun's words on the JSON, or the names of the tools.
+ */
+const CALL =
+  CALL_KEYS + REFUSAL_FRAME + Math.max(chatLimits.toolIssueBytes, PARSE_WORDS, TOOL_NAMES);
 
 const jsonBytes = (value: unknown) =>
   value === undefined ? 0 : Buffer.byteLength(JSON.stringify(value));
@@ -108,15 +128,13 @@ export class AnswerCount {
         const names = 3 * (stringBytes(part.toolCallId) + stringBytes(part.toolName));
         const input = parsed(part.input);
         // An error for input that does not parse writes it again as given, and one for input its
-        // schema refuses as JSON writes the parsed value, which may be longer: `1e20` takes 21
+        // schema refuses as JSON writes the parsed value, which may be longer: `9e20` takes 21
         // digits (ai 7.0.179 parse-tool-call.ts, @ai-sdk/provider json-parse-error.ts,
-        // type-validation-error.ts). Then why the schema refused it in the core's words, at most
-        // `toolIssueBytes` (./tools.ts).
-        const again =
-          Math.max(
-            stringBytes(part.input),
-            input === undefined ? 0 : stringBytes(JSON.stringify(input.value)),
-          ) + chatLimits.toolIssueBytes;
+        // type-validation-error.ts).
+        const again = Math.max(
+          stringBytes(part.input),
+          input === undefined ? 0 : stringBytes(JSON.stringify(input.value)),
+        );
         // The provider's metadata is in the call and, once the call ran, in its result as well
         // (ai 7.0.179 execute-tool-call.ts, to-response-messages.ts).
         const metadata = 2 * jsonBytes(part.providerMetadata);
