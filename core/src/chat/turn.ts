@@ -238,6 +238,7 @@ export class ChatTurn {
       const calls = new TurnCalls({
         channel,
         tools,
+        room: call.room,
         number: this.context.callNumber,
         send: (event) => {
           // The channel closed: nothing more goes out.

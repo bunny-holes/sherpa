@@ -29,8 +29,9 @@ export const chatLimits = {
   textBytes: 64 * 1024,
   /**
    * The conversation of one chat as the JSON of its model messages, the next turn's text
-   * included. A turn past it is not sent, and the chat takes no other: the state of a chat must
-   * fit one 4 MiB `data` (§7.4) with the room one turn adds.
+   * included. A turn that would start past it is not sent, one that would pass it ends where it
+   * would (§7.11 "대화 한도"), and the chat takes no other turn: the state of a chat must fit one
+   * 4 MiB `data` (§7.4).
    */
   conversationBytes: 2 * 1024 * 1024,
   /**
@@ -55,6 +56,12 @@ export const chatLimits = {
    * keeps its outcome without its result.
    */
   toolResultBytes: 64 * 1024,
+  /**
+   * Why a tool's schema refused a call's input, as the core writes it for the model: zod's issues
+   * in their order, a line each, in at most this many bytes as the conversation's JSON writes them
+   * (src/chat/sdk/tools.ts). The AI SDK writes the input before them, and its own frame.
+   */
+  toolIssueBytes: 2 * 1024,
   /** How long the answer's text waits for more before a `delta` takes it, and the most one takes. */
   deltaMs: 50,
   deltaBytes: 4096,

@@ -214,7 +214,11 @@ class ChatSession {
     this.turn = turn;
     void turn
       .run(
-        { target: { ...identity, apiKey: request.api_key }, messages: start.messages },
+        {
+          target: { ...identity, apiKey: request.api_key },
+          messages: start.messages,
+          room: start.room,
+        },
         (messages) => this.conversation.keep(messages),
       )
       .then((end) => {

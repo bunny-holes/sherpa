@@ -112,7 +112,11 @@ Anything not listed here is not proven by the gate.
     may come after the first request's limit; the 600 s between outputs on a
     fake clock, which each output starts anew; Bun's idle-timeout
     `TimeoutError` before the headers, in the body and after output, each
-    sent once and ending with `timeout`; the 2 MiB conversation limit; a turn
+    sent once and ending with `timeout`; the 2 MiB conversation limit (a turn
+    whose text would pass it refused without a request; an answer that would
+    pass it cut on each provider after what fits and sent once, with no
+    `delta` when its first piece already passes; every later turn refused,
+    with text or without); a turn
     without text, which sends the conversation again, with a test for each row
     of the contract's table without a tool, each reading `resend` in what
     answered a turn, a refusal included, and sending a turn without text right
@@ -152,29 +156,62 @@ Anything not listed here is not proven by the gate.
     `tool` events, the warn line and the next turn's request after
     OpenAI-compatible and Anthropic `length` and an OpenAI-compatible unknown
     reason; the text before them first; results in call order beside a
-    malformed call; call numbers that go on); no request after a step that
-    ended for a reason other than `stop` or `tool-calls` (a call cut in the
-    middle of its arguments read as malformed, the turn ending with `length`
-    after one request and the next turn's request carrying the call and its
-    error; a malformed call in an OpenAI-compatible `content_filter` answer or
-    an Anthropic refusal ending with `content-filter` and nothing kept, in an
-    answer ending for a reason the package does not know with `other`, and
-    before a stream error with `error` and nothing kept); a conversation holding a
-    call without its result ending `internal` with one error line and no
-    request; a turn without text after each row of the contract's table with
-    a tool, taken exactly when the `resend` of what ended the turn said so (a
-    `length` or `other` step with a call the AI SDK did not run,
-    one formed badly or one cut in its arguments, a `cancel` while a window
-    waited, and an error after a tool step each send the conversation ending
-    with the call's result and the person's text once; `step-limit` lets the
-    tools take 20 more requests; a step of reasoning alone after a tool step
-    that ended with `length` is refused; a step with text after a call formed
-    badly is taken on Anthropic and OpenAI-compatible, whose `tool` and
-    `delta` come in different orders; a conversation that passed 2 MiB inside
-    a turn ends it with `resend` false and is `conversation_limit`);
-    Anthropic's top-level `cache_control` and tools without a mark;
-    and no arguments, results or made-up tool names in a log line. A test
-    fails on any AI SDK warning it does not expect.
+    malformed call, whose result is the AI SDK's frame and the core's words
+    on why its schema refused it; call numbers that go on); no request after
+    a step that ended for a reason other than `stop` or `tool-calls` (a call
+    cut in the middle of its arguments read as malformed, the turn ending with
+    `length` after one request and the next turn's request carrying the call
+    and its error; a malformed call in an OpenAI-compatible `content_filter`
+    answer or an Anthropic refusal ending with `content-filter` and nothing
+    kept, in an answer ending for a reason the package does not know with
+    `other`, and before a stream error with `error` and nothing kept); a
+    conversation holding a call without its result ending `internal` with one
+    error line and no request; a turn without text after each row of the
+    contract's table with a tool, taken exactly when the `resend` of what
+    ended the turn said so (a `length` or `other` step with a call the AI SDK
+    did not run, one formed badly or one cut in its arguments, a `cancel`
+    while a window waited, and an error after a tool step each send the
+    conversation ending with the call's result and the person's text once;
+    `step-limit` lets the tools take 20 more requests; a step of reasoning
+    alone after a tool step that ended with `length` is refused; a step with
+    text after a call formed badly is taken on Anthropic and OpenAI-compatible,
+    whose `tool` and `delta` come in different orders); the limit within a
+    turn (a call whose result could pass it does not run, fails with
+    `chat.conversation_limit` and a warn line, and ends the turn
+    `conversation_limit` with `resend` false, after which the chat takes no
+    turn, with text or without, the table's row of `conversation_limit`; the
+    results of the calls before it count, so the step's next call does not
+    run; an answer cut in a later step leaves the step before with its call's
+    result; a step that only its end's measure finds past the limit, in a room
+    that counts no answer, stays with its call's result and no request follows
+    it); Anthropic's top-level `cache_control` and tools without a mark; and
+    no arguments, results or made-up tool names in a log line. A test fails
+    on any AI SDK warning it does not expect.
+  - `chat-limit.test.ts` (contract §7.11 "대화 한도") proves the room of a
+    turn: it adds a step's messages to the byte the turn's start measures,
+    passes once at the first byte past 2 MiB, fills the chat and stays past,
+    and admits a call while the largest result fits beside the answer and the
+    results before it. On the AI SDK's mock model it proves that an answer's
+    count is no less than the JSON the SDK 7.0.179 keeps of the step (text
+    with characters JSON escapes and an emoji cut between its halves,
+    reasoning whose signature comes last, metadata that changes as it
+    streams, files, and a call that runs, one that runs with the provider's
+    metadata, one to a tool the core does not have, one whose input does not
+    parse, one its schema refuses, one whose error writes its numbers longer
+    than the input did, two with 2,000 issues, and one whose input is no
+    object); that the words on why a schema refused a call follow the AI
+    SDK's frame in at most 2 KiB, for 2,000 alarms that are numbers the first
+    issues in order, the first with its path and message, and a count of the
+    rest, for 2,000 keys the tool does not know the one issue zod finds, cut;
+    that input that does not parse keeps the AI SDK's own words; that the
+    words keep zod's order and notation, are the same for the same input, cut
+    before a character of four bytes that 2 KiB falls inside, cut a line to
+    the room left beside the count, count a line of which not one character
+    fits, and measure the bytes JSON writes; and that the middleware passes
+    what fits, cuts with one `error` part carrying `ChatFailure`
+    `conversation_limit` and cancels the response, at once when the first
+    part already passes, which the SDK sends once even with `maxRetries: 2`
+    and ends as an `error` step.
   - `mcp-tools.test.ts` proves when each call becomes irreversible: a
     planner change reports `committed` in the same tick it sends its request,
     an allowed delete or send right before its request or command, a core

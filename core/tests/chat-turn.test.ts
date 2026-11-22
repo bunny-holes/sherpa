@@ -515,34 +515,92 @@ describe("the conversation", () => {
     expect(sent[1]!.body!.messages).toHaveLength(4);
   });
 
-  test("a conversation past its limit is not sent, and the chat takes no later turn", async () => {
-    // Each answer is a mebibyte: the third turn would pass the 2 MiB of the conversation.
-    const big = "가".repeat(Math.ceil((1024 * 1024) / 3));
+  test("a turn whose text would pass its limit is not sent, and the chat takes no later turn", async () => {
+    // The answer leaves less than the largest text: the next turn's text would pass the 2 MiB.
+    const big = "가".repeat(Math.floor((chatLimits.conversationBytes - chatLimits.textBytes) / 3));
     const { sent, open } = turns(() => sse(chat([big])));
     const channel = open();
-    for (const text of ["one", "two"]) {
-      channel.write(compatible({ text }));
+    channel.write(compatible({ text: "one" }));
+    const answer = await channel.untilEnd();
+    expect(answer.at(-1)).toEqual(done());
+    expect(
+      answer
+        .slice(0, -1)
+        .map((delta) => delta.text)
+        .join(""),
+    ).toBe(big);
+    // A delta carries at most 4 KiB, cut between characters.
+    expect(
+      Math.max(...answer.slice(0, -1).map((delta) => Buffer.byteLength(String(delta.text)))),
+    ).toBeLessThanOrEqual(chatLimits.deltaBytes);
+    channel.write(compatible({ text: "a".repeat(chatLimits.textBytes) }));
+    expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
+    channel.write(compatible({ text: "4" }));
+    expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
+    expect(sent).toHaveLength(1);
+    expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=conversation_limit\n");
+    expect(chatLimits.conversationBytes).toBe(2 * 1024 * 1024);
+  });
+});
+
+// §7.11 "대화 한도": the core counts an answer as it streams, and cuts it with an `error` part in the
+// stream once the conversation would pass 2 MiB. The AI SDK sends a request again only for an error
+// before its response streams, so the request that was cut goes once, and its step leaves nothing.
+describe("an answer that would pass the conversation's limit", () => {
+  const providers = [
+    { name: "anthropic", message: turn("anthropic", "claude-sonnet-5-5"), events: anthropic },
+    { name: "openai", message: turn("openai", "gpt-5.1"), events: openai },
+    { name: "google", message: turn("google", "gemini-3.5-flash"), events: google },
+    { name: "openai-compatible", message: compatible(), events: chat },
+  ];
+  const limit = error("conversation_limit", false, null, false);
+
+  test.each(providers)(
+    "on $name is cut where it would, sent once, and the chat takes no later turn",
+    async ({ name, message, events }) => {
+      // The first piece fits; with the second the conversation would pass 2 MiB.
+      const first = "가".repeat(400_000);
+      const second = "나".repeat(350_000);
+      const { sent, open } = turns(() => sse(events([first, second])));
+      const channel = open();
+      channel.write(message);
       const answer = await channel.untilEnd();
-      expect(answer.at(-1)).toEqual(done());
+      expect(answer.at(-1)).toEqual(limit);
       expect(
         answer
           .slice(0, -1)
           .map((delta) => delta.text)
           .join(""),
-      ).toBe(big);
-      // A delta carries at most 4 KiB, cut between characters.
+      ).toBe(first);
+      expect(sent).toHaveLength(1);
       expect(
-        Math.max(...answer.slice(0, -1).map((delta) => Buffer.byteLength(String(delta.text)))),
-      ).toBeLessThanOrEqual(chatLimits.deltaBytes);
-    }
-    channel.write(compatible({ text: "three" }));
-    expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
-    channel.write(compatible({ text: "4" }));
-    expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
-    expect(sent).toHaveLength(2);
-    expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=conversation_limit\n");
-    expect(chatLimits.conversationBytes).toBe(2 * 1024 * 1024);
-  });
+        logged(
+          `warn [core:chat:turn] failure channel=1 provider=${name} code=conversation_limit status=none steps=1 ms=`,
+        ),
+      ).toBe(true);
+      channel.write({ ...message, text: "더" });
+      expect(await channel.next()).toEqual(limit);
+      channel.write({ ...message, text: undefined });
+      expect(await channel.next()).toEqual(limit);
+      expect(sent).toHaveLength(1);
+      expect(lines).toContain(
+        "warn [core:chat:turn] refused channel=1 reason=conversation_limit\n",
+      );
+    },
+  );
+
+  test.each(providers)(
+    "on $name whose first piece already passes is cut before any of it goes out, and is sent once",
+    async ({ message, events }) => {
+      const { sent, open } = turns(() =>
+        sse(events(["가".repeat(Math.ceil(chatLimits.conversationBytes / 3))])),
+      );
+      const channel = open();
+      channel.write(message);
+      expect(await channel.untilEnd()).toEqual([limit]);
+      expect(sent).toHaveLength(1);
+    },
+  );
 });
 
 // §7.11 "다시 보내기": a turn without text sends the conversation again as it is, when it ends with
@@ -860,18 +918,16 @@ describe("a turn without text", () => {
   );
 
   test("in a chat past its limit is conversation_limit, as every later turn is", async () => {
-    const big = "가".repeat(Math.ceil((1024 * 1024) / 3));
+    const big = "가".repeat(Math.floor((chatLimits.conversationBytes - chatLimits.textBytes) / 3));
     const { sent, open } = turns(() => sse(chat([big])));
     const channel = open();
-    for (const text of ["one", "two"]) {
-      channel.write(compatible({ text }));
-      expect((await channel.untilEnd()).at(-1)).toEqual(done());
-    }
-    channel.write(compatible({ text: "three" }));
+    channel.write(compatible({ text: "one" }));
+    expect((await channel.untilEnd()).at(-1)).toEqual(done());
+    channel.write(compatible({ text: "a".repeat(chatLimits.textBytes) }));
     expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
     channel.write(again());
     expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
-    expect(sent).toHaveLength(2);
+    expect(sent).toHaveLength(1);
   });
 });
 

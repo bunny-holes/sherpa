@@ -2,7 +2,8 @@
  * One turn's model call (ADR-0012 "스트리밍", "재시도", "도구"; app-connection-v1 §7.11): the only
  * module that hands the AI SDK a model. It reads the `stream` of `streamText` and tells its caller
  * the answer's text, each output, the finished steps the conversation keeps, and how the call
- * ended; the tools the model calls run through the turn's calls (src/chat/calls.ts).
+ * ended; the tools the model calls run through the turn's calls (src/chat/calls.ts), and the
+ * conversation's limit holds through the turn's room (src/chat/conversation.ts).
  */
 import {
   AISDKError,
@@ -22,11 +23,14 @@ import {
   type ToolContent,
   type ToolModelMessage,
   type ToolResultPart,
+  wrapLanguageModel,
 } from "ai";
 import type { ModelTool } from "../../tools/call.ts";
 import type { ToolOutcome } from "../../tools/outcome.ts";
+import type { TurnRoom } from "../conversation.ts";
 import { EgressDeniedError, type Fetch } from "../egress.ts";
 import { ChatFailure, isTransportError, responseFailure, transportFailure } from "../errors.ts";
+import { answerLimit } from "./answer.ts";
 import { type TurnTarget, turnProvider } from "./provider.ts";
 import { type ToolRunner, toolSet } from "./tools.ts";
 
@@ -66,6 +70,8 @@ export interface TurnCall {
   chunkMs: number;
   /** Model requests the turn may make (§7.11). */
   steps: number;
+  /** What the conversation's limit leaves the turn (§7.11 "대화 한도"). */
+  room: TurnRoom;
   tools: TurnTools;
 }
 
@@ -207,7 +213,8 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
   try {
     const { model, instructions, providerOptions } = turnProvider(call.target, call.fetch);
     const result = streamText({
-      model,
+      // Each response counts against the conversation's limit as it streams, and is cut past it.
+      model: wrapLanguageModel({ model, middleware: answerLimit(call.room) }),
       instructions,
       messages: call.messages,
       providerOptions,
@@ -221,6 +228,8 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
       stopWhen: [
         isStepCount(call.steps),
         () => calls.cancelled,
+        // The turn passed the conversation's limit: it refused a call, or kept a step past it.
+        () => call.room.passed,
         // The SDK takes the next step once each call of a step has a result, an error for one it
         // refused included, whatever the step ended with (ai 7.0.179 stream-text.ts
         // `shouldStartNextStep`), though its `StopCondition` says it stops after a finish reason
@@ -240,12 +249,13 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
         calledTools = step.toolCalls.length > 0;
         calls.stepEnded();
         if (DROPPED.has(step.finishReason)) return;
-        hooks.step(
-          answered(step.response.messages, (toolCall) => {
-            unrun.push(toolCall.toolName);
-            return calls.unrun(toolCall.toolName);
-          }),
-        );
+        const messages = answered(step.response.messages, (toolCall) => {
+          unrun.push(toolCall.toolName);
+          return calls.unrun(toolCall.toolName);
+        });
+        hooks.step(messages);
+        // A step that passes the limit stays, as its calls ran; no request follows it.
+        call.room.keep(messages);
       },
     });
     for await (const part of result.stream) {
@@ -299,6 +309,10 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
   if (call.signal.aborted) return { type: "aborted", steps };
   if (timedOut) return { type: "failed", failure: new ChatFailure("timeout"), error: null, steps };
   if (failed) return { type: "failed", ...failed, steps };
+  // Past the conversation's limit with no error in the stream: a call refused, or a step kept.
+  if (call.room.passed) {
+    return { type: "failed", failure: new ChatFailure("conversation_limit"), error: null, steps };
+  }
   // The stream closed before the provider said the answer finished, as a connection that breaks.
   if (finish?.reason === "interrupted") {
     return { type: "failed", failure: new ChatFailure("network"), error: null, steps };
