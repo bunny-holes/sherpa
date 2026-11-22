@@ -1,3 +1,4 @@
+import { mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, expect, test } from "vite-plus/test";
 import type { CoreFrame, FakeApp } from "./fake-app.ts";
@@ -7,7 +8,9 @@ import { BINARY, cleanHomes, launch, scratchHome } from "./launch.ts";
 // no internet socket and listens on nothing while it serves MCP, a model list for an origin the
 // egress refuses never connects, one for an origin whose certificate the core does not trust gets
 // no request through, one for an origin whose certificate it trusts holds a connection to that
-// origin only, and a redirect from there is refused before it is followed. The built core trusts the
+// origin only, and a redirect from there is refused before it is followed. A turn streams its
+// answer from such an origin through the AI SDK, which the built core loads with the AI Gateway and
+// its Vercel OIDC code, and leaves the Vercel CLI's files as they were. The built core trusts the
 // macOS system store as well as the authorities Bun bundles. The servers here belong to the test
 // process; the rule they check is the core's.
 const apps: FakeApp[] = [];
@@ -432,5 +435,146 @@ test("a model list whose trusted origin redirects ends with egress_denied, and t
     expect(stderr).not.toContain(KEY);
   } finally {
     await Promise.all([collect.stop(true), provider.stop(true)]);
+  }
+});
+
+/** The files under a directory, by their path in it, each with its text. */
+async function tree(dir: string): Promise<Record<string, string>> {
+  const files = readdirSync(dir, { recursive: true, withFileTypes: true }).filter((entry) =>
+    entry.isFile(),
+  );
+  const texts = await Promise.all(
+    files.map((entry) => Bun.file(join(entry.parentPath, entry.name)).text()),
+  );
+  return Object.fromEntries(
+    files.map((entry, index) => [
+      join(entry.parentPath, entry.name).slice(dir.length + 1),
+      texts[index]!,
+    ]),
+  );
+}
+
+test("a turn for an https loopback origin the core trusts streams its answer from that server, the core's one socket, and leaves the Vercel CLI's files as they were", async () => {
+  const { ca, ...tls } = await trustedCertificate();
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
+  const seen: { path: string; authorization: string | null; body: Record<string, unknown> }[] = [];
+  const encoder = new TextEncoder();
+  const event = (data: unknown) => encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
+  const chunk = (fields: Record<string, unknown>) =>
+    event({ id: "c1", object: "chat.completion.chunk", created: 1, model: "m-1", ...fields });
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    tls,
+    fetch: async (request) => {
+      const body = (await request.json()) as Record<string, unknown>;
+      seen.push({
+        path: new URL(request.url).pathname,
+        authorization: request.headers.get("authorization"),
+        body,
+      });
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const delta = (value: Record<string, unknown>, finish: string | null = null) =>
+            chunk({ choices: [{ index: 0, delta: value, finish_reason: finish }] });
+          controller.enqueue(delta({ role: "assistant", content: "sherpa-answer-" }));
+          await held;
+          controller.enqueue(delta({ content: "marker" }));
+          controller.enqueue(delta({}, "stop"));
+          controller.enqueue(
+            chunk({
+              choices: [],
+              usage: { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 },
+            }),
+          );
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(stream, { headers: { "content-type": "text/event-stream" } });
+    },
+  });
+  // The Vercel CLI's login with a token that has expired, and a linked project around the core's
+  // working directory: what the AI Gateway's OIDC code reads, and rewrites on such a token.
+  const home = scratchHome();
+  const data = join(home, "Library/Application Support");
+  await Bun.write(
+    join(data, "com.vercel.cli/auth.json"),
+    JSON.stringify({ token: "vercel-cli-marker", expiresAt: 1 }),
+  );
+  const project = scratchHome();
+  mkdirSync(join(project, ".vercel"));
+  await Bun.write(
+    join(project, ".vercel/project.json"),
+    JSON.stringify({ projectId: "prj_marker", orgId: "team_marker" }),
+  );
+  const before = { data: await tree(data), project: await tree(project) };
+  const TEXT = "stdio-turn-text-marker";
+  try {
+    const app = launch(
+      { HOME: home, LOG_LEVEL: "debug", NODE_EXTRA_CA_CERTS: ca },
+      undefined,
+      project,
+    );
+    apps.push(app);
+    await app.handshake();
+    app.frame(1, "open", { kind: "chat" });
+    app.frame(1, "data", {
+      type: "turn",
+      provider: "openai-compatible",
+      base_url: `https://127.0.0.1:${server.port}/v1`,
+      api_key: KEY,
+      model: "m-1",
+      text: TEXT,
+    });
+    // The first piece of the answer reaches the app while the server holds the rest.
+    expect((await app.next(isChat(1))).body).toEqual({ type: "delta", text: "sherpa-answer-" });
+    const peers = fields(lsof(app.pid, "-i", "-F", "n"), "n");
+    expect(peers.length).toBeGreaterThan(0);
+    for (const peer of peers) {
+      expect(peer).toMatch(new RegExp(`^127\\.0\\.0\\.1:\\d+->127\\.0\\.0\\.1:${server.port}$`));
+    }
+    expect(sockets(app.pid).unixListeners).toEqual([]);
+    release();
+    expect((await app.next(isChat(1))).body).toEqual({ type: "delta", text: "marker" });
+    expect((await app.next(isChat(1))).body).toEqual({
+      type: "done",
+      reason: "stop",
+      input_tokens: 11,
+      output_tokens: 3,
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      path: "/v1/chat/completions",
+      authorization: `Bearer ${KEY}`,
+      body: { model: "m-1", stream: true },
+    });
+    // The person's text follows the time on this Mac, in its own time zone.
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const messages = seen[0]!.body.messages as { role: string; content: string }[];
+    expect(messages.map((message) => message.role)).toEqual(["system", "user"]);
+    expect(messages[1]!.content).toMatch(
+      new RegExp(
+        `^\\[Current time: \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}[+-]\\d{2}:\\d{2} \\(\\w+day\\), time zone: ${zone}\\]\\n\\n${TEXT}$`,
+      ),
+    );
+    app.closeInput();
+    expect(await app.exited).toBe(0);
+    expect({ data: await tree(data), project: await tree(project) }).toEqual(before);
+    const stderr = app.stderr.join("");
+    expect(stderr).toContain("info [core:chat:turn] start channel=1 provider=openai-compatible\n");
+    expect(stderr).toContain(
+      "info [core:chat:turn] success channel=1 provider=openai-compatible reason=stop steps=1 input_tokens=11 output_tokens=3 ms=",
+    );
+    // Nothing reached the global fetch, the default provider or the gateway's WebSocket.
+    expect(stderr).not.toMatch(/\] refused reason=/);
+    expect(stderr).not.toContain("[core:chat:sdk-warning]");
+    for (const secret of [KEY, TEXT, "sherpa-answer-", "vercel-cli-marker"]) {
+      expect(stderr).not.toContain(secret);
+    }
+    expect(JSON.stringify(app.log)).not.toContain(KEY);
+  } finally {
+    release();
+    await server.stop(true);
   }
 });

@@ -17,6 +17,7 @@ export type ChatErrorCode =
   | "provider_unavailable"
   | "provider_rejected"
   | "provider_invalid_response"
+  | "conversation_limit"
   | "internal";
 
 const RETRYABLE: ReadonlySet<ChatErrorCode> = new Set<ChatErrorCode>([
@@ -90,6 +91,16 @@ const CERTIFICATE_CODES: ReadonlySet<string> = new Set([
   "UNABLE_TO_DECRYPT_CRL_SIGNATURE",
   "UNABLE_TO_DECODE_ISSUER_PUBLIC_KEY",
 ]);
+
+/**
+ * Whether `error` is how Bun's `fetch` ends a connection that failed or broke off: an error with
+ * a one-word `code` (`ECONNREFUSED`, `DEPTH_ZERO_SELF_SIGNED_CERT`, …). A defect of the core's
+ * own throws without one.
+ */
+export function isTransportError(error: unknown): boolean {
+  const code = error instanceof Error ? (error as { code?: unknown }).code : undefined;
+  return typeof code === "string" && /^\w+$/.test(code);
+}
 
 /**
  * A request the egress refused, one that got no response, or one whose body broke off: Bun's
