@@ -13,13 +13,14 @@ import type {
   ConfirmationPrompt,
 } from "../src/mcp/confirmation.ts";
 import { type CapabilityDescriptor, plannerEntries, reconcile } from "../src/mcp/registry.ts";
-import { resolveTools, type ToolCall } from "../src/mcp/tools.ts";
+import { resolveTools } from "../src/mcp/tools.ts";
 import type {
   PlannerPort,
   PlannerReply,
   PlannerRequest,
   WorkerResponse,
 } from "../src/planner/port.ts";
+import type { ToolCall } from "../src/tools/call.ts";
 import { plannerDescriptors, v2Response } from "./support/planner.ts";
 import { ManualTimers, tick } from "./support/pipes.ts";
 

@@ -1,12 +1,10 @@
 import { CLIENT_INFO_META_KEY, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { log } from "../log.ts";
-import { callToolResult, coreFailure, type ToolOutcome, toolOutcomeSchema } from "./outcome.ts";
+import { runToolCall, type ToolCall } from "../tools/call.ts";
+import { toolOutcomeSchema } from "../tools/outcome.ts";
+import { callToolResult, RESULT_TEXT_LIMIT } from "./outcome.ts";
 import { annotationTable } from "./registry.ts";
-import type { ResolvedTool, ToolCall } from "./tools.ts";
-
-/** Calls still running, so a shutdown can let them finish (app-connection-v1 §7.10). */
-export const activeCalls = new Set<Promise<unknown>>();
+import type { ResolvedTool } from "./tools.ts";
 
 /** The `clientInfo` member of a 2026-07-28 request envelope; the SDK validated it before the handler runs. */
 const clientInfoSchema = z.object({ name: z.string(), version: z.string() });
@@ -39,7 +37,6 @@ export function createSherpaServer(
   );
   for (const tool of tools) {
     const { entry } = tool;
-    const read = entry.effectClass === "read";
     server.registerTool(
       entry.name,
       {
@@ -49,37 +46,17 @@ export function createSherpaServer(
         annotations: annotationTable[entry.effectClass],
       },
       async (args, ctx) => {
-        const started = Date.now();
-        const fields = `channel=${options.channel} tool=${entry.name}`;
-        log.info(`[core:mcp:tool-call] start ${fields}`);
-        const call = tool.handle(args, {
-          signal: AbortSignal.any([ctx.mcpReq.signal, options.session]),
-          client: requestClient(ctx.mcpReq.envelope),
-        });
-        activeCalls.add(call);
-        let result: ToolOutcome | null;
-        try {
-          result = await call;
-        } catch (error) {
-          log.error(
-            `[core:mcp:tool-call] failure ${fields} error_type=${error instanceof Error ? error.name : typeof error}`,
-          );
-          result = coreFailure(entry.capability, "none", error);
-        } finally {
-          activeCalls.delete(call);
-        }
-        const ms = Date.now() - started;
-        if (result === null) {
-          // The SDK does not answer an aborted request; this value is never written.
-          log.info(`[core:mcp:tool-call] abandoned ${fields} ms=${ms}`);
-          return { content: [], isError: true };
-        }
-        const answer = callToolResult(result, read);
-        const outcome = answer.structuredContent as unknown as ToolOutcome;
-        const end = `${fields} status=${outcome.status} code=${outcome.error?.code ?? "none"} operation_id=${outcome.operation_id ?? "none"} ms=${ms}`;
-        if (outcome.status === "failed") log.warn(`[core:mcp:tool-call] failure ${end}`);
-        else log.info(`[core:mcp:tool-call] success ${end}`);
-        return answer;
+        const fitted = await runToolCall(
+          tool,
+          args,
+          {
+            signal: AbortSignal.any([ctx.mcpReq.signal, options.session]),
+            client: requestClient(ctx.mcpReq.envelope),
+          },
+          { module: "mcp", channel: options.channel, limit: RESULT_TEXT_LIMIT },
+        );
+        // The SDK does not answer an aborted request; this value is never written.
+        return fitted === null ? { content: [], isError: true } : callToolResult(fitted);
       },
     );
   }
