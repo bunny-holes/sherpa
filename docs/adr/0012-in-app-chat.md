@@ -21,6 +21,12 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > 실측, 위험(10~14), 되돌리기(4), 소유자가 할 일(4), 구현 단계, 아직 확인 전, 검토한 대안에는 저장이 더하는 것을
 > 덧붙였다. [아키텍처](../architecture/README.md) 의 "long-lived content archive" 금지 규칙에는 이 기록을 예외로
 > 적었다.
+>
+> **정정 (2026-11-22, #64).** 코어 나가는 길(bunny-holes/sherpa#64, PR #74)이 잰 사실을 실었다. Bun 1.4.5 의
+> `redirect: "error"` 도 1.4.4 처럼 리디렉트를 거부했다. 전역 `fetch` 를 바꿔도 `Bun.fetch` 와 `Worker` 의
+> `fetch` 는 막히지 않고 네트워크 모듈 여럿이 설치 없이 풀리므로, 구현의 정적 검사는 "코드로 지키기" 3 의
+> 목록보다 넓다. 차례 메시지가 아직 없어, 빌드한 코어의 소켓 시험은 차례 대신 MCP 연결 중에 본다. 고친 곳은
+> "코드로 지키기" 2·3, "시험으로 지키기", "실측", "구현 단계" 4, "아직 확인 전" 이다.
 
 상태: 채택(소유자 결정, 2026-11-22, bunny-holes/sherpa#59). 구현 전이다. 이 결정은
 [ADR-0010](0010-menu-bar-app-and-mcp.md) 결정 2 의 "Bun 은 소켓을 열지 않고 앱과의 표준 입출력 파이프만 읽는다"
@@ -32,6 +38,8 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 근거 표시는 계약의 "근거 표기" 를 따른다. 더하는 것은 둘이다. **[설계]** 는 이 ADR 이 고른 것으로, 구현할 때
 계약의 다음 판으로 옮겨 [계약] 이 된다. **[코드]** 는 `main` 075aa28 의 저장소 코드에서 읽은 것이다. 이 ADR 의
 [실측] 은 2026-11-21~22 에 저장소 밖 버리는 시험에서 잰 것이고("실측" 절), 유료 API 는 부르지 않았다.
+[실측: #64] 는 코어 나가는 길(#64)이 Bun 1.4.4 와 1.4.5 에서 잰 것이고, 기록은
+[실측 기록](../testing/live-evidence.md) 의 2026-11-22 #64 항목이다(정정 2026-11-22, #64).
 
 ## 맥락
 
@@ -312,9 +320,11 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
    `@ai-sdk/provider-utils` 5.0.83 소스], `fetch` 설정이 빠진 길(전역 제공자와 Gateway 포함)도 막힌다. [설계]
 2. 차례마다 그 차례의 제공자에 지킨 `fetch` 를 넘긴다. https 이고 출처가 그 차례의 출처와 같을 때만
    `redirect: "error"` 와 그 차례의 중단 신호를 달아 진짜 `fetch` 로 보낸다. 어기면 요청 전에 거부하고 `error`
-   `egress_denied` 로 끝낸다. Bun 1.4.4 의 `fetch(..., { redirect: "error" })` 는 리디렉트에서
-   `TypeError`(`UnexpectedRedirect`)로 거부했다. [실측] 저장소는 Bun 1.4.5 를 고정하므로 구현 때 다시 잰다.
-   [설계]
+   `egress_denied` 로 끝낸다. [설계] `fetch(..., { redirect: "error" })` 는 Bun 1.4.4 와 1.4.5 에서 다른 서버로
+   가는 307 과 상대 `Location` 의 302 를 모두 `TypeError`(`UnexpectedRedirect`)로 거부했고, 리디렉트 대상은
+   요청을 받지 않았다. [실측: #64] 회귀 시험은 `core/tests/stdio/egress.test.ts` 이고 게이트를 돌리는 Bun 에서
+   돈다. 게이트가 `core/package.json` 의 Bun 판을 강제하는 것은 #71(PR #77)이 넣는다. (정정 2026-11-22, #64:
+   처음에는 Bun 1.4.4 에서만 재고, 저장소가 고정한 1.4.5 는 구현 때 다시 잰다고 적었다.)
 3. 정적 검사(코어 린트 규칙이나 `scripts/checks/` 검사)로 막는다. [설계]
    - `chat/` 밖에서 `ai`·`@ai-sdk/*` 를 가져오지 않는다.
    - 코어 어디서도 `node:net`·`node:tls`·`node:http`·`node:https`·`node:http2`·`node:dgram`,
@@ -323,13 +333,26 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
    - `fetch` 는 나가는 길 모듈에서만 부른다.
    - 모델은 제공자 객체로만 만들고 문자열 모델 id 를 넘기지 않는다.
 
+   구현(#64)은 이 검사를 `vp check` 가 돌리는 코어 린트 규칙(`core/vite.config.ts`)으로 넣었고, 막는 목록은
+   위보다 넓다. 전역 `fetch` 를 바꿔도 따로 묶인 읽기 전용 `Bun.fetch` 와 `Worker` 의 자기 `fetch` 는 막히지
+   않고, `ws`·`undici`·`node-fetch` 등 네트워크 모듈은 설치 없이 풀리기 때문이다. [실측: #64] 그래서 Bun 과
+   Node 의 다른 네트워크·이름 풀이 API, 자기 `fetch`·`WebSocket` 을 싣는 모듈, `EventSource`, `require()` 도
+   막는다. 목록은 그 파일이 정본이다. 린트는 지정자가 문자열 리터럴이 아닌 동적 `import`, 문자열로 넘긴 Worker
+   코드, `Bun.spawn` 으로 띄운 다른 실행 파일은 보지 못한다. [추론] 다섯째 항목(문자열 모델 id)은 AI SDK 를
+   들이는 단계 4(#66)가 넣는다. (정정 2026-11-22, #64)
+
 ### 시험으로 지키기
 
 - 단위 시험은 소켓 없이 지킨 `fetch` 를 본다. 다른 출처, 평문 HTTP, userinfo, 리디렉트, 전역 `fetch` 호출이 모두
   거부되고, 허용 경로는 진짜 `fetch` 자리에 넣은 가짜까지 간다. [설계]
 - 빌드한 코어를 stdio 로 띄우는 시험은 허용되지 않은 출처로 차례를 보내 시험이 띄운 로컬 서버에 연결이 하나도
-  오지 않음을 보고, 차례 중 코어에 듣는 소켓이 없음을 `lsof -a -p <pid> -iTCP -sTCP:LISTEN` 으로 본다. 허용
-  경로는 믿을 수 있는 TLS 가 있어야 하므로 이 층에서는 보지 않는다. [설계]
+  오지 않음을 보고, 차례 중 코어에 인터넷 소켓과 듣는 Unix 소켓이 없음을 `lsof -n -P -a -p <pid>` 의
+  `-i`(TCP·UDP, 모든 상태)와 `-U` 로 본다. 허용 경로는 믿을 수 있는 TLS 가 있어야 하므로 이 층에서는 보지
+  않는다. [설계] 차례 메시지가 아직 없어, 단계 2(#64)의 시험 `core/tests/stdio/egress.test.ts` 는 차례 대신
+  `hello` 부터 두 MCP 연결과 확인을 기다리는 도구 호출까지 소켓을 본다. `lsof` 는 인터넷 소켓이 없는 프로세스와
+  이미 끝난 pid 에 똑같이 아무것도 내지 않고 1 로 끝나므로, 시험 프로세스의 듣는 소켓과 코어의 fd 0–2 를 먼저
+  보는 양성 대조를 둔다. [실측: #64] 차례를 보내는 부분은 단계 4(#66)가 더한다. (정정 2026-11-22, #64: 처음에는
+  `-iTCP -sTCP:LISTEN` 으로 듣는 TCP 소켓만 본다고 적었다.)
 - 게이트는 유료 API 를 부르지 않는다. 실제 제공자 연결은 소유자 실기에서 `lsof -i -a -p <코어 pid>` 로 연결이
   고른 출처 하나뿐인지 본다. [설계]
 
@@ -651,7 +674,7 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
 | 도구 승인 | `tool-approval-request` part, 끝난 까닭 `tool-calls`, 1단계 |
 | OpenAI Responses, OpenAI 호환 | 도구 왕복 성공. OpenAI 도구는 `strict: false` 로 나갔다 |
 | Google | 재지 않았다 |
-| Bun `redirect: "error"` | Bun 1.4.4 에서 `TypeError`(`UnexpectedRedirect`)로 거부 |
+| Bun `redirect: "error"` | Bun 1.4.4·1.4.5 에서 다른 서버로 가는 307 과 상대 302 를 모두 `TypeError`(`UnexpectedRedirect`)로 거부. 리디렉트 대상은 요청을 받지 않았다(정정 2026-11-22, #64: 처음에는 1.4.4 의 거부만 적었다) |
 | 도구 스키마 | 35개, 43,871자, `$schema` 35개, 정수 경계 쌍 145개 |
 | 크기와 메모리 | "메모리와 크기" 표 |
 | 대화 기록: 백업 제외 표시 | 폴더에 `isExcludedFromBackup` 을 달자 xattr `com.apple.metadata:com_apple_backup_excludeItem` 이 생겼고, `tmutil addexclusion` 이 쓴 61바이트 값과 같았다. 표시한 폴더 안 새 파일은 참, 밖으로 옮기면 거짓 |
@@ -752,7 +775,8 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
 3. **앱 키 저장소와 프로필:** data protection keychain 저장소, 프로필 담기와 권한 항목, 게이트의 권한 항목 검사
    고침. 소유자의 프로필을 기다린다.
 4. **코어 채팅 경계:** 네 제공자, 도구 어댑터와 호출 수명 모듈 분리, 스트리밍, 중단, 경고 시험, 모델 목록, 늦게
-   싣기, Bun 1.4.5·hardened runtime 에서 크기와 메모리 다시 재기.
+   싣기, Bun 1.4.5·hardened runtime 에서 크기와 메모리 다시 재기. 단계 2 가 남긴 문자열 모델 id 검사("코드로
+   지키기" 3)와 차례를 보내는 stdio 시험("시험으로 지키기")도 여기서 넣는다(정정 2026-11-22, #64).
 5. **앱 채팅 화면:** 첫 화면의 두 타일, 동의, 제공자·모델 고르기, 원격 자원 없는 마크다운, 한글 입력, 확인
    창과의 포커스.
 6. **통합과 실기:** 소유자 유료 실기, 실측 기록, 아키텍처·계약 갱신.
@@ -780,8 +804,8 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
 - 코어와 중계가 앱의 App ID 그룹 항목을 읽지 못하는지(문서에서 끌어냈고 재현하지 않았다).
 - hardened runtime 과 Bun 1.4.5 에서의 크기와 메모리, 긴 대화의 메모리.
 - 35개 도구 정의의 실제 토큰 수.
-- Bun 1.4.5 의 `redirect: "error"`, 시스템 프록시와 사람이 더한 루트 인증서, 이름 풀이가 시스템 해석기를
-  거치는지.
+- 시스템 프록시와 사람이 더한 루트 인증서, 이름 풀이가 시스템 해석기를 거치는지. (정정 2026-11-22, #64: 처음에는
+  Bun 1.4.5 의 `redirect: "error"` 도 적었다. "코드로 지키기" 2 에서 닫았다.)
 - 프로필을 더한 빌드의 공증과 기존 권한 허락의 이어짐.
 - 확인 창이 채팅 입력 중에 뜰 때의 키 입력(한글 조합 중 Return, 키보드 탐색의 Space).
 - 대화 기록: 실제 `~/Library/Application Support/Sherpa/chats/` 에서 `tmutil isexcluded` 가 `[Excluded]` 를
