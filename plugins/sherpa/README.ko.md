@@ -100,10 +100,11 @@ Claude Code에서 `/mcp`를 실행합니다. `plugin:sherpa:sherpa`가 연결되
 | 보이는 것 | 원인과 해결 |
 |---|---|
 | Claude Code: `plugin:sherpa:sherpa` 실패, MCP 로그 끝에 `ENOENT`와 `posix_spawn`. Codex: `MCP startup failed: No such file or directory (os error 2)`. | Sherpa.app이 `/Applications/Sherpa.app`에 없습니다. 그곳으로 옮깁니다. 플러그인은 다른 곳을 찾지 않습니다. |
-| 서버가 실패했고 MCP 로그에 `app_not_running`이나 `mcp_disabled`가 있습니다. | Sherpa.app을 실행하거나(`app_not_running`) Sherpa.app에서 MCP를 켠 뒤(`mcp_disabled`) 서버를 다시 연결합니다. Claude Code는 `/mcp`에서 Reconnect, Codex는 새 세션입니다. |
+| Claude Code `/mcp`에 `CONNECTION_CLOSED: Connection closed`, Codex에 `MCP startup failed: handshaking with MCP server failed: connection closed: …`가 보이고, MCP 로그에 `app_not_running`이나 `mcp_disabled`가 있습니다. | Sherpa.app을 실행하거나(`app_not_running`) Sherpa.app에서 MCP를 켠 뒤(`mcp_disabled`) 서버를 다시 연결합니다. Claude Code는 `/mcp`에서 Reconnect, Codex는 새 세션입니다. |
 | 세션 도중 도구가 멈췄고 MCP 로그에 `app_closed_session`이 있습니다. | Sherpa.app에서 MCP를 껐다면 먼저 켭니다. 그다음 서버를 다시 연결합니다. Claude Code는 `/mcp`에서 Reconnect, Codex는 새 세션입니다. |
-| 실패 직후 Claude Code에 Sherpa 도구가 없습니다. | Claude Code는 최근 15분 안에 실패한 플러그인 서버를 건너뜁니다. `/mcp`에서 `plugin:sherpa:sherpa`의 Reconnect를 고르거나 기다립니다. |
+| 실패 직후 Claude Code에 Sherpa 도구가 없고, `/mcp`에 `Skipping connection (recent failure cached…)`가 보입니다. | Claude Code는 최근 15분 안에 실패한 플러그인 서버를 건너뜁니다. `/mcp`에서 `plugin:sherpa:sherpa`의 Reconnect를 고르거나, 15분이 지난 뒤 새 세션을 엽니다. |
 | Codex: `-32022: Unsupported protocol version: 2025-06-18`. | 기능이 꺼져 있습니다. `codex features enable mcp_2026_07_28`을 실행하고 새 세션을 엽니다. |
+| Claude Code: `-32022: Unsupported protocol version: 2025-11-25`. | `MCP_PROTOCOL_NEGOTIATION=legacy`가 Claude Code를 예전 연결 방식에 묶습니다. 환경과 설정에서 지우고 새 세션을 엽니다. |
 | Codex가 플러그인과 다른 명령을 씁니다. | 내 `config.toml`의 `[mcp_servers.sherpa]`가 같은 이름의 플러그인 서버보다 앞섭니다. 지우거나, 같은 명령과 환경 값으로 둡니다. |
 | Claude Code에서 도구가 `mcp__sherpa__<도구>`로 보입니다. | 같은 명령으로 `claude mcp add`를 직접 실행해 중계를 등록했습니다. Claude Code는 플러그인 대신 그 항목 하나만 연결합니다. 스킬은 두 이름을 모두 받습니다. |
 | `kakaotalk.setup_required`나 `kakaotalk.user_id_not_found`. | 전체 디스크 접근 권한이 있는 터미널에서 `sherpa kakaotalk setup`을 한 번 실행합니다. MCP 도구가 아닙니다. |
