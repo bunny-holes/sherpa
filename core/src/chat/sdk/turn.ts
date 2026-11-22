@@ -1,20 +1,34 @@
 /**
- * One turn's model call (ADR-0012 "스트리밍", "재시도"; app-connection-v1 §7.11): the only module that
- * hands the AI SDK a model. It reads the `stream` of `streamText` and tells its caller the answer's
- * text, each output, the finished steps the conversation keeps, and how the call ended.
+ * One turn's model call (ADR-0012 "스트리밍", "재시도", "도구"; app-connection-v1 §7.11): the only
+ * module that hands the AI SDK a model. It reads the `stream` of `streamText` and tells its caller
+ * the answer's text, each output, the finished steps the conversation keeps, and how the call
+ * ended; the tools the model calls run through the turn's calls (src/chat/calls.ts).
  */
 import {
   AISDKError,
   APICallError,
   type FinishReason,
+  InvalidMessageRoleError,
+  InvalidPromptError,
+  isStepCount,
+  type JSONValue,
+  MessageConversionError,
+  MissingToolResultsError,
   type ModelMessage,
   RetryError,
   StreamProviderError,
   streamText,
+  type ToolCallPart,
+  type ToolContent,
+  type ToolModelMessage,
+  type ToolResultPart,
 } from "ai";
+import type { ModelTool } from "../../tools/call.ts";
+import type { ToolOutcome } from "../../tools/outcome.ts";
 import { EgressDeniedError, type Fetch } from "../egress.ts";
 import { ChatFailure, isTransportError, responseFailure, transportFailure } from "../errors.ts";
 import { type TurnTarget, turnProvider } from "./provider.ts";
+import { type ToolRunner, toolSet } from "./tools.ts";
 
 /**
  * The AI SDK sends one model request again at most twice, and only before its response streams
@@ -24,6 +38,21 @@ import { type TurnTarget, turnProvider } from "./provider.ts";
 const MODEL_RETRIES = 2;
 
 export type { TurnTarget };
+
+/** The tool calls of one turn, as the model call needs them (src/chat/calls.ts). */
+export interface TurnTools extends ToolRunner {
+  readonly tools: readonly ModelTool[];
+  /** The AI SDK refused a call before it ran: a tool the core does not have, or bad arguments. */
+  invalid(name: string): void;
+  /** What the model reads of a call the AI SDK did not run. */
+  unrun(name: string): ToolOutcome;
+  /** The AI SDK did not run a call: its step ended first. */
+  notRun(name: string): void;
+  /** A step ended, its calls with it. */
+  stepEnded(): void;
+  /** The person cancelled while a step's calls ran: the turn takes no later step. */
+  readonly cancelled: boolean;
+}
 
 export interface TurnCall {
   target: TurnTarget;
@@ -35,6 +64,9 @@ export interface TurnCall {
   signal: AbortSignal;
   /** Between two outputs of one model response (§7.11). */
   chunkMs: number;
+  /** Model requests the turn may make (§7.11). */
+  steps: number;
+  tools: TurnTools;
 }
 
 export interface TurnHooks {
@@ -53,6 +85,8 @@ export type TurnOutcome =
       inputTokens: number | undefined;
       outputTokens: number | undefined;
       steps: number;
+      /** The last step called tools, so no answer followed it: the loop stopped there. */
+      calledTools: boolean;
     }
   /** `signal` ended the call. */
   | { type: "aborted"; steps: number }
@@ -66,6 +100,53 @@ const DROPPED: ReadonlySet<FinishReason> = new Set<FinishReason>([
   "interrupted",
   "content-filter",
 ]);
+
+/**
+ * A step's messages with a result for each call the AI SDK left without one, which `unrun` gives,
+ * in the order of the calls. The SDK runs a step's calls only when the step ended with `stop` or
+ * `tool-calls`, and refuses to send a conversation that holds a call without its result (ai
+ * 7.0.179 execute-tools-from-stream.ts, convert-to-language-model-prompt.ts): without one, every
+ * later turn of the chat would fail before its request.
+ */
+function answered(
+  messages: ModelMessage[],
+  unrun: (call: ToolCallPart) => ToolOutcome,
+): ModelMessage[] {
+  const results = new Set(
+    messages.flatMap((message) =>
+      message.role === "tool"
+        ? message.content.flatMap((part) => (part.type === "tool-result" ? [part.toolCallId] : []))
+        : [],
+    ),
+  );
+  const calls = messages.flatMap((message) =>
+    message.role === "assistant" && typeof message.content !== "string"
+      ? message.content.filter(
+          (part): part is ToolCallPart =>
+            part.type === "tool-call" && part.providerExecuted !== true,
+        )
+      : [],
+  );
+  const missing = calls.filter((call) => !results.has(call.toolCallId));
+  if (missing.length === 0) return messages;
+  const added = missing.map((call): ToolResultPart => ({
+    type: "tool-result",
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    // As the SDK gives the model a call's result (ai 7.0.179 create-tool-model-output.ts).
+    output: { type: "json", value: JSON.parse(JSON.stringify(unrun(call))) as JSONValue },
+  }));
+  const at = messages.findIndex((message) => message.role === "tool");
+  if (at === -1) return [...messages, { role: "tool", content: added }];
+  const order = new Map(calls.map((call, index) => [call.toolCallId, index]));
+  const rank = (part: ToolContent[number]) =>
+    part.type === "tool-result" ? (order.get(part.toolCallId) ?? -1) : -1;
+  const tool = messages[at] as ToolModelMessage;
+  return messages.with(at, {
+    ...tool,
+    content: [...tool.content, ...added].sort((a, b) => rank(a) - rank(b)),
+  });
+}
 
 /** How an error the AI SDK passed on reads as a chat error. */
 function failureOf(error: unknown): ChatFailure {
@@ -87,6 +168,16 @@ function failureOf(error: unknown): ChatFailure {
     if (error.statusCode !== undefined) return responseFailure(error.statusCode);
     return new ChatFailure(error.isRetryable ? "provider_unavailable" : "provider_rejected");
   }
+  // A prompt the core built that the SDK refuses before any request: the core's defect, not the
+  // provider's (ai 7.0.179 convert-to-language-model-prompt.ts).
+  if (
+    MissingToolResultsError.isInstance(error) ||
+    InvalidPromptError.isInstance(error) ||
+    InvalidMessageRoleError.isInstance(error) ||
+    MessageConversionError.isInstance(error)
+  ) {
+    return new ChatFailure("internal");
+  }
   // The provider answered, but not in a shape its package reads.
   if (AISDKError.isInstance(error)) return new ChatFailure("provider_invalid_response");
   return new ChatFailure("internal");
@@ -94,7 +185,11 @@ function failureOf(error: unknown): ChatFailure {
 
 /** One turn's model call; it never throws, since every way it ends is an outcome. */
 export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<TurnOutcome> {
+  const calls = call.tools;
+  /** The calls the SDK did not run, which the app hears of once every part of the turn is read. */
+  const unrun: string[] = [];
   let steps = 0;
+  let calledTools = false;
   let failed: { failure: ChatFailure; error: unknown } | null = null;
   let timedOut = false;
   let finish: {
@@ -109,15 +204,33 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
       instructions,
       messages: call.messages,
       providerOptions,
+      // The SDK runs a step's calls once the model's response has ended, and only when it ended
+      // with `stop` or `tool-calls` (ai 7.0.179 execute-tools-from-stream.ts); a call it did not
+      // run reads `chat.not_run` (`answered`).
+      ...(calls.tools.length > 0 ? { tools: toolSet(calls.tools, calls) } : {}),
+      // One call at a time: the app shows one confirmation window at a time (§9), and a window
+      // that waited behind another call would have spent its 30 s.
+      toolCallConcurrency: 1,
+      stopWhen: [isStepCount(call.steps), () => calls.cancelled],
       abortSignal: call.signal,
       maxRetries: MODEL_RETRIES,
+      // No `toolMs`: it would only abort a call's signal, and every tool has its own limit
+      // (ADR-0012 "재시도").
       timeout: { chunkMs: call.chunkMs },
       // Errors reach the stream below as `error` parts; the SDK's own handler would write the
       // whole error, the request body with the person's text included, to standard error.
       onError: () => {},
       onStepEnd: (step) => {
         steps += 1;
-        if (!DROPPED.has(step.finishReason)) hooks.step(step.response.messages);
+        calledTools = step.toolCalls.length > 0;
+        calls.stepEnded();
+        if (DROPPED.has(step.finishReason)) return;
+        hooks.step(
+          answered(step.response.messages, (toolCall) => {
+            unrun.push(toolCall.toolName);
+            return calls.unrun(toolCall.toolName);
+          }),
+        );
       },
     });
     for await (const part of result.stream) {
@@ -140,6 +253,11 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
         case "reasoning-file":
           hooks.output();
           break;
+        case "tool-error":
+          // A call the SDK refused before it ran, whose error the model reads as its result
+          // (ai 7.0.179 stream-language-model-call.ts): the turn's own calls never throw.
+          calls.invalid(part.toolName);
+          break;
         case "error":
           failed ??= { failure: failureOf(part.error), error: part.error };
           break;
@@ -159,6 +277,10 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
   } catch (error) {
     failed ??= { failure: failureOf(error), error };
   }
+  // The app hears of a call the SDK did not run once every part of the turn is read: after the text
+  // before the call, however far the SDK's step ran ahead of this loop, and before the turn's end.
+  // No step follows one with such a call (ai 7.0.179 stream-text.ts).
+  for (const name of unrun) calls.notRun(name);
   if (call.signal.aborted) return { type: "aborted", steps };
   if (timedOut) return { type: "failed", failure: new ChatFailure("timeout"), error: null, steps };
   if (failed) return { type: "failed", ...failed, steps };
@@ -174,5 +296,5 @@ export async function streamTurn(call: TurnCall, hooks: TurnHooks): Promise<Turn
       steps,
     };
   }
-  return { type: "finished", ...finish, steps };
+  return { type: "finished", ...finish, steps, calledTools };
 }

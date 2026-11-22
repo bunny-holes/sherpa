@@ -7,6 +7,7 @@ import {
   commandResult,
   coreFailure,
   type EffectKind,
+  effectKindOf,
   outcome,
   type OutcomeError,
   plannerOutcome,
@@ -21,7 +22,7 @@ import {
   PREVIEW_DEADLINE_MS,
 } from "./confirmation.ts";
 import { type CoreEntry, type CoreRun, coreEntries } from "./core-tools.ts";
-import type { ConfirmedPlannerEntry, EffectClass, RegistryEntry } from "./registry.ts";
+import type { ConfirmedPlannerEntry, RegistryEntry } from "./registry.ts";
 
 /** A registry entry with its handler. `null` means the call was abandoned and is not answered. */
 export interface ResolvedTool {
@@ -36,19 +37,6 @@ export interface ToolDependencies {
   newOperationID?: () => string;
   /** Monotonic milliseconds for the §9 budget. */
   now?: () => number;
-}
-
-function effectKind(effectClass: EffectClass): EffectKind {
-  switch (effectClass) {
-    case "read":
-      return "none";
-    case "send":
-      return "outbound_dispatch";
-    case "local":
-      return "local_state";
-    default:
-      return "native_mutation";
-  }
 }
 
 /**
@@ -127,7 +115,7 @@ function plannerTool(
   mint: () => string,
 ): ResolvedTool {
   const { entry } = confirmed;
-  const kind = effectKind(entry.effectClass);
+  const kind = effectKindOf(entry.effectClass);
   if (entry.confirmation === "app" && !confirmed.preview) {
     throw new Error(`${entry.name} is confirmed in the app but has no preview read`);
   }
@@ -169,6 +157,8 @@ function plannerTool(
         confirmed.policy,
         operationID,
       );
+      // The request is the step nothing takes back: the app runs it to its end (§7.8).
+      call.committed?.();
       return plannerOutcome(
         entry.capability,
         request,
@@ -324,7 +314,7 @@ function coreTool(
   dependencies: ToolDependencies,
   mint: () => string,
 ): ResolvedTool {
-  const kind = effectKind(entry.effectClass);
+  const kind = effectKindOf(entry.effectClass);
   const preview = entry.confirmation === "app" ? entry.preview : null;
   if (preview === undefined) {
     throw new Error(`${entry.name} is confirmed in the app but has no preview`);
@@ -355,6 +345,8 @@ function coreTool(
             return confirmationOutcome(entry.capability, operationID, kind, decision);
           }
         }
+        // The command is the step nothing takes back: it runs to its own limit.
+        call.committed?.();
         return coreSuccess(entry, kind, await entry.run(dependencies.commands, args, operationID));
       } catch (error) {
         return coreFailure(entry.capability, kind, error);

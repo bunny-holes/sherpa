@@ -24,6 +24,20 @@ export interface Effect {
   kind: EffectKind;
   state: EffectState;
 }
+
+/** The kind of effect a tool of this registry effect class has, started or not (§10.5). */
+export function effectKindOf(effectClass: string): EffectKind {
+  switch (effectClass) {
+    case "read":
+      return "none";
+    case "send":
+      return "outbound_dispatch";
+    case "local":
+      return "local_state";
+    default:
+      return "native_mutation";
+  }
+}
 export interface Evidence {
   kind: string;
   state: string;

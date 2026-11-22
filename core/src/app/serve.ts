@@ -137,7 +137,7 @@ export async function serveConnection(options: ServeOptions): Promise<number> {
       }),
     options.discoveryWaitMs,
   );
-  const chats = new ChatSessions(options.egress, options.chat);
+  const chats = new ChatSessions(options.egress, () => basis.resolved(), options.chat);
   connection = new AppConnection({
     version: SHERPA_VERSION,
     input: options.input,

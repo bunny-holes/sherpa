@@ -36,8 +36,9 @@ export interface TurnProvider {
   providerOptions: ProviderOptions;
 }
 
-// The instructions are the same every turn, so Anthropic may cache them; the other providers read
-// no `anthropic` options (ADR-0012 "비용과 모델 선택").
+// The instructions are the same every turn, so Anthropic may cache them, and the tools before them
+// with them: a cached prefix runs tools, system, then messages. The other providers read no
+// `anthropic` options (ADR-0012 "비용과 모델 선택").
 const instructions: SystemModelMessage = {
   role: "system",
   content: INSTRUCTIONS,
@@ -58,7 +59,10 @@ export function turnProvider(target: TurnTarget, fetch: Fetch): TurnProvider {
           headers: { "anthropic-version": ANTHROPIC_VERSION },
         }).languageModel(model),
         instructions,
-        providerOptions: {},
+        // Automatic caching, a top-level `cache_control`: its breakpoint moves to the last block
+        // as the conversation grows, so each step reads the conversation before it from the
+        // cache. Both breakpoints keep the default 5 minutes.
+        providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
       };
     case "openai":
       // The Responses API without storing the response. For a reasoning model the SDK then adds

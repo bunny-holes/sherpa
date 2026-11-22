@@ -1,7 +1,8 @@
 /**
  * One chat turn from the core's side (app-connection-v1 §7.11, ADR-0012 "스트리밍", "중단",
- * "재시도"): the answer's text in `delta` events, then one `done` or `error`. The AI SDK and the
- * providers load with the first turn (src/chat/load.ts); this module takes only their types.
+ * "재시도", "도구"): the answer's text in `delta` events, each tool call in `tool` events, then one
+ * `done` or `error`. The AI SDK and the providers load with the first turn (src/chat/load.ts);
+ * this module takes only their types.
  *
  * A model request that goes `firstOutputMs` without output ends the turn. The turn has one such
  * limit, which every request the AI SDK sends starts anew. It stops at the request's first
@@ -13,6 +14,8 @@
  * headers open, and for OpenAI the wait for `response.in_progress` as well.
  */
 import { log } from "../log.ts";
+import type { ModelTool } from "../tools/call.ts";
+import { TurnCalls } from "./calls.ts";
 import type { Fetch } from "./egress.ts";
 import { ChatFailure } from "./errors.ts";
 import { loadTurn } from "./load.ts";
@@ -26,6 +29,7 @@ export interface TurnLimits {
   deltaMs: number;
   deltaBytes: number;
   failureBodyBytes: number;
+  steps: number;
 }
 
 /** The bytes of one code point in UTF-8; a lone surrogate goes out as U+FFFD. */
@@ -140,9 +144,24 @@ function watched(
   return { fetch: Object.assign(send, { preconnect: fetch.preconnect }), output: quiet };
 }
 
-/** The finish reasons of the AI SDK that a `done` names; the others read as `other`. */
-function doneReason(reason: string): DoneReason {
-  return reason === "stop" || reason === "length" || reason === "content-filter" ? reason : "other";
+/**
+ * What a `done` names: the AI SDK's finish reason, the ones `done` does not name read as `other`.
+ * A loop that stopped after a step that called tools had no answer: the person cancelled while
+ * they ran, or the turn reached its step limit. A step cut at the length limit or refused says so
+ * even with a call in it, which did not run.
+ */
+function doneReason(
+  outcome: Extract<TurnOutcome, { type: "finished" }>,
+  limit: number,
+  cancelled: boolean,
+): DoneReason {
+  const { reason } = outcome;
+  if (reason === "length" || reason === "content-filter") return reason;
+  if (outcome.calledTools) {
+    if (cancelled) return "aborted";
+    return outcome.steps >= limit ? "step-limit" : "other";
+  }
+  return reason === "stop" ? reason : "other";
 }
 
 const count = (tokens: number | undefined) => tokens ?? null;
@@ -160,6 +179,10 @@ export interface TurnContext {
   /** Ends when the channel closes. */
   ended: AbortSignal;
   limits: TurnLimits;
+  /** The core's tools, once their discovery has settled (§10.1). */
+  tools: () => Promise<readonly ModelTool[]>;
+  /** The channel's next call number, from 1. */
+  callNumber: () => number;
 }
 
 /** One turn: its answer goes out as `delta` events, and `run` resolves the event that ends it. */
@@ -167,12 +190,22 @@ export class ChatTurn {
   private readonly stopped = new AbortController();
   private cancelled = false;
   private silent = false;
+  private calls: TurnCalls | null = null;
 
   constructor(private readonly context: TurnContext) {}
 
-  /** The person stopped the turn: it ends with `done` `aborted`. */
+  /**
+   * The person stopped the turn: it ends with `done` `aborted`. While a step's calls run, they
+   * end as the calls say (src/chat/calls.ts), the step stays in the conversation and no other
+   * follows; until the first call of a step starts, the model request stops at once and its step
+   * leaves nothing, no tool of it having run.
+   */
   cancel(): void {
     this.cancelled = true;
+    if (this.calls?.inStep) {
+      this.calls.cancel();
+      return;
+    }
     this.stopped.abort(new DOMException("The person cancelled the turn.", "AbortError"));
   }
 
@@ -181,7 +214,7 @@ export class ChatTurn {
    * the messages of each step that finished go to `keep` as it finishes.
    */
   async run(
-    call: Omit<TurnCall, "fetch" | "signal" | "chunkMs">,
+    call: Omit<TurnCall, "fetch" | "signal" | "chunkMs" | "steps" | "tools">,
     keep: TurnHooks["step"],
   ): Promise<ChatEvent | null> {
     const { channel, provider, limits } = this.context;
@@ -198,13 +231,32 @@ export class ChatTurn {
     log.info(`[core:chat:turn] start ${fields}`);
     let outcome: TurnOutcome;
     try {
-      const { streamTurn } = await loadTurn();
+      const [{ streamTurn }, tools] = await Promise.all([loadTurn(), this.context.tools()]);
+      const calls = new TurnCalls({
+        channel,
+        tools,
+        number: this.context.callNumber,
+        send: (event) => {
+          // The channel closed: nothing more goes out.
+          if (this.context.ended.aborted) return;
+          deltas.flush();
+          this.context.send(event);
+        },
+      });
+      this.calls = calls;
       outcome = await streamTurn(
-        { ...call, fetch: requests.fetch, signal, chunkMs: limits.chunkMs },
+        {
+          ...call,
+          fetch: requests.fetch,
+          signal,
+          chunkMs: limits.chunkMs,
+          steps: limits.steps,
+          tools: calls,
+        },
         { output: requests.output, text: (text) => deltas.add(text), step: keep },
       );
     } catch (error) {
-      // Only loading the AI SDK can throw here: `streamTurn` ends in an outcome.
+      // Only loading the AI SDK or the tools can throw here: `streamTurn` ends in an outcome.
       outcome = { type: "failed", failure: new ChatFailure("internal"), error, steps: 0 };
     }
     requests.output();
@@ -221,10 +273,14 @@ export class ChatTurn {
   private end(outcome: TurnOutcome, fields: string, ms: number): ChatEvent {
     const steps = `steps=${outcome.steps}`;
     if (outcome.type === "finished") {
-      const reason = doneReason(outcome.reason);
-      log.info(
-        `[core:chat:turn] success ${fields} reason=${reason} ${steps} input_tokens=${outcome.inputTokens ?? "none"} output_tokens=${outcome.outputTokens ?? "none"} ms=${ms}`,
-      );
+      const reason = doneReason(outcome, this.context.limits.steps, this.calls?.cancelled ?? false);
+      if (reason === "aborted") {
+        log.info(`[core:chat:turn] cancelled ${fields} ${steps} ms=${ms}`);
+      } else {
+        log.info(
+          `[core:chat:turn] success ${fields} reason=${reason} ${steps} input_tokens=${outcome.inputTokens ?? "none"} output_tokens=${outcome.outputTokens ?? "none"} ms=${ms}`,
+        );
+      }
       return {
         type: "done",
         reason,

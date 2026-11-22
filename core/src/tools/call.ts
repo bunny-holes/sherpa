@@ -3,6 +3,7 @@
  * its start and end lines, the calls still running, a thrown handler turned into an outcome, and
  * the outcome fitted to the surface's limit. The surface keeps its own transport and form.
  */
+import type { z } from "zod";
 import { log } from "../log.ts";
 import { coreFailure, type FittedOutcome, fit, type ToolOutcome } from "./outcome.ts";
 
@@ -16,6 +17,12 @@ export interface ToolCall {
   channel: number;
   /** Who asked: on MCP, `clientInfo` of the request's 2026-07-28 `_meta` envelope, self-reported (§9). */
   client: { name: string; version: string };
+  /**
+   * Called once, right before the call asks the planner or runs its command: the step nothing
+   * takes back, after which a change it asks for may happen whether or not anyone waits for it
+   * (§7.8). The chat lets such a call end when the person cancels (§7.11); MCP passes none.
+   */
+  committed?(): void;
 }
 
 /** What the lifecycle needs of a tool. `null` means the call was abandoned and is not answered. */
@@ -24,9 +31,14 @@ export interface CallableTool {
   handle(args: unknown, call: ToolCall): Promise<ToolOutcome | null>;
 }
 
+/** A tool a model calls through the chat: what its lifecycle needs and what the model reads of it. */
+export interface ModelTool extends CallableTool {
+  entry: CallableTool["entry"] & { description: string; inputSchema: z.ZodObject };
+}
+
 /** The surface a call came in on: the module its lines name and its byte limit. */
 export interface CallSurface {
-  module: "mcp";
+  module: "mcp" | "chat";
   limit: number;
 }
 
