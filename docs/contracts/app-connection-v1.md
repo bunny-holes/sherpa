@@ -15,8 +15,8 @@ manner: "경계마다 규칙을 먼저 쓰고 근거를 괄호로 붙인다. 시
 구현 단계 4 의 몫이다. `confirm` 이 그 호출이 온 채널을 싣고, 앱은 확인의 출처를 그 채널의 종류로 가리며, 스위치는
 `mcp` 채널의 확인만 거둔다(§9). 그래서 인사의 `mux` 가 3 이 되고 1 과 2 는 받지 않는다(§7.5). 같은 3판에 단계 4 의
 다음 몫이 채널 종류 `chat` 과 그 첫 메시지인 모델 목록(§7.11)을 더했다. 종류를 더한 것이라 `mux` 는 3 그대로다. 같은
-판에서 단계 4 의 AI SDK 울타리가 시작 때의 셋째 거부(§7.1)와 그 로그 줄(§12)을 더했다. 그 밖의 규칙은 앞 판
-그대로이고, 본문에 "1판" 으로 적은 범위(작업자, 도구 목록, 믿는 범위 등)도 3판에 그대로 이어진다.
+판에서 단계 4 의 AI SDK 울타리가 시작 때의 셋째 거부(§7.1)와 그 로그 줄(§12)을 더했고, 이어서 글 차례와 모델이
+부르는 도구(§7.11)가 메시지를 더했다. 그 밖의 규칙은 앞 판 그대로이고, 본문에 "1판" 으로 적은 범위(작업자, 도구 목록, 믿는 범위 등)도 3판에 그대로 이어진다.
 링크와 시험이 이 경로를 읽으므로 파일 이름은 바꾸지 않는다.
 MCP 는 2026-07-28 만 받는다(소유자 결정 2026-11-22, [ADR-0011](../adr/0011-mcp-2026-07-28-only.md), §10.1). ADR-0010 2단계의
 두 작업, 코어 MCP 서버(bunny-holes/sherpa#27)와 `Sherpa.app`·`sherpa-relay`(bunny-holes/sherpa#28)는 이 문서만 보고
@@ -667,9 +667,9 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 ### 7.11 채팅 채널
 
 앱이 `N\topen\t{"kind":"chat"}` 로 연 채널 하나가 앱 안 채팅 하나다. [계약; ADR-0012 "앱과 코어 사이 채널"] 이
-판의 코어는 모델 목록과 글 차례(`turn`·`cancel` 과 `delta`·`done`)를 받는다. 도구(`tool`)와 대화
-상태(`resume`·`state`)는 구현 단계 4(bunny-holes/sherpa#66)의 다음 작업이 이 절에 더하고, 그때 `error` 의 코드와
-`done` 의 까닭도 늘어난다. 메시지를 더하는 것이라 이 문서의 판은 그대로다. [계약]
+판의 코어는 모델 목록과 글 차례(`turn`·`cancel` 과 `delta`·`tool`·`done`)를 받고, 차례의 모델은 코어의 도구를
+부른다("도구"). 대화 상태(`resume`·`state`)와 `text` 없는 `turn` 은 구현 단계 4(bunny-holes/sherpa#66)의 다음
+작업이 이 절에 더하고, 그때 `error` 의 코드도 늘어난다. 메시지를 더하는 것이라 이 문서의 판은 그대로다. [계약]
 
 - `data` 하나에 `sherpa.chat.v1` 메시지 하나를 싣는다. 메시지는 UTF-8 JSON 객체이고 `type` 으로 가른다. 앱과
   코어는 한 번들로 나가고 인사에서 버전이 같아야 하므로(§7.5) 메시지마다 판을 싣지 않는다. 호환되지 않는 변경은
@@ -686,6 +686,7 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 | 앱 → 코어 | `turn` | `provider`, `api_key`, `base_url`(OpenAI 호환만), `model`, `text` | 사람의 글 하나로 차례를 시작한다 |
 | 앱 → 코어 | `cancel` | 없음 | 도는 차례를 멈춘다 |
 | 코어 → 앱 | `delta` | `text` | 모델 답의 글 조각 |
+| 코어 → 앱 | `tool` | `call_id`, `name`, `status`, `code`, `operation_id` | 모델이 부른 도구 호출 하나가 시작했거나 끝났다("도구") |
 | 코어 → 앱 | `done` | `reason`, `input_tokens`, `output_tokens` | 차례가 끝났다 |
 | 코어 → 앱 | `error` | `in_reply_to`, `code`, `retryable`, `status` | 앞의 메시지가 답 없이 끝났다. `in_reply_to` 가 `"turn"` 이면 차례가 오류로 끝났다 |
 
@@ -749,20 +750,23 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 
 - `turn` 의 `model` 은 1~256 바이트이고 제어 문자가 없다. `text` 는 1 바이트부터 UTF-8 로 64 KiB 까지다. 한도를
   넘는 값은 `in_reply_to` 가 `"turn"` 인 `invalid_message` 다. [계약]
-- 차례마다 `delta` 가 0개 이상 오고, 끝에 `done` 이나 `in_reply_to` 가 `"turn"` 인 `error` 가 하나 온다. 차례가
+- 차례마다 `delta` 와 `tool` 이 0개 이상 오고, 끝에 `done` 이나 `in_reply_to` 가 `"turn"` 인 `error` 가 하나 온다. 차례가
   도는 동안 온 둘째 `turn` 은 곧바로 `busy` 를 받고, 도는 것은 그대로 돈다. `list_models` 는 차례와 따로 답한다.
   코어는 끝의 메시지를 쓰기 전에 다음 `turn` 을 받을 준비를 마친다. [계약]
-- `cancel` 은 도는 차례를 멈춘다. 그 차례는 받은 글을 `delta` 로 다 보낸 뒤 `done` `aborted` 로 끝나고, 토큰 수는
-  `null` 이다. 도는 차례가 없는 `cancel` 은 답이 없다. 채널이 닫히면 차례는 멈추고 아무것도 쓰지 않는다. [계약]
+- `cancel` 은 도는 차례를 멈춘다. 모델 요청 중이면 그 요청을 끊고, 차례는 받은 글을 `delta` 로 다 보낸 뒤 `done`
+  `aborted` 로 끝나며 토큰 수는 `null` 이다. 한 단계의 호출이 도는 동안이면 호출은 "도구" 의 규칙대로 끝나고, 차례는
+  다음 모델 요청 없이 `done` `aborted` 로 끝나며 토큰 수는 끝난 단계들의 것이다. 도는 차례가 없는 `cancel` 은 답이
+  없다. 채널이 닫히면 차례는 멈추고 아무것도 쓰지 않는다. [계약]
 - 채팅의 첫 차례가 그 채팅의 제공자, 요청이 시작하는 base URL(끝의 `/` 를 뗀 것), 모델을 정한다. 다른 것을 실은
   `turn` 은 이 채팅의 것이 아니므로 요청 없이 `invalid_message` 다. 모델이나 제공자, base URL 을 바꾸려면 앱이 새
   채팅을 연다. 제공자가 다음 요청에서 되돌려 받는 값(Anthropic 의 thinking 서명 등)이 대화에 들어 있기 때문이다. 키는 바뀌어도 된다. 요청 전에
   거절된 차례(`invalid_message`, `busy`, `egress_denied`)는 아무것도 정하지 않는다. [계약; ADR-0012 "앱과 코어 사이
   채널"]
-- 코어는 채팅마다 대화(모델 메시지의 목록)를 메모리에 두고, 차례마다 지시문, 그 대화, 새 글을 보낸다. 사람의 글은
-  차례가 어떻게 끝나든 대화에 남는다. 모델 요청의 단계가 끝나면 그 응답 메시지를 더하되, 오류로 끝난 단계(AI SDK 의
-  끝난 까닭 `error`), 끝을 알리기 전에 닫힌 단계(`interrupted`), 거절로 끝난 단계(`content-filter`)는 더하지
-  않는다. 그래서 실패한 차례 뒤의 요청에는 사람의 글이 잇달아 놓인다. reasoning 은 대화에 남고 앱에는 가지 않는다.
+- 코어는 채팅마다 대화(모델 메시지의 목록)를 메모리에 두고, 차례마다 지시문, 도구 정의, 그 대화, 새 글을 보낸다.
+  사람의 글은 차례가 어떻게 끝나든 대화에 남는다. 모델 요청의 단계가 끝나면 그 응답 메시지를 더하되, 오류로 끝난
+  단계(AI SDK 의 끝난 까닭 `error`), 끝을 알리기 전에 닫힌 단계(`interrupted`), 거절로 끝난 단계(`content-filter`)는
+  더하지 않는다. 그래서 실패한 차례 뒤의 요청에는 사람의 글이 잇달아 놓인다. 도구를 부른 단계는 호출과 그 결과를 함께
+  더하고, AI SDK 가 돌리지 않은 호출에는 코어가 결과를 단다("도구"). reasoning 은 대화에 남고 앱에는 가지 않는다.
   [계약; ADR-0012 "스트리밍", "상태를 넘기는 때"]
 - 코어는 차례를 시작할 때 코어의 시계와 시간대로 읽은 지금 시각을 사람의 글 앞에
   `[Current time: 2026-11-22T21:56:31+09:00 (Sunday), time zone: Asia/Seoul]` 꼴의 한 줄로 붙이고, 빈 줄 하나 뒤에
@@ -776,21 +780,24 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 - 앱은 환경을 비워 코어를 띄우므로(§7.1) 코어에는 `TZ` 가 없다. 그래도 빌드한 코어는 이 Mac 에 설정한 시간대,
   곧 `/etc/localtime` 이 가리키는 시간대를 읽는다. [실측: `core/tests/stdio/egress.test.ts`, macOS 27.3, Bun 1.4.5]
 - `delta` 는 답의 글만 싣고 reasoning 과 도구 입력은 싣지 않는다. 코어는 글을 50 ms 까지 모아 하나로 보내고, 하나가
-  UTF-8 로 4 KiB 를 넘지 않게 문자(code point) 사이에서 자른다. 차례가 끝나면 남은 글을 보낸 뒤 끝의 메시지를 쓴다.
-  [계약]
+  UTF-8 로 4 KiB 를 넘지 않게 문자(code point) 사이에서 자른다. `tool` 을 쓰기 전과 차례가 끝날 때는 남은 글을 먼저
+  보낸다. [계약]
 - `done` 의 `reason` 은 `stop`(모델이 답을 마쳤다), `length`(출력 토큰 한도에 닿았다), `content-filter`(제공자가
-  거절했다), `aborted`(`cancel`), `other`(그 밖의 까닭) 중 하나다. `input_tokens`·`output_tokens` 는 제공자가
+  거절했다), `step-limit`(모델 요청이 차례의 한도에 닿았다, "도구"), `aborted`(`cancel`), `other`(그 밖의 까닭) 중
+  하나다. 도구를 부른 단계에서 멈춘 차례는 `cancel` 이면 `aborted`, 한도면 `step-limit`, 그 밖이면 `other` 이고,
+  `length`·`content-filter` 는 그 단계에 호출이 있어도 그 까닭이다. `input_tokens`·`output_tokens` 는 제공자가
   알린 차례 전체의 입력·출력 토큰 수이고, 알리지 않았으면 `null` 이다. [계약]
 
 | `provider` | 차례 요청 | 키를 싣는 머리말 | 함께 싣는 것 |
 | --- | --- | --- | --- |
-| `anthropic` | `POST https://api.anthropic.com/v1/messages` | `x-api-key` | `anthropic-version: 2026-10-21`. 지시문은 `system` 에 `cache_control: {"type":"ephemeral"}` 과 함께 싣고, `temperature`·`top_p`·`top_k` 는 싣지 않는다 |
+| `anthropic` | `POST https://api.anthropic.com/v1/messages` | `x-api-key` | `anthropic-version: 2026-10-21`. 지시문은 `system` 에 `cache_control: {"type":"ephemeral"}` 과 함께 싣고, 몸의 맨 위에도 같은 `cache_control` 을 둔다("도구"). `temperature`·`top_p`·`top_k` 는 싣지 않는다 |
 | `openai` | `POST https://api.openai.com/v1/responses` | `authorization: Bearer <키>` | `store: false`. 지시문은 `input` 의 첫 메시지이고 reasoning 모델이면 `developer` 다 |
 | `google` | `POST https://generativelanguage.googleapis.com/v1beta/interactions` | `x-goog-api-key` | `store: false`. 지시문은 `system_instruction` 이다 |
 | `openai-compatible` | `POST <base_url>/chat/completions` | 키가 있을 때만 `authorization: Bearer <키>` | `stream_options: {"include_usage": true}`. 지시문은 `messages` 의 첫 `system` 메시지다 |
 
-모두 `stream: true` 의 server-sent events 요청이고, 몸은 `ai` 7.0.179 와 위 패키지가 만든다. [계약; 실측:
-`core/tests/chat-turn.test.ts` 가 손으로 쓴 응답으로 본 요청]
+모두 `stream: true` 의 server-sent events 요청이고, 몸은 `ai` 7.0.179 와 위 패키지가 만든다. 도구 정의 35개는 네
+제공자 모두 몸의 `tools` 에 실린다("도구"). [계약; 실측: `core/tests/chat-turn.test.ts`·`core/tests/chat-tools.test.ts` 가
+손으로 쓴 응답으로 본 요청]
 
 - OpenAI 의 reasoning 모델(카탈로그가 reasoning 모델로 아는 것)에는 AI SDK 가 `store: false` 일 때
   `include: ["reasoning.encrypted_content"]` 를 조건 없이 더한다. OpenAI 는 `store: false` 응답에도
@@ -809,10 +816,12 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 | `text` | 1 바이트~64 KiB | `invalid_message` |
 | 대화 | 다음 차례가 보낼 메시지 전체(지시문은 빼고)를 JSON 으로 적어 2 MiB | 요청 없이 `conversation_limit`. 그 채팅은 뒤의 차례도 받지 않는다 |
 | 모델 요청의 첫 출력 | 보낸 때부터 600초 | 차례를 멈추고 `timeout` |
-| 출력 사이 | 120초 | 차례를 멈추고 `timeout` |
-| 연결에 바이트가 오가지 않는 사이 | Bun 의 유휴 한도(기본 5분) | 차례를 멈추고 `timeout` |
+| 출력 사이 | 600초 | 차례를 멈추고 `timeout` |
+| 연결에 바이트가 오가지 않는 사이 | Bun 의 유휴 한도(문서의 기본 5분, 이 Mac 에서 잰 값 360초) | 차례를 멈추고 `timeout` |
 | 2xx 가 아닌 응답의 몸 | 64 KiB 까지 읽는다 | 나머지는 읽지 않는다 |
 | `delta` 하나 | 50 ms, UTF-8 4 KiB | 다음 `delta` 로 넘긴다 |
+| 모델 요청 | 한 차례에 20번 | 더 보내지 않고 `done` `step-limit` |
+| 도구 결과 하나 | 모델이 읽는 결과 봉투의 JSON 으로 64 KiB | §10.5 의 맞춤 규칙 |
 
 - [설계] 대화 한도 2 MiB 는 ADR-0012 "메모리와 크기" 가 구현 이슈에 맡긴 값이다. 대화 상태(`state`)가 한 차례가
   더하는 몫과 함께 4 MiB `data`(§7.4)에 들어가게 한다. 닿으면 앱은 새 채팅을 권한다. [ADR-0012 "상태를 넘기는 때",
@@ -837,6 +846,10 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   흘리는 길은 쓰지 않는다. 요청의 모양과 대화 상태가 바뀌고, OpenAI 와 Google 에는 같은 길이 없으며, OpenAI 의
   reasoning 요약은 조직 인증을 요구할 수 있기 때문이다 [추론]. 모델이 첫 출력 전에 얼마나 생각하는지는 재지
   않았다(§16).
+- [설계; 추론] 출력 사이도 600초인 까닭: 모델은 글을 쓴 뒤 다음 글이나 도구 호출 전에도 출력 없이 생각할 수 있고, 한도가
+  짧으면 첫 출력 전처럼 값을 치른 생각을 버린다. 도구가 도는 동안에는 이 한도가 돌지 않는다. AI SDK 는 모델의 응답이
+  끝난 뒤에 도구를 돌리고, 다음 요청은 첫 출력의 한도를 새로 켠다. [실측: `core/tests/chat-tools.test.ts` 의 11분 뒤 답한
+  변경] 모델이 글 사이에 얼마나 생각하는지는 재지 않았다(§16).
 - 연결에 바이트가 오가지 않는 사이는 Bun 의 유휴 한도가 끊는다. 바이트가 오갈 때마다 다시 켜지는 소켓 한도이고,
   문서의 기본은 5분이다. 코어의 나가는 길은 Bun 의 `timeout` 선택을 떨구므로 기본이 쓰인다. [문서: bun-types 1.4.5
   `BunFetchRequestInit.timeout`] 이 Mac 에서 머리말을 기다리는 요청과 머리말 뒤 몸을 기다리는 요청 모두 360초에
@@ -845,6 +858,92 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   `timeout` 으로 끝낸다. [문서: `@ai-sdk/provider-utils` 5.0.83 `isAbortError`; 실측:
   `core/tests/chat-turn.test.ts`] 그러므로 제공자가 생각하는 동안 바이트를 하나도 보내지 않으면 600초보다 먼저
   Bun 이 끊는다. 어느 제공자가 생각하는 동안 바이트(Anthropic 의 `ping` 등)를 보내는지는 확인하지 않았다(§16).
+
+#### 도구
+
+- 채팅의 모델은 MCP 와 같은 도구(§10.2)를 부른다. 차례는 도구 목록의 근거를 MCP 세션처럼 5초까지 기다린 뒤 첫 요청을
+  보낸다(§10.1). 호출은 MCP 의 `tools/call` 과 같은 처리기와 같은 호출 수명(`core/src/tools/call.ts`)으로 돌고,
+  처리기는 그 채팅 채널의 번호와 `client` `{"name":"sherpa-chat","version":"<코어 버전>"}` 을 받는다(§9). [계약;
+  ADR-0012 "도구"]
+- 모델에 보내는 입력 스키마는 zod 스키마의 JSON Schema 에서 `$schema` 키 35개와 `z.int()` 가 넣는 안전한 정수의
+  경계 쌍 145개를 뺀 것이다. 둘은 모델에 쓸모가 없고, 입력은 그대로 zod 스키마로 검사한다. 35개 도구의 이름·설명·입력
+  스키마를 Anthropic 요청의 `tools` 배열 모양으로 적으면 43,871자에서 33,901자로 준다. [계약; 실측: 2026-11-23 코어의
+  `modelSchema` 로 적은 배열의 길이]
+- 모델은 MCP 와 같은 결과 봉투(§10.5)를 읽는다. 봉투의 JSON 이 64 KiB 를 넘으면 §10.5 의 맞춤 규칙을 그 한도로 쓴다.
+  결과는 대화에 남아 그 채팅의 뒤 요청마다 다시 나가기 때문이다. [계약]
+- 한 차례의 모델 요청은 20번까지다. 스무째 요청이 도구를 불러 그 결과로 끝나면 더 보내지 않고 `done` `step-limit`
+  이다. 대화는 그 결과로 끝나고 다음 차례가 그 뒤에 이어진다. [소유자, 2026-11-22; 실측: `core/tests/chat-tools.test.ts`]
+- 한 단계의 호출은 모델이 준 차례대로 하나씩 돈다. 앱은 확인 창을 한 번에 하나만 띄우고(§9), 다른 호출 뒤에서 기다린
+  창은 30초를 이미 썼을 것이기 때문이다. [계약]
+- `tool` 은 호출마다 두 번 온다. 호출이 시작할 때 `status` `started` 로, 끝날 때 그 끝으로 온다. 도구 인자와 결과는
+  싣지 않는다. [계약; ADR-0012 "앱과 코어 사이 채널"]
+  - `call_id`: 채널마다 1부터 세는 호출 번호. 한 호출의 둘이 같은 번호를 쓰고, 그 채널의 뒤 차례는 이어서 센다. 앱은
+    같은 채널 안에서만 둘을 짝짓는다.
+  - `name`: 코어 등록부의 도구 이름. 모델이 코어에 없는 도구를 불렀으면 `null` 이다. 모델이 지어낸 이름은 모델의
+    출력이기 때문이다.
+  - `status`: `started`, `succeeded`, `failed`, `partial`, `uncertain`, `declined`, `withdrawn` 중 하나. 끝의
+    상태는 결과 봉투의 `status` 이되, 확인 창에서 거부한 호출은 `declined`, 사람의 `cancel` 이 바뀐 것 없이 거둔 호출은
+    `withdrawn` 이다. `partial`·`uncertain` 은 변경이 일어났거나 일어났을 수 있다는 뜻이므로 앱은 `failed` 로 읽지
+    않는다(§10.5).
+  - `code`: 끝의 오류 코드. 결과 봉투의 `error.code` 이거나 아래 표의 채팅 코드이고, `started` 와 오류 없는 끝은
+    `null` 이다.
+  - `operation_id`: 결과 봉투의 `operation_id`. `started` 와 `operation_id` 가 없는 끝은 `null` 이다.
+
+| `code` | 결과 봉투 | `tool` 의 끝 | 언제 |
+| --- | --- | --- | --- |
+| `chat.cancelled` | `failed`, 효과 `not_started`, `retry` `after_user_action` | `withdrawn` | 사람의 `cancel` 이 바뀐 것 없이 거둔 호출, 그 뒤라 시작하지 않은 호출 |
+| `chat.invalid_call` | 없다. 모델은 AI SDK 의 오류 글을 그 호출의 결과로 읽는다 | `failed` | 코어에 없는 도구나 스키마가 거절한 인자. AI SDK 가 돌리기 전에 거절했다 |
+| `chat.not_run` | `failed`, 효과 `not_started`, `retry` `safe` | `failed` | AI SDK 가 돌리지 않은 호출. 그 단계가 `stop`·`tool-calls` 밖의 까닭으로 끝났다 |
+
+- 세 봉투의 `capability` 는 그 도구의 것이고 `operation_id`·`evidence`·`result` 는 `null`, 효과의 `kind` 는 그
+  도구의 효과 부류가 정한다. `chat.cancelled` 의 `retry` 가 `after_user_action` 인 것은 사람이 멈췄기 때문이고,
+  `chat.not_run` 이 `safe` 인 것은 아무도 멈추지 않았고 아무것도 바뀌지 않았기 때문이다. [계약]
+- 차례: 답의 글과 호출마다의 `started`·끝이 일어난 차례대로 오고, 끝에 `done` 이나 `error` 가 온다. 코어는 `tool` 을
+  쓰기 전에 모은 글을 먼저 보낸다. AI SDK 가 거절한 호출의 둘은 답이 흐르는 동안, 돌리지 않은 호출의 둘은 그 단계가
+  끝난 뒤 `done` 앞에 온다. 번호는 앱이 `started` 를 받은 차례이므로, 한 단계에 둘이 섞이면 모델이 부른 차례와 다를
+  수 있다. [계약; 실측: `core/tests/chat-tools.test.ts`]
+- `cancel` 이 한 단계의 호출이 도는 동안 오면, 바뀐 것이 없는 호출(확인을 기다리는 것 포함)은 거두고, planner 읽기는
+  끊고, 뒤의 호출은 시작하지 않으며, 다음 모델 요청은 보내지 않는다. 시작하지 않은 뒤의 호출도 `started` 뒤에
+  `withdrawn` 을 받는다. 변경을 이미 청한 호출(앱에 작업 요청을 보냈거나, 허용 뒤 명령을 시작한 것)은 끝까지 기다려
+  모델과 사람이 그 결과를 알게 한다. 앱은 보낸 작업 요청을 끝까지 실행한다(§7.8). 코어가 스스로 도는 읽기(SQLite
+  읽기와 명령)도 신호를 받지 않아 그 한도까지 돌고 결과를 남긴다. 그 단계는 결과와 함께 대화에 남고, 차례는 `done`
+  `aborted` 로 끝나며 토큰 수는 끝난 단계들의 것이다. [계약; 실측: `core/tests/chat-tools.test.ts`]
+- 모델이 도구를 부른 뒤 그 응답이 끝나기 전에 온 `cancel` 은 모델 요청 중의 것과 같다. AI SDK 는 응답이 끝난 뒤에야
+  호출을 돌리므로 아무 도구도 돌지 않고, 그 단계는 대화에 남지 않으며, 토큰 수는 `null` 이다. [계약; 문서: `ai`
+  7.0.179 `src/generate-text/execute-tools-from-stream.ts`; 실측: `core/tests/chat-tools.test.ts`]
+- 채널이 닫히면 도는 호출의 결과는 아무에게도 닿지 않는다. 앱에 보낸 작업 요청은 앱이 끝까지 실행하고 기록부에
+  남긴다(§7.8). [계약; 실측: `core/tests/chat-tools.test.ts`]
+- 호출에는 코어가 따로 두는 시간 한도가 없고, 도구가 도는 동안에는 모델 요청의 한도도 돌지 않는다. 채팅에 넘기는
+  도구는 저마다 자기 한도를 갖는다. 한도 없는 비동기 기다림을 가진 도구를 더하는 것은 결함이다. 지금의 한도는 planner
+  도구가 작업 마감 20초와 여유 5초(§8), 확인을 거치는 planner 삭제가 미리보기 읽기를 포함한 확인 30초(§9)와 그 25초,
+  `imessage_send` 가 확인 30초와 `osascript` 60초, `mail_send` 가 확인 30초와 `osascript` 120초다. 나머지 core
+  도구는 동기 SQLite 읽기이거나 10초나 30초 한도의 명령이다. AI SDK 의 `timeout.toolMs` 는 쓰지 않는다. 호출이 받은
+  신호를 끊을 뿐이라, 신호를 받지 않는 처리기는 멈추지 않기 때문이다. [계약; 문서: `ai` 7.0.179
+  `src/generate-text/execute-tool-call.ts`; 실측: `core/tests/chat-tools.test.ts` 의 11분 뒤 답한 변경]
+- 그래서 `mail_send` 하나는 150초까지 돈다. 그동안 앱이 무엇을 보일지는 구현 단계 5(bunny-holes/sherpa#67)가 정한다.
+  [계약]
+- AI SDK 는 한 단계의 호출을 그 단계가 `stop` 이나 `tool-calls` 로 끝났을 때만 돌린다. 출력 토큰 한도(`length`)나
+  그 밖의 까닭(`other`)으로 끝난 단계의 호출은 돌지 않고, 결과가 없는 호출이 있으면 다음 단계도 보내지 않는다. 결과
+  없는 호출이 든 대화는 AI SDK 가 요청 전에 거절하므로(`MissingToolResultsError`), 코어는 남기는 단계의 호출 가운데
+  결과가 없는 것마다 `chat.not_run` 결과를 호출의 차례대로 단다. 앱은 그 호출마다 `started` 와 `failed`·`chat.not_run`
+  을 받고 warn 로그가 남는다(§12). 차례는 `done` `length` 나 `other` 로 끝나고, 대화는 그 결과로 끝나며, 다음 차례의
+  요청이 나간다. 코어는 끝난 까닭이 아니라 결과가 없는 호출을 잡으므로, 뒤의 AI SDK 가 다른 까닭으로 실행을 막아도
+  같다. [계약; 문서: `ai` 7.0.179 `src/generate-text/execute-tools-from-stream.ts`,
+  `src/generate-text/stream-text.ts`, `src/prompt/convert-to-language-model-prompt.ts`; 실측:
+  `core/tests/chat-tools.test.ts`]
+- 출력 토큰 한도가 인자 JSON 한가운데를 끊은 호출은 AI SDK 가 잘못 만든 호출로 읽는다(`chat.invalid_call`). 한 단계의
+  호출이 모두 결과(AI SDK 의 오류도 결과다)를 가지면 AI SDK 는 끝난 까닭과 관계없이 다음 단계를 보내므로, 모델은 같은
+  차례의 다음 요청에서 그 오류를 읽고 차례가 이어진다. OpenAI 호환과 Anthropic 패키지는 끊긴 인자를 그대로 넘겨 이
+  길로 간다. [실측: `core/tests/chat-tools.test.ts`; 문서: `ai` 7.0.179 `src/generate-text/stream-text.ts`]
+- 한계: 도구를 부른 응답을 `tool_calls`·`function_call`·`stop` 밖의 까닭으로 끝내는 OpenAI 호환 서버에서는 도구가
+  하나도 돌지 않고, 그 차례는 `chat.not_run` 과 `done` `other` 로 끝난다. `@ai-sdk/openai-compatible` 3.0.94 는 그
+  셋 밖의 까닭을 `other` 로, `length` 를 `length` 로 읽는다. 어느 서버가 그런지는 확인하지 않았다(§16). [문서:
+  `@ai-sdk/openai-compatible` 3.0.94 `mapOpenAICompatibleFinishReason`; 실측: `core/tests/chat-tools.test.ts`]
+- Anthropic 요청은 캐시 표시를 둘 싣는다. 지시문의 `system` 블록에 하나를 달고, 몸의 맨 위에 `cache_control` 을 두어
+  Anthropic 이 대화의 마지막 블록에 표시를 옮기게 한다(자동 캐시). 캐시하는 접두는 도구, 지시문, 대화의 차례라 지시문의
+  표시가 도구 정의를 덮으므로 도구에는 표시를 달지 않는다. 두 표시 모두 기본 5분 수명이다. [계약; 문서: Claude [Prompt
+  caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching); 실측: `core/tests/chat-tools.test.ts`]
+  실제 API 가 그 접두를 읽는지(`cache_read_input_tokens`)는 재지 않았다(§16).
 
 #### 재시도
 
@@ -860,16 +959,18 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   않는다. [계약; 문서:
   `@ai-sdk/provider-utils` 5.0.83 `handleFetchError`, `@ai-sdk/openai` 4.0.122 `throwIfOpenAIStreamErrorBeforeOutput`,
   `@ai-sdk/anthropic` 4.0.107 `doStream`; 실측: `core/tests/chat-turn.test.ts`]
+- 도구를 부른 단계 뒤의 요청이 응답 전에 실패해 AI SDK 가 다시 보내면, 몸은 처음과 같고 도구는 다시 돌지 않는다. [실측:
+  `core/tests/chat-tools.test.ts`]
 - 처음 요청 뒤 두 번까지, 2초 뒤와 그 4초 뒤에 보낸다. 실패한 응답의 `retry-after-ms` 나 `retry-after` 가 0 이상
   60초 미만이면 그 값만큼 기다린다. [문서: `ai` 7.0.179 `src/util/retry-with-exponential-backoff.ts`; 실측:
   `core/tests/chat-turn.test.ts`]
 - 첫 출력의 한도는 다시 보낸 요청마다 새로 켜진다. 상태로 실패한 요청 뒤의 기다림은 그 몸을 읽은 뒤이므로 한도에
   들지 않는다. 2xx 로 흐르다 첫 출력 전에 오류를 보낸 응답은 fetch 가 성공했으므로 한도를 끄지 않고, 그 뒤의
   기다림은 다음 요청이 한도를 새로 켤 때까지 그 요청의 한도에 든다. 그러므로 첫 출력까지 가장 오래 기다리는 것은
-  요청 셋의 600초와 기다림 둘의 60초 미만을 합한 1,920초 미만이다. 첫 출력 뒤에는 출력 사이가 120초를 넘으면
+  요청 셋의 600초와 기다림 둘의 60초 미만을 합한 1,920초 미만이다. 첫 출력 뒤에는 출력 사이가 600초를 넘으면
   끝난다. 답 전체의 길이에는 시간 한도가 없다. [계약]
-- 1판의 `turn` 은 `text` 를 반드시 싣는다. 같은 글로 새 `turn` 을 보내면 대화에 그 글이 두 번 남으므로, 도구를
-  넣는 작업(#66)이 `text` 없는 `turn` 을 더한다. 그 `turn` 은 새 글 없이 대화를 그대로 다시 보내고, 대화의 마지막
+- 1판의 `turn` 은 `text` 를 반드시 싣는다. 같은 글로 새 `turn` 을 보내면 대화에 그 글이 두 번 남으므로, #66 의
+  다음 작업이 `text` 없는 `turn` 을 더한다. 그 `turn` 은 새 글 없이 대화를 그대로 다시 보내고, 대화의 마지막
   메시지가 사람의 글이나 도구 결과일 때만 받는다. 흔한 채팅 앱의 다시 만들기와 같고, 끝난 도구 호출을 되풀이할 길도
   줄인다. [설계]
 - [설계] 모델 목록과 달리 차례에서 다시 보내는 까닭: 다시 보내는 요청은 출력 전의 것뿐이라 앱이 본 것도 도구가 한
@@ -893,7 +994,7 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 | `provider_rejected` | 거짓 | 그 밖의 4xx | 제공자가 요청을 거절했다. 목록 끝점이 없는 OpenAI 호환 서버의 404 도 이것이다 |
 | `provider_invalid_response` | 거짓 | 그 응답의 상태. 차례에서는 `null` | 2xx 인데 몸이 한도를 넘거나, UTF-8 JSON 이 아니거나, 모양이 다르다. 차례에서는 흐름이 패키지가 읽지 못하는 모양이거나 끝난 까닭 없이 끝났다 |
 | `conversation_limit` | 거짓 | `null` | 대화가 한도를 넘는다. 그 채팅은 뒤의 차례도 받지 않는다 |
-| `internal` | 거짓 | `null` | 코어의 결함 |
+| `internal` | 거짓 | `null` | 코어의 결함. 코어가 만든 대화를 AI SDK 가 요청 전에 거절한 것(결과 없는 도구 호출 등)도 이것이다 |
 
 - `retryable` 이 참이면 앱은 "다시" 를 보이고, 누르면 새 `list_models` 나 새 `turn` 이다. 코어는 `list_models` 를
   스스로 다시 보내지 않는다(차례는 "재시도"). HTTP 상태는 AI SDK 의 `APICallError` 처럼 읽는다(408·409·429·5xx 가
@@ -909,6 +1010,10 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   Anthropic 흐름에는 끝난 까닭이 없고, OpenAI 호환 패키지는 끝난 까닭 없이 닫힌 흐름을 오류로 알리므로 둘은
   `provider_invalid_response` 다. [계약; 문서: `@ai-sdk/anthropic` 4.0.107, `@ai-sdk/openai` 4.0.122,
   `@ai-sdk/google` 4.0.124, `@ai-sdk/openai-compatible` 3.0.94 의 `dist/index.js`; 실측: `core/tests/chat-turn.test.ts`]
+- 코어가 만든 대화를 AI SDK 가 요청 전에 거절하면(`MissingToolResultsError`, `InvalidPromptError`,
+  `InvalidMessageRoleError`, `MessageConversionError`) 제공자가 아니라 코어의 결함이므로 `internal` 이다. 요청은
+  나가지 않고 error 로그가 남아(§12) 같은 구멍이 다시 생기면 드러난다. [계약; 문서: `ai` 7.0.179
+  `src/prompt/convert-to-language-model-prompt.ts`; 실측: `core/tests/chat-tools.test.ts`]
 - Bun 1.4.5 의 `fetch` 는 믿지 않는 인증서를 `TypeError` 로 거부하고, 그 `code` 에 Node 의 OpenSSL 오류
   이름(`DEPTH_ZERO_SELF_SIGNED_CERT`, `SELF_SIGNED_CERT_IN_CHAIN`, `UNABLE_TO_VERIFY_LEAF_SIGNATURE` 등)을 싣는다.
   코어는 그 이름들과 `ERR_TLS_CERT_ALTNAME_INVALID` 를 `provider_certificate` 로, 그 밖의 연결 실패를 `network` 로
@@ -935,6 +1040,16 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 ← 3\tdata\t{"type":"delta","text":"안녕하세요. "}\n
 ← 3\tdata\t{"type":"delta","text":"무엇을 도와드릴까요?"}\n
 ← 3\tdata\t{"type":"done","reason":"stop","input_tokens":812,"output_tokens":14}\n
+→ 3\tdata\t{"type":"turn","provider":"anthropic","api_key":"sk-ant-…","model":"claude-sonnet-5-5","text":"내일 점심 약속 지워줘"}\n
+← 3\tdata\t{"type":"delta","text":"찾아볼게요."}\n
+← 3\tdata\t{"type":"tool","call_id":1,"name":"event_list","status":"started","code":null,"operation_id":null}\n
+← 3\tdata\t{"type":"tool","call_id":1,"name":"event_list","status":"succeeded","code":null,"operation_id":"op-…"}\n
+← 3\tdata\t{"type":"tool","call_id":2,"name":"event_delete","status":"started","code":null,"operation_id":null}\n
+← 0\tconfirm\t{"id":7,"tool":"event_delete","operation_id":"op-…","channel":3,"client":{"name":"sherpa-chat","version":"0.8.6"},"title":"…","lines":[…],"timeout_ms":29400}\n        미리보기를 읽은 뒤
+→ 0\tconfirmation\t{"id":7,"decision":"declined"}\n
+← 3\tdata\t{"type":"tool","call_id":2,"name":"event_delete","status":"declined","code":"confirmation.declined","operation_id":"op-…"}\n
+← 3\tdata\t{"type":"delta","text":"지우지 않았어요."}\n
+← 3\tdata\t{"type":"done","reason":"stop","input_tokens":2871,"output_tokens":96}\n
 → 3\tdata\t{"type":"turn","provider":"anthropic","api_key":"sk-ant-…","model":"claude-sonnet-5-5","text":"내일 일정은?"}\n
 → 3\tdata\t{"type":"cancel"}\n
 ← 3\tdata\t{"type":"done","reason":"aborted","input_tokens":null,"output_tokens":null}\n
@@ -1047,6 +1162,10 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   이미 쓴 번호(스위치가 닫았거나 중계가 끝난 채널)와 그 코어가 아직 쓰지 않은 번호가 그렇다. 꺼진 동안 온 `mcp`
   채널의 `confirm` 은 닫힌 채널의 호출이다. 거부는 스위치가 아니라 채널이 열려 있는지로 정하므로, 열린 채팅 채널의
   호출이 부른 확인은 MCP 가 꺼져 있어도 창을 띄운다. [계약; ADR-0012 "확인 흐름"]
+- 채팅 채널의 호출(§7.11 "도구")도 같은 흐름이다. `confirm` 의 `channel` 은 그 채팅 채널의 번호이고 `client` 는 코어가
+  정한 `{"name":"sherpa-chat","version":"<코어 버전>"}` 이다. 채팅의 `cancel` 은 기다리는 확인을 흐름 4 대로 거둔다.
+  창이 채팅의 확인임을 어떤 글로 밝히는지는 구현 단계 5(bunny-holes/sherpa#67)가 정한다. [계약; 실측:
+  `core/tests/chat-tools.test.ts`]
 - 3판의 앱은 `mcp` 채널만 연다. 앱이 채팅 채널을 여는 것은 ADR-0012 구현 단계 5(bunny-holes/sherpa#67)이고, MCP 가
   꺼진 동안 채팅의 확인이 창을 띄우는지와 스위치를 끌 때 그 창이 남는지를 끝까지 보는 시험도 그 단계가 더한다.
   지금의 시험은 `mcp` 채널 쪽만 본다(§13.2, §16). [계약]
@@ -1249,7 +1368,7 @@ result         object | null
 - 크기: 직렬화한 text 블록이 1 MiB 를 넘으면 worker-protocol 의 맞춤 규칙을 그대로 쓴다. `result` 와
   `warnings` 를 버리고 상관 값, 효과, 증거는 남긴다. 효과가 `applied` 나 `may_have_applied` 면 `partial`(이미
   `uncertain` 이면 그대로), 아니면 `failed` 이고, 둘 다 `protocol.result_too_large`·`never` 다. 읽기에는
-  범위나 `limit` 을 줄이라는 `remedy` 를 단다. [계약] Claude Code 는 25,000 토큰을 넘는 성공 결과를 파일로
+  범위나 `limit` 을 줄이라는 `remedy` 를 단다. 채팅은 같은 규칙을 64 KiB 에 쓴다(§7.11 "도구"). [계약] Claude Code 는 25,000 토큰을 넘는 성공 결과를 파일로
   돌리고 10,000 토큰부터 경고한다. [문서: Claude Code MCP] Codex 는 모델의 기본 출력 예산에서 도구 출력을
   자르고, 도구마다 `tools.<도구>.output_token_limit` 로 그 예산을 바꾼다. [문서: Codex MCP] 기본 예산 값은
   문서에 없다. [미확인] `result` 를 맨 뒤에 둔 것이 두 에이전트의 자르기에 대비한다. [추론]
@@ -1290,6 +1409,9 @@ result         object | null
 | `confirmation.declined` | `failed` | `after_user_action` | 사람이 거부했다 |
 | `confirmation.timed_out` | `failed` | `after_user_action` | 30초 안에 답이 없었다 |
 | `confirmation.unavailable` | `failed` | `after_backoff` | 앱이 확인 창을 띄울 수 없었다. 그 호출의 채널이 앱에 열려 있지 않거나 본문이 잘못된 때도 같다(§9) |
+| `chat.cancelled` | `failed` | `after_user_action` | 채팅의 `cancel` 이 바뀐 것 없이 거둔 호출(§7.11 "도구") |
+| `chat.not_run` | `failed` | `safe` | AI SDK 가 돌리지 않은 채팅의 호출(§7.11 "도구") |
+| `chat.invalid_call` | — | — | 채팅의 `tool` 메시지에만 쓴다. 모델은 AI SDK 의 오류 글을 읽는다(§7.11 "도구") |
 | `mux.frame_invalid`, `mux.frame_too_large`, `mux.unexpected_frame`, `mux.version_unsupported` | — | — | 코어의 `fatal` 프레임에만 쓴다 |
 
 기존 코드(`protocol.*`, `eventkit.*`, `imessage.*`, `kakaotalk.*`, `mail.*`, `journal.*`, `sherpa.*`)는 그대로
@@ -1364,7 +1486,7 @@ result         object | null
 - 채팅 채널(§7.11)의 줄은 아래와 같다. 키, 메시지 본문(사람의 글, 지금 시각 줄, 모델의 답), 제공자 요청·응답 몸은
   싣지 않는다. 제공자는 이름으로만 적고 `base_url` 과 그 출처, 모델 id 도 싣지 않는다. 앞의 세 제공자는 이름이 출처를
   정하고, OpenAI 호환의 출처는 사람이 적은 호스트 이름이며, OpenAI 호환의 모델 id 도 사람이 적은 값이다. [계약; 줄은
-  `core/src/chat/session.ts`·`core/src/chat/turn.ts`]
+  `core/src/chat/session.ts`·`core/src/chat/turn.ts`·`core/src/chat/calls.ts`·`core/src/tools/call.ts`]
   - `info [core:chat:list-models] start channel=N provider=<제공자>`
   - `info [core:chat:list-models] success channel=N provider=<제공자> models=<수> pages=<요청 수> skipped=<뺀 id 수> truncated=<true|false> ms=<걸린 시간>`
   - `warn [core:chat:list-models] failure channel=N provider=<제공자> code=<코드> status=<HTTP 상태|none> ms=<걸린 시간>`:
@@ -1374,7 +1496,7 @@ result         object | null
   - `warn [core:chat:list-models] refused channel=N reason=busy`
   - `debug [core:chat:load] success ms=<걸린 시간>`: AI SDK 와 네 제공자를 실었다. 프로세스의 첫 차례에서 한 번이다.
   - `info [core:chat:turn] start channel=N provider=<제공자>`
-  - `info [core:chat:turn] success channel=N provider=<제공자> reason=<stop|length|content-filter|other> steps=<단계 수> input_tokens=<수|none> output_tokens=<수|none> ms=<걸린 시간>`:
+  - `info [core:chat:turn] success channel=N provider=<제공자> reason=<stop|length|content-filter|step-limit|other> steps=<단계 수> input_tokens=<수|none> output_tokens=<수|none> ms=<걸린 시간>`:
     `done` 으로 끝난 차례. 단계는 끝난 모델 요청이다.
   - `info [core:chat:turn] cancelled channel=N provider=<제공자> steps=<단계 수> ms=<걸린 시간>`: `cancel` 로 멈춘 차례.
   - `warn [core:chat:turn] failure channel=N provider=<제공자> code=<코드> status=<HTTP 상태|none> steps=<단계 수> ms=<걸린 시간>`:
@@ -1383,6 +1505,17 @@ result         object | null
   - `info [core:chat:turn] abandoned channel=N provider=<제공자> ms=<걸린 시간>`: 채널이 닫혀 멈춘 차례.
   - `warn [core:chat:turn] refused channel=N reason=<busy|egress_denied|other_chat|conversation_limit>`: 요청 전에
     거절한 차례. `other_chat` 은 이 채팅의 것이 아닌 `turn` 이고 `invalid_message` 로 답한다.
+  - `info [core:chat:tool-call] start channel=N tool=<도구>`, `info [core:chat:tool-call] success channel=N tool=<도구> status=<상태> code=<코드|none> operation_id=<id|none> ms=<걸린 시간>`:
+    모델이 부른 호출(§7.11 "도구"). MCP 와 같은 호출 수명의 줄이고 결과는 채팅의 한도로 맞춘 것이다. `failed` 로 끝난
+    호출은 `warn [core:chat:tool-call] failure …` 이고, 던진 처리기는 그 앞에 `error [core:chat:tool-call] failure
+    channel=N tool=<도구> error_type=<오류 이름>` 을 남긴다.
+  - `info [core:chat:tool-call] abandoned channel=N tool=<도구> ms=<걸린 시간>`: 결과 없이 끝난 호출. `cancel` 이 거둔
+    호출과 채널이 닫힌 호출이다.
+  - `info [core:chat:tool-call] withdrawn channel=N tool=<도구>`: `cancel` 뒤라 시작하지 않은 호출.
+  - `warn [core:chat:tool-call] invalid channel=N tool=<도구|unknown>`: AI SDK 가 돌리기 전에 거절한 호출.
+  - `warn [core:chat:tool-call] not_run channel=N tool=<도구|unknown>`: AI SDK 가 돌리지 않은 호출.
+  - 코어에 없는 도구 이름은 `unknown` 이다. 모델이 지어낸 이름은 모델의 출력이므로 어느 줄에도 싣지 않는다. 도구 인자와
+    결과도 싣지 않는다.
   - `warn [core:chat:message] refused channel=N reason=<not_json|unknown_type|schema> bytes=<바이트 수>`
   - `warn [core:chat:open] refused channel=N reason=chat_limit chats=4`
 - AI SDK 의 경고(`core/src/chat/warnings.ts`)는 경고마다
@@ -1397,7 +1530,7 @@ result         object | null
   제공자 id. [계약]
 - 남기면 안 되는 값: MCP 메시지 본문, 도구 인자와 결과, 확인 미리보기, 제목·이름·전화번호·메일 주소·대화
   id·`native_locator`, 메시지와 메일 본문, 홈 경로와 사용자 이름이 든 경로(소켓 절대 경로 포함), API 키, 채팅
-  메시지 본문, 제공자 요청·응답 몸, OpenAI 호환의 `base_url` 과 그 출처, 채팅의 모델 id. [계약;
+  메시지 본문, 제공자 요청·응답 몸, OpenAI 호환의 `base_url` 과 그 출처, 채팅의 모델 id, 모델이 지어낸 도구 이름. [계약;
   아키텍처 품질 목표 6, worker-protocol 의 "Sensitive values"]
 
 ## 13. 시험 층
@@ -1421,7 +1554,7 @@ result         object | null
   ·연결 실패의 코드와 `retryable`, `busy`, `timeout`, 닫힘의 중단, 다섯째 채널의 `chat_limit`, 로그(debug 포함)와
   다른 프레임에 키가 없음. 런타임 `fetch` 는 나가는 길 뒤의 가짜다.
 - 글 차례(§7.11, `chat-turn.test.ts`): 네 제공자마다 나가는 요청의 URL·머리말·몸(키는 머리말에만, Anthropic 의 판과
-  지시문의 캐시 제어와 표집 설정·`thinking` 없음과 아는 모델의 `max_tokens` 128,000, OpenAI 의 `store: false` 와 reasoning
+  지시문과 대화의 캐시 제어와 표집 설정·`thinking` 없음과 아는 모델의 `max_tokens` 128,000, OpenAI 의 `store: false` 와 reasoning
   모델에만 붙는 옛 `include`, Google 의 Interactions 와 `store: false`, OpenAI 호환의 `stream_options`)과 `done` 의
   토큰 수, Anthropic 이 모르는 모델의 `max_tokens`(128,000 과 4,096)와 그 경고와 `length`, 50 ms 의 `delta` 와 4 KiB 를
   문자 사이에서 자르기, 대화의 이어짐(오류·끊김·거절로 끝난 단계는 빠지고, reasoning 은 서명과 함께 남되 앱에 가지
@@ -1432,10 +1565,26 @@ result         object | null
   의 첫 출력 전 흐름 오류는 세 번, `onError` 를 넘겨도 출력 뒤의 흐름 오류는 한 번과 그 코드), 짧게 줄인 첫 출력과
   출력 사이의 한도(첫 출력 한도는 한 번 보내고 끝남, 상태로 실패한 뒤의 기다림은 한도에 들지 않음), 가짜 시계 위의
   600초 한도(한도 1초 전에 첫 출력 전 오류를 보낸 OpenAI 응답 뒤에 다시 보낸 요청은 한도를 새로 켜, 첫 요청의 마감
-  뒤에 답해도 `timeout` 이 아님), Bun 의 유휴 한도가 머리말 전·몸 도중·출력 뒤에 던지는
+  뒤에 답해도 `timeout` 이 아님), 가짜 시계 위에서 출력마다 새로 켜지는 출력 사이의 600초, Bun 의 유휴 한도가 머리말 전·몸 도중·출력 뒤에 던지는
   `TimeoutError` 가 한 번 보내고 `timeout` 으로 끝남, 2 MiB 대화 한도, 로그(debug 포함)에 키·글·답이 없음. 모든 시험은
   패키지가 아는 모델 id 를 쓰고, 기대하지 않은 AI SDK 경고가 하나라도 나오면 실패한다. 응답은 손으로 쓴 server-sent
-  events 다.
+  events 이고, 네 제공자의 응답 모양은 `tests/support/provider-events.ts` 가 `chat-tools.test.ts` 와 함께 쓴다.
+- 도구(§7.11 "도구", `chat-tools.test.ts`): planner 의 서술자로 지은 35개 도구를 `app serve` 처럼 넘긴 채팅이 네
+  제공자에 도구 정의를 `$schema` 와 안전한 정수의 경계 없이 보내고 결과 봉투를 그 호출의 id 로 돌려받음, 호출이 호출
+  수명을 거쳐 `tool` 둘로 앱에 알려지고 그 앞의 글이 먼저 감, 한 단계의 호출이 하나씩 모델이 준 차례대로 돎, 도구 단계
+  뒤 실패한 요청을 다시 보내도 도구는 다시 돌지 않음, 20번째 요청 뒤의 `step-limit` 과 그 뒤 차례, 64 KiB 맞춤(읽기는
+  `failed`, 일어난 변경은 `partial`), 잘못 만든 호출과 없는 도구의 `chat.invalid_call`(이름 `null`, 로그 `unknown`),
+  채널마다 1부터 이어 세는 번호, 11분 뒤 답한 변경, 확인 창의 거부와 30초 초과와 그 `channel`·`client`, 호출 중의
+  `cancel`(기다리는 창을 거둠, planner 읽기를 끊음, 청한 변경은 끝까지 기다림, core 의 보내기와 읽기는 끝까지 돎,
+  응답이 끝나기 전에는 아무것도 돌지 않고 남지 않음), 호출 중 닫힌 채널, AI SDK 가 돌리지 않은 호출(OpenAI 호환과
+  Anthropic 의 `length`, OpenAI 호환의 모르는 까닭에서 `chat.not_run` 봉투와 `tool` 둘과 warn 줄과 다음 차례의
+  요청, 앞의 글이 먼저 감, 잘못 만든 호출과 섞이면 결과가 호출 차례대로, 번호가 이어짐), 인자 한가운데서 끊긴 호출은
+  잘못 만든 호출로 읽혀 차례가 이어짐, 결과 없는 호출이 든 대화는 요청 없이 `internal` 과 error 줄 하나, Anthropic 의
+  맨 위 `cache_control` 과 표시 없는 도구, 로그에 인자·결과·지어낸 이름이 없음. 기대하지 않은 AI SDK 경고가 하나라도
+  나오면 실패한다.
+- 호출의 되돌릴 수 없는 때(`mcp-tools.test.ts`): planner 변경은 요청을 보내는 같은 차례에, 삭제와 보내기는 허용 뒤 그
+  요청이나 명령 바로 앞에, core 읽기는 명령 바로 앞에 `committed` 를 알리고, 그 뒤에 끊긴 신호는 그 걸음을 멈추지
+  않으며, 그 걸음 전에 끝난 호출은 알리지 않는다. 채팅의 `cancel` 은 이것으로 거둘 호출을 가린다.
 - AI SDK 의 울타리: `ai` 7.0.179 의 `generateText`·`streamText`·`embed` 에 문자열 모델 id 를 주면 기본 제공자가
   요청 전에 `egress_denied` 로 거부하고, 그 전역과 경고의 전역은 다시 쓰지 못하며, SDK 의 경고는 `details`·`message`
   없이 Sherpa 로그로만 간다(`chat-sdk-globals.test.ts`; 시험 파일마다 프로세스가 따로라 진짜 전역을 바꾼다). 코어가
@@ -1731,6 +1880,11 @@ not json\n                                                                      
   쓴 응답과 같은지, 실패한 차례 뒤 잇달아 놓인 사람의 글을 OpenAI·Google·OpenAI 호환이 받는지. 지금의 모델이 첫
   출력 전에 얼마나 생각하는지와, 그동안 제공자가 바이트(Anthropic 의 `ping` 등)를 보내는지. 보내지 않으면 코어의
   600초보다 먼저 Bun 의 유휴 한도가 차례를 끊는다. 유료 호출이라 소유자 실기(bunny-holes/sherpa#68)에서 잰다.
+- 채팅의 도구(§7.11 "도구"): 네 제공자의 실제 API 가 코어의 도구 정의를 받는지, 실제 도구 왕복(Google 은 모의
+  서버로도 재지 않았다), Anthropic 의 캐시가 실제로 읽히는지(`cache_read_input_tokens`), 모델이 글 뒤나 출력 사이에
+  얼마나 생각하는지와 그동안 바이트(`ping` 등)를 보내는지, 도구를 부른 응답을 `tool_calls`·`function_call`·`stop`
+  밖의 까닭으로 끝내는 OpenAI 호환 서버가 있는지. 그런 서버에서는 도구가 하나도 돌지 않는다. 유료 호출이라 소유자
+  실기(bunny-holes/sherpa#68)에서 잰다.
 - 채팅 채널의 모델 목록(§7.11): 네 제공자의 실제 목록 응답이 문서의 모양과 같은지, Anthropic 의 `/v1/models` 가
   `anthropic-version: 2026-10-21` 을 받는지, Google 이 `pageSize=1000` 을 받는지. 목록은 유료 호출이 아니지만
   소유자의 키가 있어야 하므로 소유자 실기(bunny-holes/sherpa#68)에서 잰다. 시스템 프록시 뒤의 https 출처에 빌드한

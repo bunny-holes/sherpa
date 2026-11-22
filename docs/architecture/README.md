@@ -51,8 +51,9 @@ sherpa — Bun + TypeScript core (one compiled executable, core/)
     |-- kakaotalk/ -------- KakaoTalk SQLCipher reads, key derivation, setup,
     |                       local-text checkpoint
     |-- chat/ ------------- egress, the core's only way to the network (ADR-0012);
-    |                       chat sessions, model lists, and text turns through
-    |                       the AI SDK (app-connection-v1 §7.11)
+    |                       chat sessions, model lists, and turns through the
+    |                       AI SDK, whose model calls the MCP tools
+    |                       (app-connection-v1 §7.11)
     `-- apple/ ------------ hands Worker Protocol V2 requests to the helper
             |
             v
@@ -137,12 +138,12 @@ only the requests of the model list and the turns. The
 app listens only on its Unix socket for relays, and the relay connects only to
 that socket. [ADR-0012](../adr/0012-in-app-chat.md)
 (owner decision 2026-11-22, bunny-holes/sherpa#59) amends ADR-0010 decision 2
-for an in-app chat. `sherpa app serve` answers a chat channel's text turns in
+for an in-app chat. `sherpa app serve` answers a chat channel's turns in
 `core/src/chat/` with the Vercel AI SDK v7 and sends each turn to the one
-provider the person chose. Tools are not built yet; when they land, the chat
-calls the same 35-tool registry as MCP, with the same app-window confirmation
-for deletes and sends, and sends the tool results it reads to that provider
-too. Outbound HTTPS to that provider's origin stays the only connection the
+provider the person chose. The chat's model calls the same 35-tool registry as
+MCP, through the same handlers and call lifecycle (`core/src/tools/call.ts`),
+with the same app-window confirmation for deletes and sends, and the core sends
+the tool results the model reads to that provider too. Outbound HTTPS to that provider's origin stays the only connection the
 core opens; every other outbound connection and every listening socket stays
 forbidden. The API key reaches the core only inside the message that needs it
 (a model list or a turn) on the pipe; the app is to keep it in its data
@@ -182,6 +183,7 @@ core/src/main.ts (composition root of the CLI)
 core/src/app/serve.ts (composition root of `sherpa app serve`)
     -> app + mcp + tools + chat/session + commands; picks the control-channel
        planner port and hands the chat sessions the egress main.ts installed
+       and the tools the process resolved
 
 app (frame, mux, control, channel transport) -> mcp/confirmation, planner/port, log
 mcp (registry, tools, outcome)    -> tools, commands, planner/port, cli/errors, journal,
@@ -192,7 +194,8 @@ planner/port                      -> no Sherpa module
 commands                          -> journal, mail, imessage, kakaotalk, cli/errors
 core adapters (mail, imessage, kakaotalk) -> cli/errors, process/runner, log
 journal                                   -> cli/errors, log
-chat (session, models, protocol, providers, errors) -> chat/egress, log
+chat (session, turn, calls, sdk, models, protocol, providers, errors)
+                                          -> chat/egress, tools, version, log
 chat/egress                               -> cli/errors, log
 
 SherpaNative (helper composition root)
