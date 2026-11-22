@@ -23,12 +23,13 @@ enum PermissionKind: String, CaseIterable, Identifiable, Sendable {
 
     /// The Privacy & Security pane for this permission.
     var settingsURL: URL {
-        let anchor = switch self {
-        case .calendar: "Privacy_Calendars"
-        case .reminders: "Privacy_Reminders"
-        case .fullDiskAccess: "Privacy_AllFiles"
-        case .mailAutomation, .messagesAutomation: "Privacy_Automation"
-        }
+        let anchor =
+            switch self {
+            case .calendar: "Privacy_Calendars"
+            case .reminders: "Privacy_Reminders"
+            case .fullDiskAccess: "Privacy_AllFiles"
+            case .mailAutomation, .messagesAutomation: "Privacy_Automation"
+            }
         return URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")!
     }
 
@@ -108,7 +109,8 @@ final class PermissionCenter {
             Task {
                 let store = EKEventStore()
                 do {
-                    _ = kind == .calendar
+                    _ =
+                        kind == .calendar
                         ? try await store.requestFullAccessToEvents()
                         : try await store.requestFullAccessToReminders()
                 } catch {
@@ -149,7 +151,9 @@ final class PermissionCenter {
             while !app.isFinishedLaunching, Date() < deadline {
                 try await Task.sleep(for: .milliseconds(100))
             }
-            AppBootstrap.logger.info("app:permission:launch", "target=\(bundleIdentifier) status=launched finished=\(app.isFinishedLaunching)")
+            AppBootstrap.logger.info(
+                "app:permission:launch",
+                "target=\(bundleIdentifier) status=launched finished=\(app.isFinishedLaunching)")
         } catch {
             AppBootstrap.logger.warn("app:permission:launch", "target=\(bundleIdentifier) status=failed")
         }
@@ -203,4 +207,3 @@ final class PermissionCenter {
         }
     }
 }
-

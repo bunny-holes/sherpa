@@ -1,5 +1,5 @@
-import SherpaWorkerProtocol
 import SherpaPlannerApplication
+import SherpaWorkerProtocol
 
 /// Marker imported by the executable so SwiftPM enforces the production
 /// dependency direction through the Planner application boundary.

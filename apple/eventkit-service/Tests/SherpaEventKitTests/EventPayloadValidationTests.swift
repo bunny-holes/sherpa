@@ -5,82 +5,92 @@ import Testing
 @Test func eventValidatorRejectsInvalidCommandsBeforeNativeInvocation() throws {
     let validator = EventCommandValidator()
     #expect(throws: PlannerValidationError.self) {
-        try validator.validate(EventCreateRequest(
-            schema: "sherpa.planner.event-create.request.v2", title: " ",
-            start: "2027-01-01T01:00:00Z", end: "2027-01-01T00:00:00Z",
-            allDay: false, collectionNativeLocator: nil, notes: nil, location: nil,
-            url: nil, timeZone: nil, alarms: nil, recurrenceRules: nil
-        ))
+        try validator.validate(
+            EventCreateRequest(
+                schema: "sherpa.planner.event-create.request.v2", title: " ",
+                start: "2027-01-01T01:00:00Z", end: "2027-01-01T00:00:00Z",
+                allDay: false, collectionNativeLocator: nil, notes: nil, location: nil,
+                url: nil, timeZone: nil, alarms: nil, recurrenceRules: nil
+            ))
     }
     #expect(throws: PlannerValidationError.self) {
-        try validator.validate(EventListRequest(
-            schema: "sherpa.planner.event-list.request.v2", from: "bad", to: "bad",
-            limit: 0, collectionNativeLocator: nil
-        ))
+        try validator.validate(
+            EventListRequest(
+                schema: "sherpa.planner.event-list.request.v2", from: "bad", to: "bad",
+                limit: 0, collectionNativeLocator: nil
+            ))
     }
 }
 
 @Test func eventUpdateRejectsEmptyAndClearRequiredPatch() throws {
     let validator = EventCommandValidator()
     #expect(throws: PlannerValidationError.self) {
-        try validator.validate(EventUpdateRequest(
-            schema: "sherpa.planner.event-update.request.v2", nativeLocator: "missing",
-            span: "this", changes: EventPatch()
-        ))
+        try validator.validate(
+            EventUpdateRequest(
+                schema: "sherpa.planner.event-update.request.v2", nativeLocator: "missing",
+                span: "this", changes: EventPatch()
+            ))
     }
     #expect(throws: PlannerValidationError.self) {
-        try validator.validate(EventUpdateRequest(
-            schema: "sherpa.planner.event-update.request.v2", nativeLocator: "missing",
-            span: "this", changes: EventPatch(title: .clear)
-        ))
+        try validator.validate(
+            EventUpdateRequest(
+                schema: "sherpa.planner.event-update.request.v2", nativeLocator: "missing",
+                span: "this", changes: EventPatch(title: .clear)
+            ))
     }
 }
 
 @Test func reminderValidatorRejectsInvalidCommandsBeforeNativeInvocation() throws {
     let validator = ReminderCommandValidator()
     #expect(throws: PlannerValidationError.self) {
-        try validator.validate(ReminderCreateRequest(
-            schema: "sherpa.planner.reminder-create.request.v2", title: "",
-            collectionNativeLocator: nil, notes: nil, url: nil, priority: 10,
-            due: nil, start: nil, alarms: nil, recurrenceRules: nil
-        ))
+        try validator.validate(
+            ReminderCreateRequest(
+                schema: "sherpa.planner.reminder-create.request.v2", title: "",
+                collectionNativeLocator: nil, notes: nil, url: nil, priority: 10,
+                due: nil, start: nil, alarms: nil, recurrenceRules: nil
+            ))
     }
     #expect(throws: PlannerValidationError.self) {
-        try validator.validate(ReminderListRequest(
-            schema: "sherpa.planner.reminder-list.request.v2",
-            collectionNativeLocator: nil, limit: 0, completed: nil
-        ))
+        try validator.validate(
+            ReminderListRequest(
+                schema: "sherpa.planner.reminder-list.request.v2",
+                collectionNativeLocator: nil, limit: 0, completed: nil
+            ))
     }
 }
 
 @Test func reminderUpdatePatchPreservesClearAndRejectsEmpty() throws {
     let validator = ReminderCommandValidator()
     #expect(throws: PlannerValidationError.self) {
-        try validator.validate(ReminderUpdateRequest(
-            schema: "sherpa.planner.reminder-update.request.v2", nativeLocator: "missing",
-            changes: ReminderPatch()
-        ))
+        try validator.validate(
+            ReminderUpdateRequest(
+                schema: "sherpa.planner.reminder-update.request.v2", nativeLocator: "missing",
+                changes: ReminderPatch()
+            ))
     }
-    try validator.validate(ReminderUpdateRequest(
-        schema: "sherpa.planner.reminder-update.request.v2", nativeLocator: "missing",
-        changes: ReminderPatch(notes: .clear)
-    ))
+    try validator.validate(
+        ReminderUpdateRequest(
+            schema: "sherpa.planner.reminder-update.request.v2", nativeLocator: "missing",
+            changes: ReminderPatch(notes: .clear)
+        ))
 }
 
 @Test func validatorsAcceptUTCGMTAliasesAndValidListFilters() throws {
     let event = EventCommandValidator()
     for zone in ["UTC", "GMT"] {
-        try event.validate(EventCreateRequest(
-            schema: "sherpa.planner.event-create.request.v2", title: "Alias",
-            start: "2027-01-01T00:00:00Z", end: "2027-01-01T01:00:00Z",
-            allDay: false, collectionNativeLocator: "collection", notes: nil, location: nil,
-            url: nil, timeZone: zone, alarms: nil, recurrenceRules: nil
-        ))
+        try event.validate(
+            EventCreateRequest(
+                schema: "sherpa.planner.event-create.request.v2", title: "Alias",
+                start: "2027-01-01T00:00:00Z", end: "2027-01-01T01:00:00Z",
+                allDay: false, collectionNativeLocator: "collection", notes: nil, location: nil,
+                url: nil, timeZone: zone, alarms: nil, recurrenceRules: nil
+            ))
     }
-    try ReminderCommandValidator().validate(ReminderListRequest(
-        schema: "sherpa.planner.reminder-list.request.v2",
-        collectionNativeLocator: "collection", limit: 10_000, completed: false
-    ))
+    try ReminderCommandValidator().validate(
+        ReminderListRequest(
+            schema: "sherpa.planner.reminder-list.request.v2",
+            collectionNativeLocator: "collection", limit: 10_000, completed: false
+        ))
 }
 
 /// The adapter reads wire dates with and without fractional seconds, and the
@@ -88,14 +98,16 @@ import Testing
 /// rejected the fractional form, so `event.create` from the live verifier (which
 /// sends what the adapter writes) failed with `protocol.invalid_payload` (2026-11-20).
 @Test func eventValidatorAcceptsFractionalSecondWireDates() throws {
-    try EventCommandValidator().validate(EventCreateRequest(
-        schema: "sherpa.planner.event-create.request.v2", title: "Fractional",
-        start: "2026-12-04T01:00:00.000Z", end: "2026-12-04T02:00:00.000Z",
-        allDay: false, collectionNativeLocator: "collection", notes: nil, location: nil,
-        url: nil, timeZone: "Asia/Seoul", alarms: nil, recurrenceRules: nil
-    ))
-    try EventCommandValidator().validate(EventListRequest(
-        schema: "sherpa.planner.event-list.request.v2", from: "2026-12-03T00:00:00.000Z",
-        to: "2026-12-05T00:00:00.000+09:00", limit: 10, collectionNativeLocator: nil
-    ))
+    try EventCommandValidator().validate(
+        EventCreateRequest(
+            schema: "sherpa.planner.event-create.request.v2", title: "Fractional",
+            start: "2026-12-04T01:00:00.000Z", end: "2026-12-04T02:00:00.000Z",
+            allDay: false, collectionNativeLocator: "collection", notes: nil, location: nil,
+            url: nil, timeZone: "Asia/Seoul", alarms: nil, recurrenceRules: nil
+        ))
+    try EventCommandValidator().validate(
+        EventListRequest(
+            schema: "sherpa.planner.event-list.request.v2", from: "2026-12-03T00:00:00.000Z",
+            to: "2026-12-05T00:00:00.000+09:00", limit: 10, collectionNativeLocator: nil
+        ))
 }

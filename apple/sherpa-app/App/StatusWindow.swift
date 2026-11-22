@@ -52,9 +52,10 @@ struct StatusView: View {
                         Text(model.coreSummary).foregroundStyle(.secondary)
                     }
                 }
-                .help("Sherpa keeps running in the menu bar (mountain icon). If the icon is not there, "
-                    + "check that Sherpa is allowed in System Settings › Menu Bar, and that the menu bar "
-                    + "has room for it beside the camera housing.")
+                .help(
+                    "Sherpa keeps running in the menu bar (mountain icon). If the icon is not there, "
+                        + "check that Sherpa is allowed in System Settings › Menu Bar, and that the menu bar "
+                        + "has room for it beside the camera housing.")
                 Spacer()
                 if model.canRestartCore {
                     Button("Restart the core") { model.restartCore() }

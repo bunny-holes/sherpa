@@ -29,7 +29,7 @@ struct GeneratedLiteAllDayEvent {
     var location: String?
     var url: String?
     var schedule: GeneratedLiteSchedule?
-    @Guide(description: "One-based evidence handles.", .count(1 ... 4))
+    @Guide(description: "One-based evidence handles.", .count(1...4))
     var evidenceHandles: [Int]
 }
 
@@ -44,7 +44,7 @@ struct GeneratedLiteEvent {
     var location: String?
     var url: String?
     var schedule: GeneratedLiteSchedule?
-    @Guide(description: "One-based evidence handles.", .count(1 ... 4))
+    @Guide(description: "One-based evidence handles.", .count(1...4))
     var evidenceHandles: [Int]
 }
 
@@ -58,7 +58,7 @@ struct GeneratedLiteReminder {
     @Guide(description: "Optional explicit YYYY-MM-DD or RFC 3339 start value.")
     var start: String?
     var schedule: GeneratedLiteSchedule?
-    @Guide(description: "One-based evidence handles.", .count(1 ... 4))
+    @Guide(description: "One-based evidence handles.", .count(1...4))
     var evidenceHandles: [Int]
 }
 
@@ -75,9 +75,11 @@ struct GeneratedLiteSchedule {
 struct GeneratedLiteRecurrence {
     @Guide(description: "daily, weekly, monthly, or yearly.")
     var frequency: String
-    @Guide(description: "Positive interval.", .range(1 ... 10_000))
+    @Guide(description: "Positive interval.", .range(1...10_000))
     var interval: Int
-    @Guide(description: "Compact selectors: weekday MO; month-day 25; month M8; week W2; year-day D120.", .maximumCount(16))
+    @Guide(
+        description: "Compact selectors: weekday MO; month-day 25; month M8; week W2; year-day D120.", .maximumCount(16)
+    )
     var selectors: [String]
     @Guide(description: "Optional RFC 3339 end.")
     var until: String?
@@ -240,9 +242,9 @@ private func reminderDate(_ value: String, timezone: String) throws -> Generated
     if value.count == 10 {
         let parts = value.split(separator: "-", omittingEmptySubsequences: false)
         guard parts.count == 3,
-              let year = Int(parts[0]),
-              let month = Int(parts[1]),
-              let day = Int(parts[2])
+            let year = Int(parts[0]),
+            let month = Int(parts[1]),
+            let day = Int(parts[2])
         else { throw GeneratedPlanningLiteError.reminderDate }
         return GeneratedReminderDate(
             year: year,
@@ -261,7 +263,7 @@ private func reminderDate(_ value: String, timezone: String) throws -> Generated
     calendar.timeZone = zone
     let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
     guard let year = parts.year, let month = parts.month, let day = parts.day,
-          let hour = parts.hour, let minute = parts.minute, let second = parts.second
+        let hour = parts.hour, let minute = parts.minute, let second = parts.second
     else { throw GeneratedPlanningLiteError.reminderDate }
     return GeneratedReminderDate(
         year: year,

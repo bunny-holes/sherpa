@@ -20,7 +20,9 @@ let behaviour = arguments[3]
 unlink(arguments[1])
 let listener = socket(AF_UNIX, SOCK_STREAM, 0)
 let bound = withUnsafePointer(to: &address) {
-    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(listener, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+        bind(listener, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+    }
 }
 guard bound == 0, listen(listener, 16) == 0 else {
     FileHandle.standardError.write(Data("fake-app: listen failed errno=\(errno)\n".utf8))
@@ -45,8 +47,11 @@ while true {
             close(connection)
         default:
             var buffer = [UInt8](repeating: 0, count: 64 * 1_024)
-            while case let .bytes(count) = buffer.withUnsafeMutableBytes({ FileDescriptorIO.read(connection, into: $0) }) {
-                _ = buffer.withUnsafeBytes { FileDescriptorIO.writeAll(connection, UnsafeRawBufferPointer(rebasing: $0[0..<count])) }
+            while case let .bytes(count) = buffer.withUnsafeMutableBytes({ FileDescriptorIO.read(connection, into: $0) }
+            ) {
+                _ = buffer.withUnsafeBytes {
+                    FileDescriptorIO.writeAll(connection, UnsafeRawBufferPointer(rebasing: $0[0..<count]))
+                }
             }
             close(connection)
         }

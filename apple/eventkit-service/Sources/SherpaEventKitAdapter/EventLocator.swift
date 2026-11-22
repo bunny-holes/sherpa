@@ -1,6 +1,6 @@
-import SherpaWorkerProtocol
 @preconcurrency import EventKit
 import Foundation
+import SherpaWorkerProtocol
 
 struct EventLocator: Equatable {
     private static let prefix = "ekev1"
@@ -35,9 +35,9 @@ struct EventLocator: Equatable {
         }
         let components = wireValue.split(separator: ":", omittingEmptySubsequences: false)
         guard components.count == 4,
-              components[0] == Substring(Self.prefix),
-              let identifier = Self.decode(String(components[1])),
-              !identifier.isEmpty
+            components[0] == Substring(Self.prefix),
+            let identifier = Self.decode(String(components[1])),
+            !identifier.isEmpty
         else { throw WorkerProtocolError.invalidPayload }
         let occurrence = try Self.decodeDate(String(components[2]))
         let observedStart = try Self.decodeDate(String(components[3]))
@@ -89,11 +89,12 @@ struct EventLocator: Equatable {
 
     private static func decode(_ value: String) -> String? {
         guard !value.isEmpty,
-              value.unicodeScalars.allSatisfy({
-                  CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_"
-              })
+            value.unicodeScalars.allSatisfy({
+                CharacterSet.alphanumerics.contains($0) || $0 == "-" || $0 == "_"
+            })
         else { return nil }
-        var base64 = value
+        var base64 =
+            value
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
         base64.append(String(repeating: "=", count: (4 - base64.count % 4) % 4))

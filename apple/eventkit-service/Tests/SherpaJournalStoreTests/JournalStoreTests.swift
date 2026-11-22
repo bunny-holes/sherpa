@@ -3,6 +3,7 @@ import SherpaMailShim
 import SherpaReminderKitShim
 import SherpaShimResponse
 import Testing
+
 @testable import SherpaJournalStore
 
 @Test func mutationStoreAllowsOneTerminalTransitionWithoutContent() throws {
@@ -22,7 +23,9 @@ import Testing
 }
 
 @Test func inProcessMailShimAnswersCapabilitiesWithoutLaunchingAWorker() throws {
-    let request = Data(#"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.mail.v2","request_id":"req-test","operation_id":"op-test","capability":"capabilities","payload":{},"deadline_ms":1000,"idempotency_key":"idem-test","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}"#.utf8)
+    let request = Data(
+        #"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.mail.v2","request_id":"req-test","operation_id":"op-test","capability":"capabilities","payload":{},"deadline_ms":1000,"idempotency_key":"idem-test","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}"#
+            .utf8)
     let response = SherpaMailHandleRequest(request)
     let text = String(decoding: response, as: UTF8.self)
     #expect(text.contains("mail.messages.list"))
@@ -30,7 +33,9 @@ import Testing
 }
 
 @Test func inProcessReminderKitShimAnswersCapabilitiesWithoutLaunchingAWorker() {
-    let request = Data(#"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.reminder-private.v2","request_id":"req-test","operation_id":"op-test","capability":"capabilities","payload":{},"deadline_ms":1000,"idempotency_key":"idem-test","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}"#.utf8)
+    let request = Data(
+        #"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.reminder-private.v2","request_id":"req-test","operation_id":"op-test","capability":"capabilities","payload":{},"deadline_ms":1000,"idempotency_key":"idem-test","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}"#
+            .utf8)
     let response = SherpaReminderKitHandleRequest(request)
     let text = String(decoding: response, as: UTF8.self)
     #expect(text.contains("sherpa.worker-capabilities.v2"))
@@ -66,7 +71,8 @@ private func decodedShimOutput(_ data: Data?) throws -> [String: Any] {
 }
 
 @Test func shimsKeepAPossiblyAppliedEffectUncertainWhenTheResultIsTooLarge() throws {
-    let response = oversizedShimResponse(status: "uncertain", effectState: "may_have_applied", effectKind: "outbound_dispatch")
+    let response = oversizedShimResponse(
+        status: "uncertain", effectState: "may_have_applied", effectKind: "outbound_dispatch")
     let output = try decodedShimOutput(SherpaFittedResponseData(response, 1_024))
     #expect(output["status"] as? String == "uncertain")
     #expect((output["effect"] as? [String: String])?["state"] == "may_have_applied")

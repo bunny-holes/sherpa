@@ -43,9 +43,11 @@ func encode(_ value: JSONValue) -> String {
     return String(decoding: (try? encoder.encode(value)) ?? Data("null".utf8), as: UTF8.self)
 }
 
-let script: JSONObject = (try? JSONDecoder().decode(
-    JSONObject.self, from: Data(contentsOf: URL(fileURLWithPath: directory).appendingPathComponent("fake-core.json"))
-)) ?? [:]
+let script: JSONObject =
+    (try? JSONDecoder().decode(
+        JSONObject.self,
+        from: Data(contentsOf: URL(fileURLWithPath: directory).appendingPathComponent("fake-core.json"))
+    )) ?? [:]
 let version = script["version"]?.string ?? "0.0.0"
 let mode = script["mode"]?.string ?? "normal"
 
@@ -59,11 +61,14 @@ func inheritedSignals() -> String {
     }.map(\.1)
     var mask = sigset_t()
     sigprocmask(SIG_BLOCK, nil, &mask)
-    return "ignored=\(ignored.isEmpty ? "none" : ignored.joined(separator: ",")) blocked=\(mask == 0 ? "none" : String(mask))"
+    return
+        "ignored=\(ignored.isEmpty ? "none" : ignored.joined(separator: ",")) blocked=\(mask == 0 ? "none" : String(mask))"
 }
 
-record("spawn pid=\(getpid()) args=\(CommandLine.arguments.dropFirst().joined(separator: ",")) "
-    + "env=\(environment.keys.sorted().joined(separator: ",")) path=\(environment["PATH"] ?? "") \(inheritedSignals())")
+record(
+    "spawn pid=\(getpid()) args=\(CommandLine.arguments.dropFirst().joined(separator: ",")) "
+        + "env=\(environment.keys.sorted().joined(separator: ",")) path=\(environment["PATH"] ?? "") \(inheritedSignals())"
+)
 
 if mode == "exit-at-start" {
     exit(Int32(script["code"]?.integer ?? 3))
@@ -83,7 +88,9 @@ func result(_ channel: UInt64, _ id: JSONValue, _ value: JSONValue) {
 func handleMessage(_ channel: UInt64, _ body: Data) {
     guard let message = try? JSONDecoder().decode(JSONObject.self, from: body) else {
         record("data \(channel) not-json")
-        emit(channel: channel, type: "data", json: #"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}"#)
+        emit(
+            channel: channel, type: "data",
+            json: #"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}"#)
         return
     }
     let id = message["id"] ?? .null
@@ -99,14 +106,17 @@ func handleMessage(_ channel: UInt64, _ body: Data) {
         waitingResponses[requestID] = (channel, id)
         let worker = params["worker"] ?? "planner"
         let request = params["request"] ?? [:]
-        emit(channel: 0, type: "request", json: #"{"id":\#(requestID),"worker":\#(encode(worker)),"request":\#(encode(request))}"#)
+        emit(
+            channel: 0, type: "request",
+            json: #"{"id":\#(requestID),"worker":\#(encode(worker)),"request":\#(encode(request))}"#)
     case "confirm":
         let requestID = nextRequest
         nextRequest += 1
         waitingConfirmations[requestID] = (channel, id)
         let lines = params["lines"] ?? [["label": "Reminder", "value": "test"]]
         let title = params["title"] ?? "Delete a reminder"
-        let frame = #"{"id":\#(requestID),"tool":"reminder_delete","operation_id":"op-test","client":{"name":"fake","version":"0"},"title":\#(encode(title)),"lines":\#(encode(lines)),"timeout_ms":30000}"#
+        let frame =
+            #"{"id":\#(requestID),"tool":"reminder_delete","operation_id":"op-test","client":{"name":"fake","version":"0"},"title":\#(encode(title)),"lines":\#(encode(lines)),"timeout_ms":30000}"#
         // `delay_ms`: the request goes out later, as one whose preview read was slow.
         if let delay = params["delay_ms"]?.integer {
             state.asyncAfter(deadline: .now() + .milliseconds(delay)) {
@@ -129,7 +139,9 @@ func handleMessage(_ channel: UInt64, _ body: Data) {
         let bytes = params["bytes"]?.integer ?? 1_024
         let filler = String(repeating: "x", count: bytes)
         for index in 0..<frames {
-            emit(channel: channel, type: "data", json: #"{"jsonrpc":"2.0","method":"flood","params":{"index":\#(index),"fill":"\#(filler)"}}"#)
+            emit(
+                channel: channel, type: "data",
+                json: #"{"jsonrpc":"2.0","method":"flood","params":{"index":\#(index),"fill":"\#(filler)"}}"#)
         }
         record("flood \(channel) done")
     case "close":
@@ -144,7 +156,9 @@ func handleMessage(_ channel: UInt64, _ body: Data) {
         emit(channel: 0, type: "fatal", json: #"{"code":"mux.frame_invalid"}"#)
         exit(65)
     default:
-        emit(channel: channel, type: "data", json: encode(["jsonrpc": "2.0", "id": id, "error": ["code": -32601, "message": "Method not found"]]))
+        emit(
+            channel: channel, type: "data",
+            json: encode(["jsonrpc": "2.0", "id": id, "error": ["code": -32601, "message": "Method not found"]]))
     }
 }
 

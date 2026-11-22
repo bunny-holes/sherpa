@@ -61,16 +61,22 @@ final class CoreProcess: @unchecked Sendable {
             if case let .requirementInvalid(status) = error { throw .requirementInvalid(status: status) }
             throw .requirementInvalid(status: -1)
         }
-        var input: [Int32] = [0, 0], output: [Int32] = [0, 0], error: [Int32] = [0, 0]
+        var input: [Int32] = [0, 0]
+        var output: [Int32] = [0, 0]
+        var error: [Int32] = [0, 0]
         guard pipe(&input) == 0 else { throw .pipeFailed(errno: errno) }
         guard pipe(&output) == 0 else {
             let code = errno
-            close(input[0]); close(input[1])
+            close(input[0])
+            close(input[1])
             throw .pipeFailed(errno: code)
         }
         guard pipe(&error) == 0 else {
             let code = errno
-            close(input[0]); close(input[1]); close(output[0]); close(output[1])
+            close(input[0])
+            close(input[1])
+            close(output[0])
+            close(output[1])
             throw .pipeFailed(errno: code)
         }
         for descriptor in input + output + error { _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC) }
@@ -91,7 +97,9 @@ final class CoreProcess: @unchecked Sendable {
         // ignored signal ignored, and a core that ignores SIGTERM outlives the app's stop.
         posix_spawnattr_setflags(
             &attributes,
-            Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_START_SUSPENDED)
+            Int16(
+                POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK
+                    | POSIX_SPAWN_START_SUSPENDED)
         )
         var defaults: sigset_t = ~0
         posix_spawnattr_setsigdefault(&attributes, &defaults)
@@ -106,9 +114,13 @@ final class CoreProcess: @unchecked Sendable {
         }
         var pid: pid_t = 0
         let spawned = posix_spawn(&pid, path, &actions, &attributes, arguments, variables)
-        close(input[0]); close(output[1]); close(error[1])
+        close(input[0])
+        close(output[1])
+        close(error[1])
         guard spawned == 0 else {
-            close(input[1]); close(output[0]); close(error[0])
+            close(input[1])
+            close(output[0])
+            close(error[0])
             throw .spawnFailed(errno: spawned)
         }
 
@@ -121,7 +133,9 @@ final class CoreProcess: @unchecked Sendable {
             kill(pid, SIGKILL)
             var status: Int32 = 0
             while waitpid(pid, &status, 0) == -1, errno == EINTR {}
-            close(input[1]); close(output[0]); close(error[0])
+            close(input[1])
+            close(output[0])
+            close(error[0])
             throw .signatureRejected(status: verdict)
         }
         kill(pid, SIGCONT)

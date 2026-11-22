@@ -104,8 +104,9 @@ public enum CodeSignature {
         var staticCode: SecStaticCode?
         guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode else { return nil }
         var information: CFDictionary?
-        guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &information)
-            == errSecSuccess,
+        guard
+            SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &information)
+                == errSecSuccess,
             let information = information as? [String: Any]
         else { return nil }
         return information[kSecCodeInfoIdentifier as String] as? String

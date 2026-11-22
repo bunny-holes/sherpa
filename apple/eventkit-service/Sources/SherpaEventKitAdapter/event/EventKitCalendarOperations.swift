@@ -1,7 +1,7 @@
-import SherpaPlannerContract
-import SherpaWorkerProtocol
 @preconcurrency import EventKit
 import Foundation
+import SherpaPlannerContract
+import SherpaWorkerProtocol
 
 final class EventKitCalendarOperations {
     private let store: EKEventStore
@@ -9,7 +9,7 @@ final class EventKitCalendarOperations {
 
     func create(_ request: EventCollectionCreateRequest) throws -> EventCollectionCreateResult {
         guard !request.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              request.title.utf8.count <= 1_024, !request.title.contains("\0")
+            request.title.utf8.count <= 1_024, !request.title.contains("\0")
         else { throw WorkerProtocolError.invalidPayload }
         let calendar = EKCalendar(for: .event, eventStore: store)
         calendar.title = request.title
@@ -21,17 +21,21 @@ final class EventKitCalendarOperations {
 
     func delete(_ request: EventCollectionDeleteRequest) throws -> EventCollectionDeleteResult {
         guard !request.collectionNativeLocator.isEmpty,
-              request.collectionNativeLocator.utf8.count <= 4_096,
-              !request.collectionNativeLocator.contains("\0")
+            request.collectionNativeLocator.utf8.count <= 4_096,
+            !request.collectionNativeLocator.contains("\0")
         else { throw WorkerProtocolError.invalidPayload }
-        guard let calendar = store.calendars(for: .event).first(where: {
-            $0.calendarIdentifier == request.collectionNativeLocator
-        }) else { throw EventKitWorkerError.notFound }
+        guard
+            let calendar = store.calendars(for: .event).first(where: {
+                $0.calendarIdentifier == request.collectionNativeLocator
+            })
+        else { throw EventKitWorkerError.notFound }
         try requireWritableDestination(allowsContentModifications: calendar.allowsContentModifications)
         try store.removeCalendar(calendar, commit: true)
-        guard !store.calendars(for: .event).contains(where: {
-            $0.calendarIdentifier == request.collectionNativeLocator
-        }) else { throw EventKitWorkerError.verificationFailed }
+        guard
+            !store.calendars(for: .event).contains(where: {
+                $0.calendarIdentifier == request.collectionNativeLocator
+            })
+        else { throw EventKitWorkerError.verificationFailed }
         return EventCollectionDeleteResult()
     }
 
@@ -48,14 +52,17 @@ final class EventKitCalendarOperations {
     }
 
     private func readBack(_ calendar: EKCalendar) throws -> EKCalendar {
-        guard let verified = store.calendars(for: .event).first(where: {
-            $0.calendarIdentifier == calendar.calendarIdentifier
-        }) else { throw EventKitWorkerError.verificationFailed }
+        guard
+            let verified = store.calendars(for: .event).first(where: {
+                $0.calendarIdentifier == calendar.calendarIdentifier
+            })
+        else { throw EventKitWorkerError.verificationFailed }
         return verified
     }
 
     private func descriptor(_ calendar: EKCalendar) -> EventCollectionDescriptor {
-        EventCollectionDescriptor(nativeLocator: calendar.calendarIdentifier, title: calendar.title,
+        EventCollectionDescriptor(
+            nativeLocator: calendar.calendarIdentifier, title: calendar.title,
             type: calendarType(calendar.type), allowsContentModifications: calendar.allowsContentModifications)
     }
 }

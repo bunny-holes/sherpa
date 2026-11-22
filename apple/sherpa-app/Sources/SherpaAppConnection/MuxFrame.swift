@@ -87,7 +87,7 @@ private enum BodyRule {
 private func rule(direction: MuxDirection, channel: UInt64, type: String) -> BodyRule? {
     switch (direction, channel == 0, type) {
     case (.coreToApp, true, "hello"), (.coreToApp, true, "request"), (.coreToApp, true, "confirm"),
-         (.coreToApp, true, "withdraw"), (.coreToApp, true, "fatal"):
+        (.coreToApp, true, "withdraw"), (.coreToApp, true, "fatal"):
         .required
     case (.appToCore, true, "hello"), (.appToCore, true, "response"), (.appToCore, true, "confirmation"):
         .required
@@ -141,7 +141,7 @@ public struct MuxFrameReader: Sendable {
         guard !bytes.isEmpty else { return }
         if let header {
             guard line.count - header.bodyStart + bytes.count <= header.bodyLimit,
-                  line.count + bytes.count + 1 <= MuxLimits.line
+                line.count + bytes.count + 1 <= MuxLimits.line
             else { throw .frameTooLarge }
             line.append(contentsOf: bytes)
             return
@@ -199,7 +199,7 @@ public struct MuxFrameReader: Sendable {
 
     private func checkChannelPrefix(_ bytes: [UInt8]) throws(MuxViolation) {
         guard bytes.count <= Self.maximumChannelDigits, bytes.allSatisfy(isDigit),
-              !(bytes.count > 1 && bytes.first == 0x30)
+            !(bytes.count > 1 && bytes.first == 0x30)
         else { throw .frameInvalid }
     }
 
@@ -209,7 +209,7 @@ public struct MuxFrameReader: Sendable {
 
     private func parseChannel(_ bytes: ArraySlice<UInt8>) throws(MuxViolation) -> UInt64 {
         guard !bytes.isEmpty, bytes.count <= Self.maximumChannelDigits, bytes.allSatisfy(isDigit),
-              !(bytes.count > 1 && bytes.first == 0x30)
+            !(bytes.count > 1 && bytes.first == 0x30)
         else { throw .frameInvalid }
         let value = bytes.reduce(UInt64(0)) { $0 * 10 + UInt64($1 - 0x30) }
         guard value <= MuxFrame.maximumChannel else { throw .frameInvalid }

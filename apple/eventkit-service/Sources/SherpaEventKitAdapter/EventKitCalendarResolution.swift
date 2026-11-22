@@ -1,5 +1,5 @@
-import SherpaWorkerProtocol
 @preconcurrency import EventKit
+import SherpaWorkerProtocol
 
 func writableCalendar(
     store: EKEventStore,

@@ -35,9 +35,11 @@ struct MCPSwitchSection: View {
             }
             .padding(6)
         }
-        .help(enabled
-            ? "Agents that start Sherpa connect to it. Turning MCP off closes every connected session."
-            : "Agents that start Sherpa are turned away until you turn MCP on.")
+        .help(
+            enabled
+                ? "Agents that start Sherpa connect to it. Turning MCP off closes every connected session."
+                : "Agents that start Sherpa are turned away until you turn MCP on."
+        )
         .onChange(of: enabled) { _, isOn in
             if !isOn { showsGuide = false }
         }
@@ -68,10 +70,12 @@ struct AgentGuide: View {
                 Text(step.caption)
                 CopyableText(step.command)
             }
-            Text("Run \(steps.count == 1 ? "it" : "them in order") in Terminal. \(agent.afterRegistering) "
-                + "Using the Sherpa plugin (sherpa@plug-hole)? It registers this server for you.")
-                .font(.footnote).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Run \(steps.count == 1 ? "it" : "them in order") in Terminal. \(agent.afterRegistering) "
+                    + "Using the Sherpa plugin (sherpa@plug-hole)? It registers this server for you."
+            )
+            .font(.footnote).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
             Divider()
             Text("The MCP server \"\(AgentSetup.serverName)\" is this command, with no arguments:")

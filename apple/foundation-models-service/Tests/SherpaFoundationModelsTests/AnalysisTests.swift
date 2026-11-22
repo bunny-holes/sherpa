@@ -1,6 +1,7 @@
 import Foundation
-import Testing
 import SherpaWorkerProtocol
+import Testing
+
 @testable import SherpaFoundationModels
 
 private extension JSONValue {
@@ -18,10 +19,12 @@ private extension JSONValue {
     #expect(payload.evidence.count == 1)
 
     var invalid = payloadObject()
-    invalid["evidence"] = [[
-        "record_reference": "ctxm1_0000000000001",
-        "revision_reference": "mailr1_0000000000001",
-    ]]
+    invalid["evidence"] = [
+        [
+            "record_reference": "ctxm1_0000000000001",
+            "revision_reference": "mailr1_0000000000001",
+        ]
+    ]
     #expect(throws: Error.self) {
         _ = try AnalysisPayload(object: invalid)
     }
@@ -39,10 +42,12 @@ private extension JSONValue {
 @Test func payloadRequiresMatchingFreshEvidenceSuffixes() throws {
     _ = try AnalysisPayload(object: freshChatPayloadFixture())
     var invalid = freshChatPayloadFixture()
-    invalid["evidence"] = [[
-        "record_reference": "evi1_0000000000001",
-        "revision_reference": "evr1_0000000000002",
-    ]]
+    invalid["evidence"] = [
+        [
+            "record_reference": "evi1_0000000000001",
+            "revision_reference": "evr1_0000000000002",
+        ]
+    ]
 
     #expect(throws: Error.self) {
         _ = try AnalysisPayload(object: invalid)
@@ -151,16 +156,18 @@ private extension JSONValue {
 @Test func generatedOutputCannotCiteEvidenceOutsideTheInput() throws {
     let payload = try AnalysisPayload(object: payloadObject())
     let generated = GeneratedPlanningBatch(
-        events: [GeneratedEvent(
-            title: "Synthetic meeting",
-            start: "2026-08-02T10:00:00+09:00",
-            end: "2026-08-02T11:00:00+09:00",
-            notes: nil,
-            location: nil,
-            url: nil,
-            timeZone: "Asia/Seoul",
-            evidenceHandles: [2]
-        )],
+        events: [
+            GeneratedEvent(
+                title: "Synthetic meeting",
+                start: "2026-08-02T10:00:00+09:00",
+                end: "2026-08-02T11:00:00+09:00",
+                notes: nil,
+                location: nil,
+                url: nil,
+                timeZone: "Asia/Seoul",
+                evidenceHandles: [2]
+            )
+        ],
         reminders: []
     )
     #expect(throws: GeneratedPlanningError.self) {
@@ -205,16 +212,18 @@ private extension JSONValue {
 @Test func generatedOutputMapsToTheStrictPublicSuggestionContract() throws {
     let payload = try AnalysisPayload(object: payloadObject())
     let generated = GeneratedPlanningBatch(
-        events: [GeneratedEvent(
-            title: "Synthetic meeting",
-            start: "2026-08-02T10:00:00+09:00",
-            end: "2026-08-02T11:00:00+09:00",
-            notes: "Bring the synthetic document",
-            location: nil,
-            url: nil,
-            timeZone: "Asia/Seoul",
-            evidenceHandles: [1],
-        )],
+        events: [
+            GeneratedEvent(
+                title: "Synthetic meeting",
+                start: "2026-08-02T10:00:00+09:00",
+                end: "2026-08-02T11:00:00+09:00",
+                notes: "Bring the synthetic document",
+                location: nil,
+                url: nil,
+                timeZone: "Asia/Seoul",
+                evidenceHandles: [1],
+            )
+        ],
         reminders: []
     )
     let result = try mapGeneratedPlanning(generated, payload: payload)
@@ -230,16 +239,18 @@ private extension JSONValue {
 @Test func ordinalGroundingMapsThroughTheExactAllowlist() throws {
     let payload = try AnalysisPayload(object: payloadObject())
     let generated = GeneratedPlanningBatch(
-        events: [GeneratedEvent(
-            title: "Synthetic meeting",
-            start: "2026-08-02T10:00:00+09:00",
-            end: "2026-08-02T11:00:00+09:00",
-            notes: nil,
-            location: nil,
-            url: nil,
-            timeZone: "Asia/Seoul",
-            evidenceHandles: [1],
-        )],
+        events: [
+            GeneratedEvent(
+                title: "Synthetic meeting",
+                start: "2026-08-02T10:00:00+09:00",
+                end: "2026-08-02T11:00:00+09:00",
+                notes: nil,
+                location: nil,
+                url: nil,
+                timeZone: "Asia/Seoul",
+                evidenceHandles: [1],
+            )
+        ],
         reminders: []
     )
 
@@ -346,7 +357,8 @@ private extension JSONValue {
 
 @Test func chatModelTranscriptPreservesEscapedContentSemantics() throws {
     var object = payloadObject()
-    object["transcript"] = "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|shared\\|piece\\nline\n"
+    object["transcript"] =
+        "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|shared\\|piece\\nline\n"
     let payload = try AnalysisPayload(object: object)
 
     let transcript = try makeModelTranscript(payload)
@@ -380,7 +392,8 @@ private extension JSONValue {
 
 @Test func allDayEventUsesTheUniqueGroundedDateInsteadOfAModelGuess() throws {
     var object = payloadObject()
-    object["transcript"] = "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|synthetic delivery 8/1\n"
+    object["transcript"] =
+        "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|synthetic delivery 8/1\n"
     let payload = try AnalysisPayload(object: object)
     let event = GeneratedAllDayEvent(
         title: "Synthetic delivery",
@@ -406,7 +419,8 @@ private extension JSONValue {
 
 @Test func allDayEventRejectsAnUnsupportedGuessWhenGroundedDatesAreAmbiguous() throws {
     var object = payloadObject()
-    object["transcript"] = "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|synthetic options 8/1 or 8/2\n"
+    object["transcript"] =
+        "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|synthetic options 8/1 or 8/2\n"
     let payload = try AnalysisPayload(object: object)
     let event = GeneratedAllDayEvent(
         title: "Synthetic delivery",
@@ -496,7 +510,8 @@ private extension JSONValue {
 
 @Test func timedEventUsesTheUniqueGroundedDateInsteadOfAModelGuess() throws {
     var object = payloadObject()
-    object["transcript"] = "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|synthetic meeting 8/1 10:00 11:00\n"
+    object["transcript"] =
+        "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|synthetic meeting 8/1 10:00 11:00\n"
     let payload = try AnalysisPayload(object: object)
     let event = GeneratedEvent(
         title: "Synthetic meeting",
@@ -618,16 +633,19 @@ private extension JSONValue {
 @Test func liteAllDayEventMapsThroughTheStrictGroundedContract() throws {
     let payload = try AnalysisPayload(object: payloadObject())
     let generated = GeneratedPlanningLiteBatch(
-        proposals: [.allDayEvent(GeneratedLiteAllDayEvent(
-            title: "Synthetic all-day event",
-            startDate: "2026-08-01",
-            endDateInclusive: nil,
-            notes: nil,
-            location: nil,
-            url: nil,
-            schedule: nil,
-            evidenceHandles: [1]
-        ))]
+        proposals: [
+            .allDayEvent(
+                GeneratedLiteAllDayEvent(
+                    title: "Synthetic all-day event",
+                    startDate: "2026-08-01",
+                    endDateInclusive: nil,
+                    notes: nil,
+                    location: nil,
+                    url: nil,
+                    schedule: nil,
+                    evidenceHandles: [1]
+                ))
+        ]
     )
 
     let mapping = try mapGeneratedPlanningLiteFilteringInvalid(
@@ -647,25 +665,28 @@ private extension JSONValue {
 @Test func liteReminderConvertsCompactRecurrenceSelectors() throws {
     let payload = try AnalysisPayload(object: payloadObject())
     let generated = GeneratedPlanningLiteBatch(
-        proposals: [.reminder(GeneratedLiteReminder(
-            title: "Synthetic recurring action",
-            notes: nil,
-            url: nil,
-            due: "2026-08-03",
-            start: nil,
-            schedule: GeneratedLiteSchedule(
-                alarmAt: [],
-                alarmMinutesBefore: [15],
-                recurrence: GeneratedLiteRecurrence(
-                    frequency: "weekly",
-                    interval: 1,
-                    selectors: ["MO"],
-                    until: nil,
-                    occurrenceCount: 4
-                )
-            ),
-            evidenceHandles: [1]
-        ))]
+        proposals: [
+            .reminder(
+                GeneratedLiteReminder(
+                    title: "Synthetic recurring action",
+                    notes: nil,
+                    url: nil,
+                    due: "2026-08-03",
+                    start: nil,
+                    schedule: GeneratedLiteSchedule(
+                        alarmAt: [],
+                        alarmMinutesBefore: [15],
+                        recurrence: GeneratedLiteRecurrence(
+                            frequency: "weekly",
+                            interval: 1,
+                            selectors: ["MO"],
+                            until: nil,
+                            occurrenceCount: 4
+                        )
+                    ),
+                    evidenceHandles: [1]
+                ))
+        ]
     )
 
     let mapping = try mapGeneratedPlanningLiteFilteringInvalid(
@@ -692,14 +713,17 @@ private func payloadObject() -> JSONObject {
         "schema": .string(contextAnalysisSchema),
         "analysis_id": "analysis-test",
         "source": "kakaotalk",
-        "transcript": "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|synthetic 8/1 8/2 8/3 3/8 10:00 11:00 12:00 13:00\n",
+        "transcript":
+            "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|synthetic 8/1 8/2 8/3 3/8 10:00 11:00 12:00 13:00\n",
         "timezone": "Asia/Seoul",
         "reference_time": "2026-08-01T00:00:00+09:00",
         "max_proposals": 8,
-        "evidence": [[
-            "record_reference": "ctxm1_0000000000001",
-            "revision_reference": "ctxr1_0000000000001",
-        ]],
+        "evidence": [
+            [
+                "record_reference": "ctxm1_0000000000001",
+                "revision_reference": "ctxr1_0000000000001",
+            ]
+        ],
     ]
 }
 
@@ -708,7 +732,8 @@ private func twoEvidencePayloadFixture() -> JSONObject {
         "schema": .string(contextAnalysisSchema),
         "analysis_id": "analysis-two-evidence",
         "source": "kakaotalk",
-        "transcript": "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|shared alpha\nB|0000000000002|0000000000002|shared beta unique\n",
+        "transcript":
+            "!CCT7|g=120|z=Asia/Seoul|r=ctxm1_|v=ctxr1_\nT|K001\nD|260801\nS|0900\nB|0000000000001|0000000000001|shared alpha\nB|0000000000002|0000000000002|shared beta unique\n",
         "timezone": "Asia/Seoul",
         "reference_time": "2026-08-01T00:00:00+09:00",
         "max_proposals": 8,
@@ -730,14 +755,17 @@ private func mailPayloadFixture() -> JSONObject {
         "schema": .string(contextAnalysisSchema),
         "analysis_id": "analysis-mail",
         "source": "mail",
-        "transcript": "!MCT2|z=Asia/Seoul|r=mail1_|v=mailr1_|row=received,ref,revision,thread,sent,from,to,cc,bcc,subject,mailbox,body,truncated,attachments\nD|260801\n0900|0000000000001|0000000000001|M001|260801-0859|A001|A002|-|-|Synthetic subject|Inbox|Synthetic body|0|-\n",
+        "transcript":
+            "!MCT2|z=Asia/Seoul|r=mail1_|v=mailr1_|row=received,ref,revision,thread,sent,from,to,cc,bcc,subject,mailbox,body,truncated,attachments\nD|260801\n0900|0000000000001|0000000000001|M001|260801-0859|A001|A002|-|-|Synthetic subject|Inbox|Synthetic body|0|-\n",
         "timezone": "Asia/Seoul",
         "reference_time": "2026-08-01T00:00:00+09:00",
         "max_proposals": 8,
-        "evidence": [[
-            "record_reference": "mail1_0000000000001",
-            "revision_reference": "mailr1_0000000000001",
-        ]],
+        "evidence": [
+            [
+                "record_reference": "mail1_0000000000001",
+                "revision_reference": "mailr1_0000000000001",
+            ]
+        ],
     ]
 }
 
@@ -746,14 +774,17 @@ private func freshChatPayloadFixture() -> JSONObject {
         "schema": .string(contextAnalysisSchema),
         "analysis_id": "analysis-fresh-chat",
         "source": "kakaotalk",
-        "transcript": "!FCHAT1|z=Asia/Seoul|row=at,ref,revision,thread,speaker,direction,kind,content\n2026-08-01T09:00:00+09:00|evi1_0000000000001|evr1_0000000000001|T1|P1|in|text|Fresh chat body\n",
+        "transcript":
+            "!FCHAT1|z=Asia/Seoul|row=at,ref,revision,thread,speaker,direction,kind,content\n2026-08-01T09:00:00+09:00|evi1_0000000000001|evr1_0000000000001|T1|P1|in|text|Fresh chat body\n",
         "timezone": "Asia/Seoul",
         "reference_time": "2026-08-01T09:00:00+09:00",
         "max_proposals": 8,
-        "evidence": [[
-            "record_reference": "evi1_0000000000001",
-            "revision_reference": "evr1_0000000000001",
-        ]],
+        "evidence": [
+            [
+                "record_reference": "evi1_0000000000001",
+                "revision_reference": "evr1_0000000000001",
+            ]
+        ],
     ]
 }
 
@@ -762,14 +793,17 @@ private func freshMailPayloadFixture() -> JSONObject {
         "schema": .string(contextAnalysisSchema),
         "analysis_id": "analysis-fresh-mail",
         "source": "mail",
-        "transcript": "!FMAIL1|z=Asia/Seoul|row=at,ref,revision,sender,subject,body\n2026-08-01T09:00:00+09:00|evi1_0000000000001|evr1_0000000000001|P1|Fresh subject|Fresh body\n",
+        "transcript":
+            "!FMAIL1|z=Asia/Seoul|row=at,ref,revision,sender,subject,body\n2026-08-01T09:00:00+09:00|evi1_0000000000001|evr1_0000000000001|P1|Fresh subject|Fresh body\n",
         "timezone": "Asia/Seoul",
         "reference_time": "2026-08-01T09:00:00+09:00",
         "max_proposals": 8,
-        "evidence": [[
-            "record_reference": "evi1_0000000000001",
-            "revision_reference": "evr1_0000000000001",
-        ]],
+        "evidence": [
+            [
+                "record_reference": "evi1_0000000000001",
+                "revision_reference": "evr1_0000000000001",
+            ]
+        ],
     ]
 }
 
@@ -779,7 +813,8 @@ private func semanticTriagePayloadFixture() -> JSONObject {
         "analysis_id": "analysis-triage",
         "chunk_id": "chunk-0001",
         "source": "kakaotalk",
-        "transcript": "!TC1|row=at,e,part,t,p,d,k,c|z=Asia/Seoul\n260801-0900|1|1/1|T1|P1|in|text|다음 주에 만나자\n260801-0901|2|1/1|T1|P2|in|text|아니 다다음 주로 바꾸자\n260801-0902|3|1/1|T1|ME|out|text|넵\n",
+        "transcript":
+            "!TC1|row=at,e,part,t,p,d,k,c|z=Asia/Seoul\n260801-0900|1|1/1|T1|P1|in|text|다음 주에 만나자\n260801-0901|2|1/1|T1|P2|in|text|아니 다다음 주로 바꾸자\n260801-0902|3|1/1|T1|ME|out|text|넵\n",
         "timezone": "Asia/Seoul",
         "reference_time": "2026-08-01T09:00:00+09:00",
         "row_count": 3,

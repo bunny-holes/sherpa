@@ -15,9 +15,11 @@ import SherpaAppServer
 /// `--print-configuration`: what this build resolves from its environment, one field a line.
 func printConfiguration() -> Never {
     let directory = (CommandLine.arguments[0] as NSString).deletingLastPathComponent
-    guard let configuration = try? AppServerConfiguration.resolve(
-        executableDirectory: directory, version: "0.0.0", environment: ProcessInfo.processInfo.environment
-    ) else {
+    guard
+        let configuration = try? AppServerConfiguration.resolve(
+            executableDirectory: directory, version: "0.0.0", environment: ProcessInfo.processInfo.environment
+        )
+    else {
         FileHandle.standardError.write(Data("[testhost:config:resolve] reason=home_unavailable\n".utf8))
         exit(70)
     }
@@ -109,7 +111,8 @@ case let .failed(step, code):
 }
 
 let server = AppServer(
-    configuration: configuration, lock: lock, mcpEnabled: mcpEnabled, planner: InProcessPlanner(environment: environment),
+    configuration: configuration, lock: lock, mcpEnabled: mcpEnabled,
+    planner: InProcessPlanner(environment: environment),
     confirmations: ScriptedConfirmations(decision: decision, logger: logger), logger: logger,
     coreLogger: { @Sendable line in FileHandle.standardError.write(Data(("core: " + line + "\n").utf8)) },
     observe: { @Sendable status in

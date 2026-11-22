@@ -33,31 +33,49 @@ struct AnalysisPayload {
             "schema", "analysis_id", "source", "transcript", "timezone",
             "reference_time", "max_proposals", "evidence",
         ]
-        struct EvidenceWire: Decodable { let recordReference, revisionReference: String; enum CodingKeys: String, CodingKey { case recordReference = "record_reference", revisionReference = "revision_reference" } }
+        struct EvidenceWire: Decodable {
+            let recordReference, revisionReference: String
+            enum CodingKeys: String, CodingKey {
+                case recordReference = "record_reference"
+                case revisionReference = "revision_reference"
+            }
+        }
         struct Wire: Decodable {
             let schema, analysisID, source, transcript, timezone, referenceTime: String
             let maxProposals: Int
             let evidence: [EvidenceWire]
-            enum CodingKeys: String, CodingKey { case schema, analysisID = "analysis_id", source, transcript, timezone, referenceTime = "reference_time", maxProposals = "max_proposals", evidence }
+            enum CodingKeys: String, CodingKey {
+                case schema
+                case analysisID = "analysis_id"
+                case source, transcript, timezone
+                case referenceTime = "reference_time"
+                case maxProposals = "max_proposals"
+                case evidence
+            }
         }
         let wire = try object.decode(as: Wire.self, allowedKeys: keys)
-        let analysisID = wire.analysisID, source = wire.source, transcript = wire.transcript
-        let timezone = wire.timezone, referenceTime = wire.referenceTime
-        let maximumProposals = wire.maxProposals, rawEvidence = wire.evidence
+        let analysisID = wire.analysisID
+        let source = wire.source
+        let transcript = wire.transcript
+        let timezone = wire.timezone
+        let referenceTime = wire.referenceTime
+        let maximumProposals = wire.maxProposals
+        let rawEvidence = wire.evidence
         guard wire.schema == contextAnalysisSchema else { throw WorkerProtocolError.invalidPayload }
         guard isSafeIdentifier(analysisID),
-              ["imessage", "kakaotalk", "mail"].contains(source),
-              !transcript.isEmpty,
-              transcript.utf8.count <= maximumTranscriptBytes,
-              TimeZone(identifier: timezone) != nil,
-              parseRFC3339(referenceTime) != nil,
-              (1 ... 64).contains(maximumProposals),
-              !rawEvidence.isEmpty,
-              rawEvidence.count <= maximumEvidenceItems
+            ["imessage", "kakaotalk", "mail"].contains(source),
+            !transcript.isEmpty,
+            transcript.utf8.count <= maximumTranscriptBytes,
+            TimeZone(identifier: timezone) != nil,
+            parseRFC3339(referenceTime) != nil,
+            (1...64).contains(maximumProposals),
+            !rawEvidence.isEmpty,
+            rawEvidence.count <= maximumEvidenceItems
         else { throw WorkerProtocolError.invalidPayload }
 
         let evidenceList = try rawEvidence.map { value in
-            let record = value.recordReference, revision = value.revisionReference
+            let record = value.recordReference
+            let revision = value.revisionReference
             guard validEvidencePair(record: record, revision: revision, source: source)
             else { throw WorkerProtocolError.invalidPayload }
             return EvidenceReference(record: record, revision: revision)
@@ -79,14 +97,15 @@ struct AnalysisPayload {
 }
 
 private func isSafeIdentifier(_ value: String) -> Bool {
-    !value.isEmpty && value.utf8.count <= 64 && value.unicodeScalars.allSatisfy { scalar in
-        switch scalar.value {
-        case 45, 46, 48 ... 57, 65 ... 90, 95, 97 ... 122:
-            true
-        default:
-            false
+    !value.isEmpty && value.utf8.count <= 64
+        && value.unicodeScalars.allSatisfy { scalar in
+            switch scalar.value {
+            case 45, 46, 48...57, 65...90, 95, 97...122:
+                true
+            default:
+                false
+            }
         }
-    }
 }
 
 private func validEvidencePair(record: String, revision: String, source: String) -> Bool {
@@ -101,12 +120,13 @@ private func validEvidencePair(record: String, revision: String, source: String)
 }
 
 private func isSafeReference(_ value: String) -> Bool {
-    !value.isEmpty && value.utf8.count <= 128 && value.unicodeScalars.allSatisfy { scalar in
-        switch scalar.value {
-        case 45, 48 ... 57, 65 ... 90, 95, 97 ... 122:
-            true
-        default:
-            false
+    !value.isEmpty && value.utf8.count <= 128
+        && value.unicodeScalars.allSatisfy { scalar in
+            switch scalar.value {
+            case 45, 48...57, 65...90, 95, 97...122:
+                true
+            default:
+                false
+            }
         }
-    }
 }

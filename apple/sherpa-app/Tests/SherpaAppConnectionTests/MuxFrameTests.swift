@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import SherpaAppConnection
 
 // Contract §14 vectors and §7.4 limits. The core's tests read the same vectors.
@@ -55,8 +56,9 @@ func readsEveryValidAppFrame(line: String) throws {
 @Test func encodesTheAppFramesOfTheVectors() {
     #expect(MuxFrame(channel: 1, type: "open").encoded == Data("1\topen\n".utf8))
     #expect(MuxFrame(channel: 1, type: "close").encoded == Data("1\tclose\n".utf8))
-    #expect(MuxFrame(channel: 0, type: "confirmation", json: #"{"id":3,"decision":"declined"}"#).encoded
-        == Data("0\tconfirmation\t{\"id\":3,\"decision\":\"declined\"}\n".utf8))
+    #expect(
+        MuxFrame(channel: 0, type: "confirmation", json: #"{"id":3,"decision":"declined"}"#).encoded
+            == Data("0\tconfirmation\t{\"id\":3,\"decision\":\"declined\"}\n".utf8))
 }
 
 @Test(arguments: [
@@ -92,7 +94,9 @@ func rejectsTheViolationVectorsInBothDirections(line: String, expected: MuxViola
     // Unknown channel, non-JSON data and a late response are frames; routing decides.
     #expect(try frames("5\tdata\t{\"jsonrpc\":\"2.0\",\"method\":\"x\"}\n", .coreToApp).count == 1)
     #expect(try frames("1\tdata\tnot json\n", .appToCore).first?.body == Data("not json".utf8))
-    #expect(try frames("0\tresponse\t{\"id\":99,\"report\":{\"error\":\"x\",\"status\":\"failed\"}}\n", .appToCore).count == 1)
+    #expect(
+        try frames("0\tresponse\t{\"id\":99,\"report\":{\"error\":\"x\",\"status\":\"failed\"}}\n", .appToCore).count
+            == 1)
 }
 
 @Test(arguments: [

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import SherpaEventKitLiveVerifierSupport
 
 @Test func liveVerifierRejectsMissingWriteGate() {
@@ -94,9 +95,11 @@ import Testing
 
     #expect(failure.stableCode == "live_verifier.verification_failed")
     #expect(failure.stage.rawValue == "future_readback")
-    #expect(failure.mismatch == LiveVerifierMismatch(
-        field: .start, expected: "2026-08-26T00:00:00Z", actual: "2026-08-26T01:00:00Z"
-    ))
+    #expect(
+        failure.mismatch
+            == LiveVerifierMismatch(
+                field: .start, expected: "2026-08-26T00:00:00Z", actual: "2026-08-26T01:00:00Z"
+            ))
 }
 
 @Test func exactOccurrencesSelectsTheDetachedExceptionForTheRequestedOccurrenceDate() {
@@ -126,7 +129,9 @@ import Testing
     #expect(selected.map(\.nativeLocator) == ["future-occurrence"])
 }
 
-private func eventOccurrence(_ nativeLocator: String, at occurrenceDate: String, detached: Bool = false) -> EventSnapshot {
+private func eventOccurrence(_ nativeLocator: String, at occurrenceDate: String, detached: Bool = false)
+    -> EventSnapshot
+{
     EventSnapshot(
         nativeLocator: nativeLocator,
         eventCollection: EventCollectionSnapshot(

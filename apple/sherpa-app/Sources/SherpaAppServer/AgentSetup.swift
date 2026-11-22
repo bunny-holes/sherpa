@@ -45,10 +45,12 @@ public enum AgentSetup {
         case .claudeCode:
             // User scope: every project of this user (~/.claude.json). Everything after `--`
             // is the server's command.
-            return [Step(
-                caption: "Register Sherpa for all your projects:",
-                command: "claude mcp add --scope user \(serverName) -- \(relay)"
-            )]
+            return [
+                Step(
+                    caption: "Register Sherpa for all your projects:",
+                    command: "claude mcp add --scope user \(serverName) -- \(relay)"
+                )
+            ]
         case .codex:
             return [
                 Step(caption: "Turn on MCP 2026-07-28 in Codex:", command: "codex features enable \(codexFeature)"),

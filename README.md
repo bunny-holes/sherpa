@@ -20,9 +20,10 @@ No external messaging CLI (`imsg`, `kakaocli`) is used. See
 
 ## Build and test
 
-One gate covers everything — the core's format, lint, type check and tests,
-all three Swift packages, the `--version` format the Formula's test parses, the
-agent plugin, the documents, and the Homebrew release smoke:
+One gate covers everything — the format of every Swift source, the core's
+format, lint, type check and tests, all three Swift packages, the `--version`
+format the Formula's test parses, the agent plugin, the documents, and the
+Homebrew release smoke:
 
 ```bash
 bash scripts/check-all.sh
@@ -40,6 +41,18 @@ bun run build     # dist/sherpa
 
 Tests run on the Bun runtime because the core uses `bun:sqlite`; plain
 `vp test` runs on Node and cannot load it.
+
+Swift sources follow the root `.swift-format` (4-space indentation, 120
+columns). The gate lints every Swift file Git sees with the Xcode toolchain's
+`swift format`; rewrite them in place with the same tool before it runs:
+
+```bash
+git ls-files -z --cached --others --exclude-standard -- '*.swift' \
+  | xargs -0 swift format --in-place --parallel
+```
+
+`git config blame.ignoreRevsFile .git-blame-ignore-revs` makes a local
+`git blame` skip the formatting commits, as GitHub's blame view does.
 
 The gate requires a macOS 26 or newer host. `apple/foundation-models-service`
 declares `platforms: [.macOS(.v26)]` and imports `FoundationModels`; the other

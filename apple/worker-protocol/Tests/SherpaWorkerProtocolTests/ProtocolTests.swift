@@ -1,8 +1,10 @@
 import Foundation
 import Testing
+
 @testable import SherpaWorkerProtocol
 
-private let valid = #"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"req-1","operation_id":"op-1","capability":"capabilities","payload":{"schema":"sherpa.planner.capabilities.request.v2"},"deadline_ms":1000,"idempotency_key":"idem-1","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}"#
+private let valid =
+    #"{"kind":"request","protocol_version":"2.0.0","application_contract":"sherpa.planner.v2","request_id":"req-1","operation_id":"op-1","capability":"capabilities","payload":{"schema":"sherpa.planner.capabilities.request.v2"},"deadline_ms":1000,"idempotency_key":"idem-1","policy":{"effect":"read","required_evidence":"none","artifact_directory":null}}"#
 
 @Test func decodesStrictV2Envelope() throws {
     let request = try WorkerRequest(data: Data(valid.utf8))
@@ -32,8 +34,12 @@ func rejectsLegacyMissingAndUnknownFields(value: String) {
 }
 
 @Test func boundedReaderRejectsOversizeInput() throws {
-    let pipe = Pipe(); try pipe.fileHandleForWriting.write(contentsOf: Data(repeating: 1, count: 17)); try pipe.fileHandleForWriting.close()
-    #expect(throws: WorkerProtocolError.requestTooLarge) { _ = try readWorkerRequest(from: pipe.fileHandleForReading, maximumBytes: 16) }
+    let pipe = Pipe()
+    try pipe.fileHandleForWriting.write(contentsOf: Data(repeating: 1, count: 17))
+    try pipe.fileHandleForWriting.close()
+    #expect(throws: WorkerProtocolError.requestTooLarge) {
+        _ = try readWorkerRequest(from: pipe.fileHandleForReading, maximumBytes: 16)
+    }
 }
 
 private func oversized(_ request: WorkerRequest, status: WorkerStatus, effect: WorkerEffectOutcome) -> WorkerResponse {
@@ -88,10 +94,11 @@ private func oversized(_ request: WorkerRequest, status: WorkerStatus, effect: W
     #expect(fitted.response.status == .succeeded)
 }
 
-@Test(arguments: [
-    (nil, 8_388_608), ("1024", 1_024), ("512", 512), ("8388608", 8_388_608),
-    ("511", 8_388_608), ("8388609", 8_388_608), ("-1", 8_388_608), ("1k", 8_388_608), ("", 8_388_608),
-] as [(String?, Int)])
+@Test(
+    arguments: [
+        (nil, 8_388_608), ("1024", 1_024), ("512", 512), ("8388608", 8_388_608),
+        ("511", 8_388_608), ("8388609", 8_388_608), ("-1", 8_388_608), ("1k", 8_388_608), ("", 8_388_608),
+    ] as [(String?, Int)])
 func responseLimitOverrideCanOnlyLowerTheLimit(override: String?, expected: Int) {
     #expect(WorkerResponse.limit(override: override, maximumBytes: 8 * 1024 * 1024) == expected)
 }

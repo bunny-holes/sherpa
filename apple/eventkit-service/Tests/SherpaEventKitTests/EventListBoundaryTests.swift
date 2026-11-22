@@ -1,8 +1,8 @@
 import EventKit
 import Foundation
-import SherpaWorkerProtocol
-import SherpaPlannerContract
 import SherpaPlannerApplication
+import SherpaPlannerContract
+import SherpaWorkerProtocol
 import Testing
 
 @testable import SherpaEventKitAdapter
@@ -24,22 +24,25 @@ import Testing
     let from = try #require(parseDate("2026-08-10T00:00:00Z"))
     let to = try #require(parseDate("2026-08-11T00:00:00Z"))
 
-    #expect(eventListRowIsWithinRange(
-        start: try #require(parseDate("2026-08-09T23:00:00Z")),
-        end: try #require(parseDate("2026-08-10T01:00:00Z")),
-        from: from,
-        to: to
-    ))
-    #expect(eventListRowIsWithinRange(
-        start: try #require(parseDate("2026-08-10T23:00:00Z")),
-        end: try #require(parseDate("2026-08-11T00:30:00Z")),
-        from: from,
-        to: to
-    ))
+    #expect(
+        eventListRowIsWithinRange(
+            start: try #require(parseDate("2026-08-09T23:00:00Z")),
+            end: try #require(parseDate("2026-08-10T01:00:00Z")),
+            from: from,
+            to: to
+        ))
+    #expect(
+        eventListRowIsWithinRange(
+            start: try #require(parseDate("2026-08-10T23:00:00Z")),
+            end: try #require(parseDate("2026-08-11T00:30:00Z")),
+            from: from,
+            to: to
+        ))
     #expect(!eventListRowIsWithinRange(start: from, end: from, from: from, to: to))
-    #expect(!eventListRowIsWithinRange(
-        start: try #require(parseDate("2026-08-09T23:00:00Z")), end: from, from: from, to: to
-    ))
+    #expect(
+        !eventListRowIsWithinRange(
+            start: try #require(parseDate("2026-08-09T23:00:00Z")), end: from, from: from, to: to
+        ))
     #expect(!eventListRowIsWithinRange(start: to, end: to.addingTimeInterval(1), from: from, to: to))
 }
 
@@ -60,9 +63,11 @@ import Testing
     let validator = EventCommandValidator()
 
     #expect(throws: PlannerValidationError.self) {
-        try validator.validate(.init(schema: "sherpa.planner.event-list.request.v2",
-            from: "2026-08-10T00:00:00Z", to: "2026-08-11T00:00:00Z",
-            limit: nil, collectionNativeLocator: ""))
+        try validator.validate(
+            .init(
+                schema: "sherpa.planner.event-list.request.v2",
+                from: "2026-08-10T00:00:00Z", to: "2026-08-11T00:00:00Z",
+                limit: nil, collectionNativeLocator: ""))
     }
 }
 

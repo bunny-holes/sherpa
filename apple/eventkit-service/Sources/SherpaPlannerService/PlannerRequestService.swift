@@ -48,12 +48,13 @@ public struct PlannerRequestService: Sendable {
         // and reported as the same `partial` outcome instead of a `failed` command.
         let result = try await journaled(request.capability, operationID: request.operationID) {
             let (response, data) = try await EventKitWorker().handle(request).fitted(maximumBytes: responseLimit)
-            let status: NativeMutationStatus = switch response.status {
-            case .succeeded: .completed
-            case .failed: .failed
-            case .partial: .partial
-            case .uncertain: .uncertain
-            }
+            let status: NativeMutationStatus =
+                switch response.status {
+                case .succeeded: .completed
+                case .failed: .failed
+                case .partial: .partial
+                case .uncertain: .uncertain
+                }
             return MutationAttempt(output: data, status: status, stableErrorCode: response.stableErrorCode)
         }
         return result.attempt.output
@@ -69,7 +70,8 @@ public struct PlannerRequestService: Sendable {
         let result = try await journal.perform(
             capability: capability, operationID: operationID, attempt
         )
-        let fields = "capability=\(capability) operation_id=\(result.operationID) "
+        let fields =
+            "capability=\(capability) operation_id=\(result.operationID) "
             + "status=\(result.attempt.status.rawValue)"
         if let journalFailure = result.journalFailure {
             WorkerLog.error("[apple:sherpa-apple:journal-failure] \(fields) code=\(journalFailure.rawValue)")

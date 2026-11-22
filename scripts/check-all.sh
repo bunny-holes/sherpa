@@ -14,6 +14,29 @@ fail() { log error "$LOG_SCOPE:failure" "$1"; exit 1; }
 
 log info "$LOG_SCOPE:start" "root=${REPO_ROOT##*/}"
 
+# 0. Swift 서식(bunny-holes/sherpa#70). 기준은 저장소 루트의 .swift-format 하나다. swift-format 은 파일의 폴더에서
+#    위로 올라가며 가장 가까운 .swift-format 을 읽으므로 이 파일이 저장소의 모든 Swift 파일에 걸린다. Git 이 보는
+#    Swift 파일(추적한 것과 무시하지 않은 새 파일) 전부를 Xcode 도구 사슬의 swift format 으로 본다. 도구 사슬이
+#    바뀌어 출력이 달라지면 swift format --in-place 로 다시 맞춘 style: 커밋을 만들고 .git-blame-ignore-revs 에
+#    적는다. 몇 초면 끝나므로 빌드보다 먼저 돈다.
+swift_format_version="$(swift format --version)" || fail "reason=swift_format_unavailable"
+log info "check:swift-format:start" "version=$swift_format_version config=.swift-format"
+swift_sources=()
+while IFS= read -r -d '' source; do
+  # 지웠지만 아직 색인에 남은 파일은 건너뛴다.
+  if [ -f "$REPO_ROOT/$source" ]; then swift_sources+=("$source"); fi
+done < <(git -C "$REPO_ROOT" ls-files -z --cached --others --exclude-standard -- '*.swift')
+[ "${#swift_sources[@]}" -gt 0 ] || fail "reason=swift_sources_missing"
+format_log="$(mktemp)"
+if ! (cd "$REPO_ROOT" && swift format lint --strict --parallel -- "${swift_sources[@]}") 2>"$format_log"; then
+  head -40 "$format_log" >&2
+  findings="$(grep -c ': error: ' "$format_log" || true)"
+  rm -f "$format_log"
+  fail "reason=swift_format_violation findings=$findings"
+fi
+rm -f "$format_log"
+log info "check:swift-format:success" "files=${#swift_sources[@]}"
+
 # 1. Swift 패키지 전부. eventkit-service 만 돌리던 시절, worker-protocol 과
 #    foundation-models-service 의 테스트 34 개가 아무도 돌리지 않는 채로 남아 있었다.
 #    돌리지 않는 테스트는 없는 테스트다.

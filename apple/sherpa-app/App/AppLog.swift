@@ -1,6 +1,6 @@
 import Foundation
-import os
 import SherpaAppConnection
+import os
 
 /// The app writes the same lines as the core and the relay to the unified log, subsystem
 /// `dev.xiyo.sherpa` (contract §12). Every line is built from values the contract allows

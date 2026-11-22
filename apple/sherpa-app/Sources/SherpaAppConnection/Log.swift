@@ -71,9 +71,11 @@ public struct SherpaLogger: Sendable {
 /// `invalid`.
 public func logToken(_ value: String?) -> String {
     guard let value else { return "none" }
-    let allowed = !value.isEmpty && value.utf8.count <= 128 && value.utf8.allSatisfy {
-        (0x30...0x39).contains($0) || (0x41...0x5a).contains($0) || (0x61...0x7a).contains($0)
-            || $0 == 0x2e || $0 == 0x5f || $0 == 0x2d
-    }
+    let allowed =
+        !value.isEmpty && value.utf8.count <= 128
+        && value.utf8.allSatisfy {
+            (0x30...0x39).contains($0) || (0x41...0x5a).contains($0) || (0x61...0x7a).contains($0)
+                || $0 == 0x2e || $0 == 0x5f || $0 == 0x2d
+        }
     return allowed ? value : "invalid"
 }

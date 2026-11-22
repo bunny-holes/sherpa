@@ -1,5 +1,6 @@
 import EventKit
 import Testing
+
 @testable import SherpaEventKitAdapter
 
 @Test func eventSourceDiscoveryRefreshesRemoteSourcesBeforeReadingCalendars() {

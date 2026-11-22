@@ -1,6 +1,6 @@
-import SherpaWorkerProtocol
 @preconcurrency import EventKit
 import Foundation
+import SherpaWorkerProtocol
 
 /// The repair is deliberately narrow: it never chooses between two events.
 /// It removes the old branch only after EventKit has separately exposed the

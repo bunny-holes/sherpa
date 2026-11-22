@@ -5,19 +5,22 @@ import SherpaWorkerProtocol
 @Generable
 struct GeneratedPlanningBatch {
     @Guide(
-        description: "Scheduled occurrences supported by an explicit calendar date but no content clock time, including date-only deliveries and installations. Never put them in timed events or reminders.",
+        description:
+            "Scheduled occurrences supported by an explicit calendar date but no content clock time, including date-only deliveries and installations. Never put them in timed events or reminders.",
         .maximumCount(32)
     )
     var allDayEvents: [GeneratedAllDayEvent] = []
 
     @Guide(
-        description: "Timed calendar occurrences only when message content explicitly states both a start clock and a later end clock. Message metadata times never qualify.",
+        description:
+            "Timed calendar occurrences only when message content explicitly states both a start clock and a later end clock. Message metadata times never qualify.",
         .maximumCount(32)
     )
     var events: [GeneratedEvent]
 
     @Guide(
-        description: "Concrete actions explicitly requested of or committed by the user. Exclude scheduled occurrences, advertisements, product education, generic instructions, optional suggestions, and invalid-event fallbacks.",
+        description:
+            "Concrete actions explicitly requested of or committed by the user. Exclude scheduled occurrences, advertisements, product education, generic instructions, optional suggestions, and invalid-event fallbacks.",
         .maximumCount(32)
     )
     var reminders: [GeneratedReminder]
@@ -48,7 +51,7 @@ struct GeneratedAllDayEvent {
 
     @Guide(
         description: "One-based ephemeral evidence handles for message content that explicitly states the date.",
-        .count(1 ... 4)
+        .count(1...4)
     )
     var evidenceHandles: [Int]
 
@@ -78,8 +81,9 @@ struct GeneratedEvent {
     var schedule: GeneratedSchedule?
 
     @Guide(
-        description: "One-based ephemeral evidence handles for message content that explicitly states the start and later end.",
-        .count(1 ... 4)
+        description:
+            "One-based ephemeral evidence handles for message content that explicitly states the start and later end.",
+        .count(1...4)
     )
     var evidenceHandles: [Int]
 
@@ -102,8 +106,9 @@ struct GeneratedReminder {
     var schedule: GeneratedSchedule?
 
     @Guide(
-        description: "One-based ephemeral evidence handles whose content proves the user's concrete obligation or request, not merely a related noun, advertisement, how-to instruction, or optional possibility.",
-        .count(1 ... 4)
+        description:
+            "One-based ephemeral evidence handles whose content proves the user's concrete obligation or request, not merely a related noun, advertisement, how-to instruction, or optional possibility.",
+        .count(1...4)
     )
     var evidenceHandles: [Int]
 }
@@ -124,10 +129,12 @@ struct GeneratedRecurrence {
     @Guide(description: "Exactly one of daily, weekly, monthly, or yearly.")
     var frequency: String
 
-    @Guide(description: "Positive repeat interval, normally 1.", .range(1 ... 10_000))
+    @Guide(description: "Positive repeat interval, normally 1.", .range(1...10_000))
     var interval: Int
 
-    @Guide(description: "Weekday tokens SU, MO, TU, WE, TH, FR, SA; optionally ordinal like 2TU or -1FR.", .maximumCount(7))
+    @Guide(
+        description: "Weekday tokens SU, MO, TU, WE, TH, FR, SA; optionally ordinal like 2TU or -1FR.", .maximumCount(7)
+    )
     var daysOfWeek: [String]
 
     @Guide(description: "Signed month days: 1 through 31 or -1 through -31.", .maximumCount(31))
@@ -154,13 +161,13 @@ struct GeneratedRecurrence {
 
 @Generable
 struct GeneratedReminderDate {
-    @Guide(.range(1970 ... 2200))
+    @Guide(.range(1970...2200))
     var year: Int
 
-    @Guide(.range(1 ... 12))
+    @Guide(.range(1...12))
     var month: Int
 
-    @Guide(.range(1 ... 31))
+    @Guide(.range(1...31))
     var day: Int
 
     var hour: Int?
@@ -351,7 +358,11 @@ private func mapAllDayEvent(
         "url": jsonString(event.url), "time_zone": jsonString(event.timeZone),
         "alarms": .array(schedule.alarms), "recurrence_rules": .array(schedule.recurrenceRules),
     ]
-    return ["proposal_id": .string(proposalID(index)), "action": .object(["kind": .string("create_event"), "payload": .object(eventPayload)]), "evidence": .array(evidence.wire)]
+    return [
+        "proposal_id": .string(proposalID(index)),
+        "action": .object(["kind": .string("create_event"), "payload": .object(eventPayload)]),
+        "evidence": .array(evidence.wire),
+    ]
 }
 
 private func mapTimedEvent(
@@ -385,7 +396,11 @@ private func mapTimedEvent(
         "url": jsonString(event.url), "time_zone": jsonString(event.timeZone),
         "alarms": .array(schedule.alarms), "recurrence_rules": .array(schedule.recurrenceRules),
     ]
-    return ["proposal_id": .string(proposalID(index)), "action": .object(["kind": .string("create_event"), "payload": .object(eventPayload)]), "evidence": .array(evidence.wire)]
+    return [
+        "proposal_id": .string(proposalID(index)),
+        "action": .object(["kind": .string("create_event"), "payload": .object(eventPayload)]),
+        "evidence": .array(evidence.wire),
+    ]
 }
 
 private func mapReminder(
@@ -404,12 +419,17 @@ private func mapReminder(
     try validateOptional(reminder.url, maximumBytes: 4_096)
     let schedule = try mapSchedule(reminder.schedule)
     let reminderPayload: JSONObject = [
-        "title": .string(reminder.title), "notes": jsonString(reminder.notes), "url": jsonString(reminder.url), "priority": .integer(0),
+        "title": .string(reminder.title), "notes": jsonString(reminder.notes), "url": jsonString(reminder.url),
+        "priority": .integer(0),
         "due": try mapDate(reminder.due),
         "start": try mapDate(reminder.start),
         "alarms": .array(schedule.alarms), "recurrence_rules": .array(schedule.recurrenceRules),
     ]
-    return ["proposal_id": .string(proposalID(index)), "action": .object(["kind": .string("create_reminder"), "payload": .object(reminderPayload)]), "evidence": .array(evidence.wire)]
+    return [
+        "proposal_id": .string(proposalID(index)),
+        "action": .object(["kind": .string("create_reminder"), "payload": .object(reminderPayload)]),
+        "evidence": .array(evidence.wire),
+    ]
 }
 
 private struct GroundedEvidence {
@@ -422,7 +442,7 @@ private func mapEvidenceHandles(
     modelTranscript: ModelTranscript,
     payload: AnalysisPayload
 ) throws -> GroundedEvidence {
-    guard (1 ... 4).contains(rawHandles.count) else {
+    guard (1...4).contains(rawHandles.count) else {
         throw GeneratedPlanningError.evidenceCount
     }
     let handles = Set(rawHandles)
@@ -431,8 +451,8 @@ private func mapEvidenceHandles(
     }
     let wire: [JSONValue] = try handles.sorted().map { handle -> JSONValue in
         guard handle > 0,
-              payload.evidenceList.indices.contains(handle - 1),
-              modelTranscript.evidenceContent[handle] != nil
+            payload.evidenceList.indices.contains(handle - 1),
+            modelTranscript.evidenceContent[handle] != nil
         else {
             throw GeneratedPlanningError.evidenceReference
         }
@@ -440,7 +460,10 @@ private func mapEvidenceHandles(
         guard payload.evidence.contains(evidence) else {
             throw GeneratedPlanningError.evidenceReference
         }
-        return .object(["record_reference": .string(evidence.record), "revision_reference": .string(evidence.revision), "locator": .null])
+        return .object([
+            "record_reference": .string(evidence.record), "revision_reference": .string(evidence.revision),
+            "locator": .null,
+        ])
     }
     return GroundedEvidence(wire: wire, handles: handles)
 }
@@ -473,12 +496,12 @@ private func resolvedTimedEventRange(
     let startClock = calendar.dateComponents([.hour, .minute], from: rawStart)
     let endClock = calendar.dateComponents([.hour, .minute], from: rawEnd)
     guard let startHour = startClock.hour,
-          let startMinute = startClock.minute,
-          containsClock(hour: startHour, minute: startMinute, in: relevantContent)
+        let startMinute = startClock.minute,
+        containsClock(hour: startHour, minute: startMinute, in: relevantContent)
     else { throw GeneratedPlanningError.eventStartEvidence }
     guard let endHour = endClock.hour,
-          let endMinute = endClock.minute,
-          containsClock(hour: endHour, minute: endMinute, in: relevantContent)
+        let endMinute = endClock.minute,
+        containsClock(hour: endHour, minute: endMinute, in: relevantContent)
     else { throw GeneratedPlanningError.eventEndEvidence }
 
     guard let reference = parseRFC3339(payload.referenceTime) else {
@@ -487,25 +510,29 @@ private func resolvedTimedEventRange(
     let referenceYear = calendar.component(.year, from: reference)
     let mentions = calendarDateMentions(in: relevantContent, referenceYear: referenceYear)
     guard let requestedStart = calendarDateValue(rawStart, calendar: calendar),
-          let requestedEnd = calendarDateValue(rawEnd, calendar: calendar),
-          let startDate = resolveCalendarDate(
-        requested: requestedStart,
-        mentions: mentions,
-        referenceYear: referenceYear,
-        calendar: calendar
-    ) else { throw GeneratedPlanningError.eventStartEvidence }
-    guard let endDate = resolveCalendarDate(
-        requested: requestedEnd,
-        mentions: mentions,
-        referenceYear: referenceYear,
-        calendar: calendar
-    ) else { throw GeneratedPlanningError.eventEndEvidence }
-    guard let start = localTimestamp(
-        date: startDate,
-        hour: startHour,
-        minute: startMinute,
-        calendar: calendar
-    ),
+        let requestedEnd = calendarDateValue(rawEnd, calendar: calendar),
+        let startDate = resolveCalendarDate(
+            requested: requestedStart,
+            mentions: mentions,
+            referenceYear: referenceYear,
+            calendar: calendar
+        )
+    else { throw GeneratedPlanningError.eventStartEvidence }
+    guard
+        let endDate = resolveCalendarDate(
+            requested: requestedEnd,
+            mentions: mentions,
+            referenceYear: referenceYear,
+            calendar: calendar
+        )
+    else { throw GeneratedPlanningError.eventEndEvidence }
+    guard
+        let start = localTimestamp(
+            date: startDate,
+            hour: startHour,
+            minute: startMinute,
+            calendar: calendar
+        ),
         let end = localTimestamp(
             date: endDate,
             hour: endHour,
@@ -600,23 +627,27 @@ private func resolvedAllDayEventRange(
         referenceYear: referenceYear
     )
     let requestedStart = try calendarDateValue(event.startDate, calendar: calendar)
-    guard let startDate = resolveCalendarDate(
-        requested: requestedStart,
-        mentions: mentions,
-        referenceYear: referenceYear,
-        calendar: calendar
-    ) else {
+    guard
+        let startDate = resolveCalendarDate(
+            requested: requestedStart,
+            mentions: mentions,
+            referenceYear: referenceYear,
+            calendar: calendar
+        )
+    else {
         throw GeneratedPlanningError.allDayStartEvidence
     }
     let endDate: CalendarDateValue?
     if let rawEnd = event.endDateInclusive {
         let requestedEnd = try calendarDateValue(rawEnd, calendar: calendar)
-        guard let resolvedEnd = resolveCalendarDate(
-            requested: requestedEnd,
-            mentions: mentions,
-            referenceYear: referenceYear,
-            calendar: calendar
-        ) else {
+        guard
+            let resolvedEnd = resolveCalendarDate(
+                requested: requestedEnd,
+                mentions: mentions,
+                referenceYear: referenceYear,
+                calendar: calendar
+            )
+        else {
             throw GeneratedPlanningError.allDayEndEvidence
         }
         endDate = resolvedEnd
@@ -653,14 +684,14 @@ private func calendarDateValue(
 ) throws -> CalendarDateValue {
     let parts = value.split(separator: "-", omittingEmptySubsequences: false)
     guard parts.count == 3,
-          parts[0].count == 4,
-          parts[1].count == 2,
-          parts[2].count == 2,
-          parts.allSatisfy({ $0.allSatisfy(\.isNumber) }),
-          let year = Int(parts[0]),
-          let month = Int(parts[1]),
-          let day = Int(parts[2]),
-          localDate(value, calendar: calendar) != nil
+        parts[0].count == 4,
+        parts[1].count == 2,
+        parts[2].count == 2,
+        parts.allSatisfy({ $0.allSatisfy(\.isNumber) }),
+        let year = Int(parts[0]),
+        let month = Int(parts[1]),
+        let day = Int(parts[2]),
+        localDate(value, calendar: calendar) != nil
     else { throw GeneratedPlanningError.allDayDate }
     return CalendarDateValue(year: year, month: month, day: day)
 }
@@ -686,16 +717,17 @@ private func localTimestamp(
     minute: Int,
     calendar: Calendar
 ) -> Date? {
-    calendar.date(from: DateComponents(
-        calendar: calendar,
-        timeZone: calendar.timeZone,
-        year: date.year,
-        month: date.month,
-        day: date.day,
-        hour: hour,
-        minute: minute,
-        second: 0
-    ))
+    calendar.date(
+        from: DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: date.year,
+            month: date.month,
+            day: date.day,
+            hour: hour,
+            minute: minute,
+            second: 0
+        ))
 }
 
 private func resolveCalendarDate(
@@ -704,13 +736,12 @@ private func resolveCalendarDate(
     referenceYear: Int,
     calendar: Calendar
 ) -> CalendarDateValue? {
-    let values = Set(mentions.compactMap { mention -> CalendarDateValue? in
-        let year = mention.year ?? (
-            abs(requested.year - referenceYear) <= 1 ? requested.year : referenceYear
-        )
-        let value = CalendarDateValue(year: year, month: mention.month, day: mention.day)
-        return localDate(value.text, calendar: calendar) == nil ? nil : value
-    })
+    let values = Set(
+        mentions.compactMap { mention -> CalendarDateValue? in
+            let year = mention.year ?? (abs(requested.year - referenceYear) <= 1 ? requested.year : referenceYear)
+            let value = CalendarDateValue(year: year, month: mention.month, day: mention.day)
+            return localDate(value.text, calendar: calendar) == nil ? nil : value
+        })
     if values.contains(requested) { return requested }
     return values.count == 1 ? values.first : nil
 }
@@ -733,8 +764,8 @@ private func calendarDateMentions(
         mentions: &mentions
     ) { match, text in
         guard let shortYear = captureInt(match, group: 1, text: text),
-              let month = captureInt(match, group: 2, text: text),
-              let day = captureInt(match, group: 3, text: text)
+            let month = captureInt(match, group: 2, text: text),
+            let day = captureInt(match, group: 3, text: text)
         else { return nil }
         let century = referenceYear / 100 * 100
         var year = century + shortYear
@@ -772,7 +803,7 @@ private func appendDateMentions(
     let range = NSRange(location: 0, length: text.length)
     for match in expression.matches(in: content, range: range) {
         guard !mentions.contains(where: { NSIntersectionRange($0.range, match.range).length > 0 }),
-              let mention = map(match, text)
+            let mention = map(match, text)
         else { continue }
         mentions.append(mention)
     }
@@ -787,7 +818,7 @@ private func dateMention(
 ) -> CalendarDateMention? {
     let year = yearGroup.flatMap { captureInt(match, group: $0, text: text) }
     guard let month = captureInt(match, group: monthGroup, text: text),
-          let day = captureInt(match, group: dayGroup, text: text)
+        let day = captureInt(match, group: dayGroup, text: text)
     else { return nil }
     return CalendarDateMention(year: year, month: month, day: day, range: match.range)
 }
@@ -805,21 +836,22 @@ private func captureInt(
 private func localDate(_ value: String, calendar: Calendar) -> Date? {
     let parts = value.split(separator: "-", omittingEmptySubsequences: false)
     guard parts.count == 3,
-          parts[0].count == 4,
-          parts[1].count == 2,
-          parts[2].count == 2,
-          parts.allSatisfy({ $0.allSatisfy(\.isNumber) }),
-          let year = Int(parts[0]),
-          let month = Int(parts[1]),
-          let day = Int(parts[2]),
-          (1970 ... 2200).contains(year),
-          let date = calendar.date(from: DateComponents(
-              calendar: calendar,
-              timeZone: calendar.timeZone,
-              year: year,
-              month: month,
-              day: day
-          ))
+        parts[0].count == 4,
+        parts[1].count == 2,
+        parts[2].count == 2,
+        parts.allSatisfy({ $0.allSatisfy(\.isNumber) }),
+        let year = Int(parts[0]),
+        let month = Int(parts[1]),
+        let day = Int(parts[2]),
+        (1970...2200).contains(year),
+        let date = calendar.date(
+            from: DateComponents(
+                calendar: calendar,
+                timeZone: calendar.timeZone,
+                year: year,
+                month: month,
+                day: day
+            ))
     else { return nil }
     let verified = calendar.dateComponents([.year, .month, .day], from: date)
     return verified.year == year && verified.month == month && verified.day == day ? date : nil
@@ -839,20 +871,21 @@ private func mapSchedule(_ schedule: GeneratedSchedule?) throws -> MappedSchedul
     var alarms: [JSONValue] = try schedule.alarmAt.map { value -> JSONValue in
         try validateText(value, maximumBytes: 64, required: true)
         guard let date = parseRFC3339(value),
-              alarmIdentities.insert("absolute:\(date.timeIntervalSinceReferenceDate)").inserted
+            alarmIdentities.insert("absolute:\(date.timeIntervalSinceReferenceDate)").inserted
         else { throw GeneratedPlanningError.absoluteAlarm }
         return .object(["kind": .string("absolute"), "date": .string(value)])
     }
-    alarms.append(contentsOf: try schedule.alarmMinutesBefore.map { minutes -> JSONValue in
-        guard (0 ... 525_600).contains(minutes) else {
-            throw GeneratedPlanningError.alarmOffset
-        }
-        let seconds = -minutes * 60
-        guard alarmIdentities.insert("relative:\(seconds)").inserted else {
-            throw GeneratedPlanningError.duplicateAlarm
-        }
-        return .object(["kind": .string("relative"), "offset_seconds": .integer(Int64(seconds))])
-    })
+    alarms.append(
+        contentsOf: try schedule.alarmMinutesBefore.map { minutes -> JSONValue in
+            guard (0...525_600).contains(minutes) else {
+                throw GeneratedPlanningError.alarmOffset
+            }
+            let seconds = -minutes * 60
+            guard alarmIdentities.insert("relative:\(seconds)").inserted else {
+                throw GeneratedPlanningError.duplicateAlarm
+            }
+            return .object(["kind": .string("relative"), "offset_seconds": .integer(Int64(seconds))])
+        })
     let recurrenceRules: [JSONValue] = try schedule.recurrence.map(mapRecurrence).map { [JSONValue.object($0)] } ?? []
     return MappedSchedule(alarms: alarms, recurrenceRules: recurrenceRules)
 }
@@ -860,41 +893,43 @@ private func mapSchedule(_ schedule: GeneratedSchedule?) throws -> MappedSchedul
 private func mapRecurrence(_ value: GeneratedRecurrence) throws -> JSONObject {
     let frequency = value.frequency.lowercased()
     guard ["daily", "weekly", "monthly", "yearly"].contains(frequency),
-          (1 ... 10_000).contains(value.interval),
-          value.daysOfWeek.count <= 7,
-          value.daysOfMonth.count <= 31,
-          value.monthsOfYear.count <= 12,
-          value.weeksOfYear.count <= 53,
-          value.daysOfYear.count <= 64,
-          value.setPositions.count <= 64,
-          unique(value.daysOfMonth), unique(value.monthsOfYear),
-          unique(value.weeksOfYear), unique(value.daysOfYear), unique(value.setPositions),
-          value.daysOfMonth.allSatisfy({ signedRange($0, maximum: 31) }),
-          value.monthsOfYear.allSatisfy({ (1 ... 12).contains($0) }),
-          value.weeksOfYear.allSatisfy({ signedRange($0, maximum: 53) }),
-          value.daysOfYear.allSatisfy({ signedRange($0, maximum: 366) }),
-          value.setPositions.allSatisfy({ signedRange($0, maximum: 366) })
+        (1...10_000).contains(value.interval),
+        value.daysOfWeek.count <= 7,
+        value.daysOfMonth.count <= 31,
+        value.monthsOfYear.count <= 12,
+        value.weeksOfYear.count <= 53,
+        value.daysOfYear.count <= 64,
+        value.setPositions.count <= 64,
+        unique(value.daysOfMonth), unique(value.monthsOfYear),
+        unique(value.weeksOfYear), unique(value.daysOfYear), unique(value.setPositions),
+        value.daysOfMonth.allSatisfy({ signedRange($0, maximum: 31) }),
+        value.monthsOfYear.allSatisfy({ (1...12).contains($0) }),
+        value.weeksOfYear.allSatisfy({ signedRange($0, maximum: 53) }),
+        value.daysOfYear.allSatisfy({ signedRange($0, maximum: 366) }),
+        value.setPositions.allSatisfy({ signedRange($0, maximum: 366) })
     else { throw GeneratedPlanningError.recurrenceShape }
     let weekdays = try value.daysOfWeek.map { try mapWeekday($0, frequency: frequency) }
     guard Set(value.daysOfWeek.map { $0.uppercased() }).count == weekdays.count else {
         throw GeneratedPlanningError.duplicateWeekday
     }
-    let selectorsAreValid = switch frequency {
-    case "daily":
-        weekdays.isEmpty && value.daysOfMonth.isEmpty && value.monthsOfYear.isEmpty
-            && value.weeksOfYear.isEmpty && value.daysOfYear.isEmpty
-    case "weekly":
-        value.daysOfMonth.isEmpty && value.monthsOfYear.isEmpty
-            && value.weeksOfYear.isEmpty && value.daysOfYear.isEmpty
-    case "monthly":
-        value.monthsOfYear.isEmpty && value.weeksOfYear.isEmpty
-            && value.daysOfYear.isEmpty && (weekdays.isEmpty || value.daysOfMonth.isEmpty)
-    case "yearly":
-        value.daysOfMonth.isEmpty
-    default:
-        false
-    }
-    let hasSelector = !weekdays.isEmpty || !value.daysOfMonth.isEmpty
+    let selectorsAreValid =
+        switch frequency {
+        case "daily":
+            weekdays.isEmpty && value.daysOfMonth.isEmpty && value.monthsOfYear.isEmpty
+                && value.weeksOfYear.isEmpty && value.daysOfYear.isEmpty
+        case "weekly":
+            value.daysOfMonth.isEmpty && value.monthsOfYear.isEmpty
+                && value.weeksOfYear.isEmpty && value.daysOfYear.isEmpty
+        case "monthly":
+            value.monthsOfYear.isEmpty && value.weeksOfYear.isEmpty
+                && value.daysOfYear.isEmpty && (weekdays.isEmpty || value.daysOfMonth.isEmpty)
+        case "yearly":
+            value.daysOfMonth.isEmpty
+        default:
+            false
+        }
+    let hasSelector =
+        !weekdays.isEmpty || !value.daysOfMonth.isEmpty
         || !value.monthsOfYear.isEmpty || !value.weeksOfYear.isEmpty
         || !value.daysOfYear.isEmpty
     guard selectorsAreValid, value.setPositions.isEmpty || hasSelector else {
@@ -911,7 +946,7 @@ private func mapRecurrence(_ value: GeneratedRecurrence) throws -> JSONObject {
         }
         end = .object(["kind": .string("date"), "date": .string(until)])
     case let (nil, .some(count)):
-        guard (1 ... 1_000_000).contains(count) else {
+        guard (1...1_000_000).contains(count) else {
             throw GeneratedPlanningError.recurrenceCount
         }
         end = .object(["kind": .string("count"), "count": .integer(Int64(count))])
@@ -932,24 +967,25 @@ private func mapWeekday(_ raw: String, frequency: String) throws -> JSONObject {
     let value = raw.uppercased()
     let weekdays = ["SU": 1, "MO": 2, "TU": 3, "WE": 4, "TH": 5, "FR": 6, "SA": 7]
     guard let suffix = weekdays.keys.first(where: value.hasSuffix),
-          let day = weekdays[suffix]
+        let day = weekdays[suffix]
     else { throw GeneratedPlanningError.weekdayToken }
     let prefix = String(value.dropLast(suffix.count))
     guard let weekNumber = prefix.isEmpty ? 0 : Int(prefix) else {
         throw GeneratedPlanningError.weekdayOrdinal
     }
-    let valid = switch frequency {
-    case "weekly": weekNumber == 0
-    case "monthly": weekNumber == 0 || signedRange(weekNumber, maximum: 5)
-    case "yearly": weekNumber == 0 || signedRange(weekNumber, maximum: 53)
-    default: false
-    }
+    let valid =
+        switch frequency {
+        case "weekly": weekNumber == 0
+        case "monthly": weekNumber == 0 || signedRange(weekNumber, maximum: 5)
+        case "yearly": weekNumber == 0 || signedRange(weekNumber, maximum: 53)
+        default: false
+        }
     guard valid else { throw GeneratedPlanningError.weekdayFrequency }
     return ["day_of_week": .integer(Int64(day)), "week_number": .integer(Int64(weekNumber))]
 }
 
 private func signedRange(_ value: Int, maximum: Int) -> Bool {
-    value != 0 && (-maximum ... maximum).contains(value)
+    value != 0 && (-maximum...maximum).contains(value)
 }
 
 private func unique(_ values: [Int]) -> Bool {
@@ -962,19 +998,21 @@ private func proposalID(_ zeroBasedIndex: Int) -> String {
 
 private func mapDate(_ date: GeneratedReminderDate?) throws -> JSONValue {
     guard let date else { return .null }
-    guard (1970 ... 2200).contains(date.year),
-          (1 ... 12).contains(date.month),
-          (1 ... 31).contains(date.day),
-          date.hour.map({ (0 ... 23).contains($0) }) ?? true,
-          date.minute.map({ (0 ... 59).contains($0) }) ?? true,
-          date.second.map({ (0 ... 59).contains($0) }) ?? true,
-          !(date.hour == nil && (date.minute != nil || date.second != nil)),
-          !(date.hour != nil && date.minute == nil)
+    guard (1970...2200).contains(date.year),
+        (1...12).contains(date.month),
+        (1...31).contains(date.day),
+        date.hour.map({ (0...23).contains($0) }) ?? true,
+        date.minute.map({ (0...59).contains($0) }) ?? true,
+        date.second.map({ (0...59).contains($0) }) ?? true,
+        !(date.hour == nil && (date.minute != nil || date.second != nil)),
+        !(date.hour != nil && date.minute == nil)
     else { throw GeneratedPlanningError.reminderDate }
     try validateOptional(date.timeZone, maximumBytes: 128)
-    return .object(["year": .integer(Int64(date.year)), "month": .integer(Int64(date.month)),
+    return .object([
+        "year": .integer(Int64(date.year)), "month": .integer(Int64(date.month)),
         "day": .integer(Int64(date.day)), "hour": jsonInteger(date.hour), "minute": jsonInteger(date.minute),
-        "second": jsonInteger(date.second), "time_zone": jsonString(date.timeZone)])
+        "second": jsonInteger(date.second), "time_zone": jsonString(date.timeZone),
+    ])
 }
 
 private func jsonString(_ value: String?) -> JSONValue { value.map(JSONValue.string) ?? .null }

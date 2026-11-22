@@ -1,5 +1,5 @@
-import SherpaPlannerContract
 @preconcurrency import EventKit
+import SherpaPlannerContract
 
 protocol EventSourceListingStore: AnyObject {
     func refreshSourcesIfNecessary()

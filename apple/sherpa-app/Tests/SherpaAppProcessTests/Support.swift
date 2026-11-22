@@ -75,7 +75,8 @@ enum SignedPrograms {
                 }
                 let copy = directory + "/" + program.rawValue
                 try files.copyItem(atPath: program.linkerSignedPath, toPath: copy)
-                let status = runTool("/usr/bin/codesign", ["--force", "--sign", "-", "--identifier", program.identifier, copy])
+                let status = runTool(
+                    "/usr/bin/codesign", ["--force", "--sign", "-", "--identifier", program.identifier, copy])
                 guard status == 0 else {
                     return .failure(ProcessTestError("codesign \(program.rawValue) exited \(status)"))
                 }
@@ -290,7 +291,9 @@ final class Rig: @unchecked Sendable {
         ["PATH": "/usr/bin:/bin", "HOME": root + "/home", "LOG_LEVEL": "debug", "SHERPA_APP_SOCKET": socket]
     }
 
-    func launch(_ path: String, _ arguments: [String], _ environment: [String: String], output: Child.Output = .read) throws -> Child {
+    func launch(_ path: String, _ arguments: [String], _ environment: [String: String], output: Child.Output = .read)
+        throws -> Child
+    {
         let child = try Child(path, arguments: arguments, environment: environment, output: output)
         lock.withLock { children.append(child) }
         return child
@@ -313,7 +316,8 @@ final class Rig: @unchecked Sendable {
         if let relayRequirement { environment["SHERPA_RELAY_REQUIREMENT"] = relayRequirement }
         if let coreRequirement { environment["SHERPA_CORE_REQUIREMENT"] = coreRequirement }
         let switchArguments = mcp.map { ["--mcp", $0 ? "on" : "off"] } ?? []
-        let host = try launch(try Program.host.path, ["--version", Self.appVersion] + switchArguments + arguments, environment)
+        let host = try launch(
+            try Program.host.path, ["--version", Self.appVersion] + switchArguments + arguments, environment)
         if listening, !(await host.waitForError("[app:socket:listen] status=listening")) {
             throw ProcessTestError("the host did not listen: \(host.errorText)")
         }
@@ -392,7 +396,9 @@ final class Rig: @unchecked Sendable {
 
     /// What the fake core recorded, one event per line.
     var coreLog: [String] {
-        guard let text = try? String(contentsOfFile: coreDirectory + "/fake-core.log", encoding: .utf8) else { return [] }
+        guard let text = try? String(contentsOfFile: coreDirectory + "/fake-core.log", encoding: .utf8) else {
+            return []
+        }
         return text.split(separator: "\n").map(String.init)
     }
 
@@ -423,7 +429,8 @@ extension Child {
     func echo(_ id: Int = 1) async throws -> (channel: Int, pid: Int)? {
         try send(MCP.call(id, "echo"))
         guard let result = MCP.result(await line()),
-              let channel = result["channel"] as? Int, let pid = result["pid"] as? Int else { return nil }
+            let channel = result["channel"] as? Int, let pid = result["pid"] as? Int
+        else { return nil }
         return (channel, pid)
     }
 }

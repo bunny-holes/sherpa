@@ -37,13 +37,14 @@ public struct WorkerJob: Sendable {
     /// `{"id":N,"worker":"…","request":{…}}`; nil when the body does not have that shape.
     public static func parse(_ body: Data, receivedAt: Double, generation: Int) -> WorkerJob? {
         guard let object = try? JSONDecoder().decode(JSONObject.self, from: body),
-              Set(object.keys) == ["id", "worker", "request"],
-              case let .integer(id)? = object["id"], id > 0, UInt64(id) <= MuxFrame.maximumChannel,
-              case let .string(worker)? = object["worker"],
-              case .object? = object["request"],
-              let request = RawJSONMember.value(of: "request", in: body)
+            Set(object.keys) == ["id", "worker", "request"],
+            case let .integer(id)? = object["id"], id > 0, UInt64(id) <= MuxFrame.maximumChannel,
+            case let .string(worker)? = object["worker"],
+            case .object? = object["request"],
+            let request = RawJSONMember.value(of: "request", in: body)
         else { return nil }
-        return WorkerJob(id: UInt64(id), worker: worker, request: request, receivedAt: receivedAt, generation: generation)
+        return WorkerJob(
+            id: UInt64(id), worker: worker, request: request, receivedAt: receivedAt, generation: generation)
     }
 }
 
@@ -57,7 +58,9 @@ enum RawJSONMember {
         var index = 0
 
         func skipSpace() {
-            while index < bytes.count, bytes[index] == 0x20 || bytes[index] == 0x09 || bytes[index] == 0x0a || bytes[index] == 0x0d {
+            while index < bytes.count,
+                bytes[index] == 0x20 || bytes[index] == 0x09 || bytes[index] == 0x0a || bytes[index] == 0x0d
+            {
                 index += 1
             }
         }
@@ -221,8 +224,10 @@ public final class WorkerQueue: @unchecked Sendable {
         } catch {
             return report(job, CommandReport(status: "failed", error: "sherpa.internal_failure"))
         }
-        logger.warn("app:worker:request", "id=\(job.id) worker=\(logToken(job.worker)) capability=\(logToken(request.capability)) "
-            + "operation_id=\(logToken(request.operationID)) code=app.shutting_down")
+        logger.warn(
+            "app:worker:request",
+            "id=\(job.id) worker=\(logToken(job.worker)) capability=\(logToken(request.capability)) "
+                + "operation_id=\(logToken(request.operationID)) code=app.shutting_down")
         return failure(request, code: "app.shutting_down", retry: .afterBackoff, job: job)
     }
 
@@ -256,7 +261,8 @@ public final class WorkerQueue: @unchecked Sendable {
         } catch {
             return report(job, CommandReport(status: "failed", error: "sherpa.internal_failure"))
         }
-        let fields = "id=\(job.id) worker=\(logToken(job.worker)) capability=\(logToken(request.capability)) "
+        let fields =
+            "id=\(job.id) worker=\(logToken(job.worker)) capability=\(logToken(request.capability)) "
             + "operation_id=\(logToken(request.operationID))"
         guard Self.supportedWorkers.contains(job.worker) else {
             logger.warn("app:worker:request", "\(fields) code=app.unsupported_worker")
@@ -278,7 +284,9 @@ public final class WorkerQueue: @unchecked Sendable {
         return output
     }
 
-    private func failure(_ request: WorkerRequest, code: String, retry: RetryDisposition, job: WorkerJob) -> WorkerOutput {
+    private func failure(_ request: WorkerRequest, code: String, retry: RetryDisposition, job: WorkerJob)
+        -> WorkerOutput
+    {
         do {
             return .response(try WorkerResponse.failure(request: request, code: code, retry: retry).encoded())
         } catch {

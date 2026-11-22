@@ -1,9 +1,10 @@
 import EventKit
 import Foundation
-import SherpaWorkerProtocol
 import SherpaPlannerApplication
 import SherpaPlannerContract
+import SherpaWorkerProtocol
 import Testing
+
 @testable import SherpaEventKitAdapter
 
 @Test func allDayUpdateConvertsTheCanonicalExclusiveEndAtADSTBoundary() throws {
@@ -30,16 +31,23 @@ import Testing
     let validator = EventCommandValidator()
 
     #expect(throws: PlannerValidationError.self) {
-        try validator.validate(.init(schema: "sherpa.planner.event-update.request.v2",
-            nativeLocator: "missing", span: "future", changes: .init()))
+        try validator.validate(
+            .init(
+                schema: "sherpa.planner.event-update.request.v2",
+                nativeLocator: "missing", span: "future", changes: .init()))
     }
     #expect(throws: PlannerValidationError.self) {
-        try validator.validate(.init(schema: "sherpa.planner.event-update.request.v2",
-            nativeLocator: "missing", span: "invalid", changes: .init(title: .set("valid"))))
+        try validator.validate(
+            .init(
+                schema: "sherpa.planner.event-update.request.v2",
+                nativeLocator: "missing", span: "invalid", changes: .init(title: .set("valid"))))
     }
     #expect(throws: PlannerValidationError.self) {
-        try validator.validate(.init(schema: "sherpa.planner.event-update.request.v2",
-            nativeLocator: "missing", span: "this", changes: .init(
-                start: .set("2026-08-10T10:00:00+09:00"), end: .set("2026-08-10T09:00:00+09:00"))))
+        try validator.validate(
+            .init(
+                schema: "sherpa.planner.event-update.request.v2",
+                nativeLocator: "missing", span: "this",
+                changes: .init(
+                    start: .set("2026-08-10T10:00:00+09:00"), end: .set("2026-08-10T09:00:00+09:00"))))
     }
 }

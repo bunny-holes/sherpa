@@ -1,0 +1,6 @@
+# Commits that only reformat code. GitHub's blame view skips them; for a local
+# `git blame`, run `git config blame.ignoreRevsFile .git-blame-ignore-revs` once.
+# Each entry is the full hash of a style: commit, under a line that names it.
+
+# style: format the Swift sources with swift-format (#70)
+e3ed524f6cd78b9ce31d640be472c517eef621ac

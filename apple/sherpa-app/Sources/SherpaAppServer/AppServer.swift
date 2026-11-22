@@ -72,7 +72,9 @@ public final class AppServer: @unchecked Sendable {
         do {
             descriptor = try makeListeningSocket(location: configuration.socket)
         } catch {
-            logger.error("app:socket:listen", "status=socket_failed reason=\(error.reason) socket=\(configuration.socket.logValue)")
+            logger.error(
+                "app:socket:listen",
+                "status=socket_failed reason=\(error.reason) socket=\(configuration.socket.logValue)")
             update { $0.listener = .failed(reason: error.reason) }
             return
         }
@@ -129,7 +131,8 @@ public final class AppServer: @unchecked Sendable {
         state.broadcast()
         publishLocked()
         state.unlock()
-        logger.info("app:mcp:switch", "enabled=\(enabled) sessions_closed=\(closed) confirmations_withdrawn=\(withdrawn)")
+        logger.info(
+            "app:mcp:switch", "enabled=\(enabled) sessions_closed=\(closed) confirmations_withdrawn=\(withdrawn)")
         if !enabled { confirmations.withdrawAll() }
     }
 
@@ -255,7 +258,8 @@ public final class AppServer: @unchecked Sendable {
         core = process
         coreStartedAt = monotonicSeconds()
         state.unlock()
-        logger.info("app:core:signature", "status=accepted pid=\(process.pid) duration_ms=\(process.signatureMilliseconds)")
+        logger.info(
+            "app:core:signature", "status=accepted pid=\(process.pid) duration_ms=\(process.signatureMilliseconds)")
         logger.info("app:core:launch", "status=started pid=\(process.pid) generation=\(launching)")
 
         process.start(
@@ -344,7 +348,8 @@ public final class AppServer: @unchecked Sendable {
         if planned {
             logger.info("app:core:exit", "pid=\(process.pid) \(termination.logFields) sessions_closed=\(closing.count)")
         } else {
-            logger.error("app:core:exit", "pid=\(process.pid) \(termination.logFields) sessions_closed=\(closing.count)")
+            logger.error(
+                "app:core:exit", "pid=\(process.pid) \(termination.logFields) sessions_closed=\(closing.count)")
         }
         // A session lives in the core, so every relay ends with 75 and reconnects (§7.8).
         closing.forEach { $0.closeAfterFlush() }
@@ -366,7 +371,9 @@ public final class AppServer: @unchecked Sendable {
         state.unlock()
         switch decision {
         case .stop:
-            logger.error("app:core:restart", "status=stopped reason=core_failed exits_in_window=\(RestartPolicy.maximumExitsInWindow)")
+            logger.error(
+                "app:core:restart",
+                "status=stopped reason=core_failed exits_in_window=\(RestartPolicy.maximumExitsInWindow)")
         case let .restart(delay):
             logger.info("app:core:restart", "status=scheduled delay_ms=\(Int(delay * 1_000))")
             DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
@@ -456,20 +463,28 @@ public final class AppServer: @unchecked Sendable {
                 return .frameInvalid
             case let .failure(.invalid(id)):
                 logger.warn("app:confirm:request", "id=\(id) status=invalid decision=unavailable")
-                process.send(MuxFrame(channel: 0, type: "confirmation",
-                                      json: #"{"id":\#(id),"decision":"unavailable"}"#))
+                process.send(
+                    MuxFrame(
+                        channel: 0, type: "confirmation",
+                        json: #"{"id":\#(id),"decision":"unavailable"}"#))
             case let .success(request):
                 // Every channel closed when MCP was turned off; this call was on one of them.
                 guard status.mcpEnabled else {
-                    logger.warn("app:confirm:request", "id=\(request.id) status=refused reason=mcp_disabled decision=unavailable")
-                    process.send(MuxFrame(channel: 0, type: "confirmation",
-                                          json: #"{"id":\#(request.id),"decision":"unavailable"}"#))
+                    logger.warn(
+                        "app:confirm:request",
+                        "id=\(request.id) status=refused reason=mcp_disabled decision=unavailable")
+                    process.send(
+                        MuxFrame(
+                            channel: 0, type: "confirmation",
+                            json: #"{"id":\#(request.id),"decision":"unavailable"}"#))
                     return nil
                 }
                 pendingConfirmations.insert(request.id)
-                logger.info("app:confirm:request", "id=\(request.id) tool=\(logToken(request.tool)) "
-                    + "operation_id=\(logToken(request.operationID)) client=\(logToken(request.clientName)) "
-                    + "client_version=\(logToken(request.clientVersion))")
+                logger.info(
+                    "app:confirm:request",
+                    "id=\(request.id) tool=\(logToken(request.tool)) "
+                        + "operation_id=\(logToken(request.operationID)) client=\(logToken(request.clientName)) "
+                        + "client_version=\(logToken(request.clientVersion))")
                 let generation = process.generation
                 confirmations.present(request) { [weak self] decision in
                     self?.decided(request.id, decision, generation: generation)
@@ -477,7 +492,7 @@ public final class AppServer: @unchecked Sendable {
             }
         case "withdraw":
             guard let object = try? JSONDecoder().decode(JSONObject.self, from: body),
-                  case let .integer(rawID)? = object["id"], rawID > 0
+                case let .integer(rawID)? = object["id"], rawID > 0
             else { return .frameInvalid }
             let id = UInt64(rawID)
             if pendingConfirmations.remove(id) != nil {
@@ -511,16 +526,19 @@ public final class AppServer: @unchecked Sendable {
             state.broadcast()
             publishLocked()
             state.unlock()
-            logger.error("app:core:hello", "status=incompatible pid=\(process.pid) core_version=\(logToken(coreVersion)) "
-                + "app_version=\(logToken(configuration.version)) mux=\(object["mux"]?.integer ?? -1)")
+            logger.error(
+                "app:core:hello",
+                "status=incompatible pid=\(process.pid) core_version=\(logToken(coreVersion)) "
+                    + "app_version=\(logToken(configuration.version)) mux=\(object["mux"]?.integer ?? -1)")
             stop(process, reason: "core_incompatible")
             return nil
         }
         helloReceived = true
-        process.send(MuxFrame(
-            channel: 0, type: "hello",
-            json: #"{"mux":1,"version":\#(jsonLiteral(configuration.version)),"workers":["planner"]}"#
-        ))
+        process.send(
+            MuxFrame(
+                channel: 0, type: "hello",
+                json: #"{"mux":1,"version":\#(jsonLiteral(configuration.version)),"workers":["planner"]}"#
+            ))
         status.core = .ready
         policyReadyLog(process)
         state.broadcast()
@@ -541,7 +559,8 @@ public final class AppServer: @unchecked Sendable {
             return
         }
         logger.info("app:confirm:decision", "id=\(id) decision=\(decision.rawValue)")
-        core.send(MuxFrame(channel: 0, type: "confirmation", json: #"{"id":\#(id),"decision":"\#(decision.rawValue)"}"#))
+        core.send(
+            MuxFrame(channel: 0, type: "confirmation", json: #"{"id":\#(id),"decision":"\#(decision.rawValue)"}"#))
     }
 
     private func answer(_ job: WorkerJob, _ output: WorkerOutput) {
@@ -586,7 +605,9 @@ public final class AppServer: @unchecked Sendable {
             check = try CodeSignature.check(socket: descriptor, requirement: configuration.relayRequirement)
         } catch {
             logger.error("app:signature:check", "status=unavailable error=\(error)")
-            let refused = RelayConnection(id: -1, descriptor: descriptor, peer: PeerCheck(verdict: .signatureRejected(status: -1), pid: -1, signingIdentifier: nil))
+            let refused = RelayConnection(
+                id: -1, descriptor: descriptor,
+                peer: PeerCheck(verdict: .signatureRejected(status: -1), pid: -1, signingIdentifier: nil))
             refused.reject(with: .refused(.peerSignature, version: configuration.version))
             return
         }
@@ -626,19 +647,20 @@ public final class AppServer: @unchecked Sendable {
         while !shuttingDown, status.mcpEnabled, status.core == .starting || (status.core == .ready && !helloReceived) {
             if !state.wait(until: deadline) { break }
         }
-        let refusal: AppPreface.Reason? = if shuttingDown {
-            .shuttingDown
-        } else if !status.mcpEnabled {
-            .mcpDisabled
-        } else if let core, helloReceived, status.core == .ready {
-            admitReady(connection, core: core)
-        } else {
-            switch status.core {
-            case .failed, .stopped: .coreFailed
-            case .incompatible: .coreIncompatible
-            case .starting, .ready: .coreStarting
+        let refusal: AppPreface.Reason? =
+            if shuttingDown {
+                .shuttingDown
+            } else if !status.mcpEnabled {
+                .mcpDisabled
+            } else if let core, helloReceived, status.core == .ready {
+                admitReady(connection, core: core)
+            } else {
+                switch status.core {
+                case .failed, .stopped: .coreFailed
+                case .incompatible: .coreIncompatible
+                case .starting, .ready: .coreStarting
+                }
             }
-        }
         if let refusal {
             connections[connection.id] = nil
             status.sessions = connections.count
@@ -702,7 +724,7 @@ public final class AppServer: @unchecked Sendable {
         state.lock()
         defer { state.unlock() }
         guard let channel = connection.channel, channels[channel] === connection, let core,
-              core.generation == connection.generation
+            core.generation == connection.generation
         else { return }
         logger.debug("app:mux:route", "channel=\(channel) type=data bytes=\(line.count) from=relay")
         core.send(MuxFrame(channel: channel, type: "data", body: line))
@@ -716,7 +738,8 @@ public final class AppServer: @unchecked Sendable {
             channels[channel] = nil
             notify = true
             if let core, core.generation == connection.generation {
-                let close = reason == "message_too_large"
+                let close =
+                    reason == "message_too_large"
                     ? MuxFrame(channel: channel, type: "close", json: #"{"reason":"message_too_large"}"#)
                     : MuxFrame(channel: channel, type: "close")
                 core.send(close)
