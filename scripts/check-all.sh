@@ -289,7 +289,9 @@ xcode_build() {
   xcodebuild build -project "$APP_PACKAGE/Sherpa.xcodeproj" -scheme Sherpa -configuration "$1" \
     -destination 'generic/platform=macOS' -derivedDataPath "$XCODE_DERIVED" "${@:2}" >"$xcode_log" 2>&1
 }
-xcode_failed() { grep -E 'error:' "$xcode_log" | tail -20 >&2; rm -f "$xcode_log"; fail "$1"; }
+# 실패해야 할 빌드가 성공하면 로그에 error: 줄이 없다. 그러면 grep 이 1 로 끝나 set -e 가 fail 보다 먼저 게이트를
+# 멈추고 실패 이유가 빠졌다(2026-11-22 재현). 그래서 grep 의 결과는 보지 않는다.
+xcode_failed() { grep -E 'error:' "$xcode_log" | tail -20 >&2 || true; rm -f "$xcode_log"; fail "$1"; }
 # 증분 빌드는 서명 설정만 바뀐 중계를 번들에 다시 복사하지 않았다(2026-11-21 실측). 처음부터 빌드한다.
 rm -rf "$XCODE_DERIVED"
 

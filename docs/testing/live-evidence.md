@@ -11,9 +11,10 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 ## 2026-11-22 — The Embed Core phase reads the Bun pin under Xcode's script sandbox and refuses a core with another runtime (bunny-holes/sherpa#63)
 
-This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52), worker session on
-`feat/mux2-channel-kind` rebased on `main` `6ffc262`, between 05:12Z and
-05:14Z, Bun 1.4.5. Each build was
+This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52 with Swift 6.4.2, Bun 1.4.5),
+worker session on `feat/mux2-channel-kind`. The Xcode builds ran from 05:12Z
+to 05:14Z on the branch rebased onto `main` `6ffc262`, the gate runs from
+05:43Z to 05:50Z on the branch rebased onto `main` `e0f5386`. Each build was
 `xcodebuild build -scheme Sherpa -configuration Debug` into a scratch
 derived-data folder, signed with the owner's Developer ID identity. No model or
 paid API was called, and neither `/Applications/Sherpa.app` nor the running app
@@ -41,6 +42,15 @@ was touched.
   1.4.5 (bun run build in core/) or set SHERPA_CORE to a matching core"`. The
   bundle's `Contents/MacOS` stayed empty and it had no `_CodeSignature`. The
   gate's step 3.1 keeps this refusal as a regression with the same fake.
+- The regression catches the missing check, once the gate names it. With the
+  runtime check deleted from `embed-core.sh`, the gate (on `4da244b`)
+  exited 1 at step 3.1 without a reason line. `xcode_failed` piped
+  `grep -E 'error:'` over the Xcode log of a build that had succeeded, grep
+  exited 1, and `set -euo pipefail` ended the gate before `fail` wrote the
+  reason. The stale-core probe's `app_bundle_accepted_stale_core` had the same
+  gap since #49. With `|| true` after that pipeline, the same mutation ended
+  the gate with `error [check:repository:failure]
+  reason=app_bundle_accepted_runtime_mismatch`.
 - Not measured: an archive and export with a mismatched core, which runs the
   same phase; a real core compiled by another Bun release.
 
