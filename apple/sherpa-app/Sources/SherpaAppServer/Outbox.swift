@@ -12,7 +12,7 @@ final class Outbox: @unchecked Sendable {
     /// Nil: unbounded. Otherwise a chunk that would pass the limit is refused.
     private let limit: Int?
     private let condition = NSCondition()
-    private var chunks: [Data] = []
+    private var chunks: [[Data]] = []
     private var head = 0
     private var queued = 0
     private var finishing = false
@@ -51,12 +51,20 @@ final class Outbox: @unchecked Sendable {
     /// False when the outbox has stopped or the chunk would pass the limit.
     @discardableResult
     func enqueue(_ chunk: Data) -> Bool {
+        enqueue([chunk])
+    }
+
+    /// Writes `parts` back-to-back as one entry without concatenating them first.
+    /// False when the outbox has stopped or the combined size would pass the limit.
+    @discardableResult
+    func enqueue(_ parts: [Data]) -> Bool {
+        let size = parts.reduce(0) { $0 + $1.count }
         condition.lock()
         defer { condition.unlock() }
         guard !stopped, !finishing else { return false }
-        if let limit, queued + chunk.count > limit { return false }
-        chunks.append(chunk)
-        queued += chunk.count
+        if let limit, queued + size > limit { return false }
+        chunks.append(parts)
+        queued += size
         condition.broadcast()
         return true
     }
@@ -125,9 +133,9 @@ final class Outbox: @unchecked Sendable {
                 closures.ended?()
                 return
             }
-            // The writer's copy is the last reference; it goes when this write ends.
-            var chunk: Data? = chunks[head]
-            chunks[head] = Data()
+            // The writer's copy is the last reference; each part goes as soon as it is written.
+            var parts = chunks[head]
+            chunks[head] = []
             head += 1
             if head == chunks.count {
                 chunks.removeAll()
@@ -138,11 +146,16 @@ final class Outbox: @unchecked Sendable {
             }
             condition.unlock()
 
-            let size = chunk?.count ?? 0
+            let size = parts.reduce(0) { $0 + $1.count }
             let failure: Int32? = autoreleasepool {
-                chunk?.withUnsafeBytes { FileDescriptorIO.writeAll(descriptor, $0) }
+                for index in parts.indices {
+                    let result = parts[index].withUnsafeBytes { FileDescriptorIO.writeAll(descriptor, $0) }
+                    parts[index] = Data()
+                    if let result { return result }
+                }
+                return nil
             }
-            chunk = nil
+            parts = []
 
             condition.lock()
             // A cancel during the write already set the count to zero.

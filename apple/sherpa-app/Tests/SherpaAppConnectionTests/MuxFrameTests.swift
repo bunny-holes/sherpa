@@ -164,3 +164,70 @@ func enforcesEachTypeLimitAtTheBoundary(type: String, limit: Int, direction: Mux
     #expect(parsed.map(\.encoded).reduce(Data(), +) == stream)
     #expect(reader.pendingBytes == 0)
 }
+
+@Test func encodedPartsMatchesEncodedForEveryVector() throws {
+    for line in fromCore {
+        let frame = try #require(try frames(line, .coreToApp).first)
+        #expect(frame.encodedParts.reduce(Data(), +) == frame.encoded)
+    }
+    for line in fromApp {
+        let frame = try #require(try frames(line, .appToCore).first)
+        #expect(frame.encodedParts.reduce(Data(), +) == frame.encoded)
+    }
+}
+
+@Test func lineBufferSwitchesToMappedStorageAboveThresholdAndIsolatesCopies() {
+    var buffer = LineBuffer()
+    let half = Data(repeating: 0x41, count: LineBuffer.mmapThreshold / 2)
+    half.withUnsafeBytes { buffer.append($0) }
+    #expect(!buffer.isMapped)
+    #expect(buffer.count == half.count)
+
+    let rest = Data(repeating: 0x42, count: LineBuffer.mmapThreshold)
+    rest.withUnsafeBytes { buffer.append($0) }
+    #expect(buffer.isMapped)
+    #expect(buffer.count == half.count + rest.count)
+    #expect(buffer.prefixBytes(4) == [0x41, 0x41, 0x41, 0x41])
+
+    // Value copy shares the mapping until mutated or taken; taking from one leaves the copy intact.
+    var copy = buffer
+    let takenFromOriginal = buffer.takeData(from: 4)
+    #expect(buffer.isEmpty && !buffer.isMapped)
+    #expect(takenFromOriginal.startIndex == 0)
+    #expect(takenFromOriginal.count == half.count + rest.count - 4)
+    #expect(takenFromOriginal.first == 0x41 && takenFromOriginal.last == 0x42)
+
+    let suffix = Data([0x43, 0x44])
+    suffix.withUnsafeBytes { copy.append($0) }
+    let takenFromCopy = copy.takeData(from: half.count)
+    #expect(takenFromCopy.startIndex == 0)
+    #expect(takenFromCopy.count == rest.count + 2)
+    #expect(takenFromCopy.first == 0x42 && takenFromCopy.last == 0x44)
+}
+
+@Test func readsMultiMegabyteFramesThroughMappedLineBufferWithZeroIndexedBody() throws {
+    let payloadCount = 4 * 1_024 * 1_024
+    var payload = Data(repeating: 0x61, count: payloadCount)
+    payload[0] = 0x7b
+    payload[payloadCount - 1] = 0x7d
+    let frame = MuxFrame(channel: 1, type: "data", body: payload)
+    let wire = frame.encoded
+
+    var reader = MuxFrameReader(direction: .coreToApp)
+    var parsed: [MuxFrame] = []
+    let chunkSize = 64 * 1_024
+    for start in stride(from: 0, to: wire.count, by: chunkSize) {
+        let end = min(start + chunkSize, wire.count)
+        let slice = wire.subdata(in: start..<end)
+        parsed += try slice.withUnsafeBytes { raw throws(MuxViolation) in
+            try reader.consume(raw)
+        }
+    }
+    let received = try #require(parsed.first)
+    let body = try #require(received.body)
+    #expect(received.channel == 1 && received.type == "data")
+    #expect(body.startIndex == 0 && body.count == payloadCount)
+    #expect(body.first == 0x7b && body.last == 0x7d)
+    #expect(body == payload)
+    #expect(reader.pendingBytes == 0)
+}

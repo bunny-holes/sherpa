@@ -553,6 +553,34 @@ private func eventually(_ condition: () -> Bool) async -> Bool {
     #expect(await eventually { held.allSatisfy { $0.value == nil } })
 }
 
+@Test func writesMultiPartChunksContiguouslyAndReleasesEachPart() async throws {
+    let (writer, reader) = try socketPair()
+    let received = Counter()
+    readToEnd(reader, into: received)
+    let outbox = Outbox(descriptor: writer, limit: 1_024 * 1_024, failed: { _ in }, ended: { close(writer) })
+    let released = Flag()
+    let payloadSize = 512 * 1_024
+    #expect(outbox.enqueue([Data("1\tdata\t".utf8), trackedChunk(payloadSize, released: released), Data([0x0a])]))
+    // Combined parts exceeding the limit are refused as a whole.
+    #expect(!outbox.enqueue([Data(repeating: 0x62, count: 600 * 1_024), Data(repeating: 0x63, count: 600 * 1_024)]))
+    let expected = 7 + payloadSize + 1
+    #expect(await eventually { received.value == expected })
+    #expect(await eventually { released.isSet })
+    #expect(outbox.queuedBytes == 0 && outbox.heldChunks == 0)
+    outbox.finish {}
+}
+
+@Test func responseFramePartsMatchesEncodedResponseFrame() {
+    let report = WorkerOutput.report(CommandReport(status: "failed", error: "sherpa.internal_failure").encoded())
+    #expect(
+        report.responseFrameParts(id: 2).reduce(Data(), +)
+            == MuxFrame(channel: 0, type: "response", body: report.frameBody(id: 2)).encoded)
+    let response = WorkerOutput.response(Data(#"{"ok":true}"#.utf8))
+    #expect(
+        response.responseFrameParts(id: 7).reduce(Data(), +)
+            == MuxFrame(channel: 0, type: "response", body: response.frameBody(id: 7)).encoded)
+}
+
 // MARK: the MCP switch and the agent commands (contract §2)
 
 @Test func startsWithMCPOffWhenTheDefaultsHoldNoValue() throws {

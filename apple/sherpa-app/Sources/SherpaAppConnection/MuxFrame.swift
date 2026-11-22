@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// One line of the app–core pipe (contract §7.2):
@@ -42,6 +43,16 @@ public struct MuxFrame: Equatable, Sendable {
         }
         line.append(0x0a)
         return line
+    }
+
+    /// The frame split into header, optional body, and trailing line feed so an outbox can
+    /// write large bodies without copying them into a second buffer.
+    public var encodedParts: [Data] {
+        if let body {
+            precondition(!body.contains(0x0a), "a frame body never holds a line feed")
+            return [Data("\(channel)\t\(type)\t".utf8), body, Data([0x0a])]
+        }
+        return [Data("\(channel)\t\(type)\n".utf8)]
     }
 }
 
@@ -125,7 +136,7 @@ public struct MuxFrameReader: Sendable {
     private static let maximumTypeBytes = 16
 
     public let direction: MuxDirection
-    private var line = Data()
+    private var line = LineBuffer()
     private var header: (channel: UInt64, type: String, bodyStart: Int, bodyLimit: Int)?
 
     public init(direction: MuxDirection) {
@@ -136,38 +147,44 @@ public struct MuxFrameReader: Sendable {
     public var pendingBytes: Int { line.count }
 
     public mutating func consume(_ chunk: Data) throws(MuxViolation) -> [MuxFrame] {
+        try chunk.withUnsafeBytes { raw throws(MuxViolation) in
+            try consume(raw)
+        }
+    }
+
+    public mutating func consume(_ chunk: UnsafeRawBufferPointer) throws(MuxViolation) -> [MuxFrame] {
         var frames: [MuxFrame] = []
-        var start = chunk.startIndex
-        while start < chunk.endIndex {
-            if let feed = chunk[start...].firstIndex(of: 0x0a) {
-                try append(chunk[start..<feed])
+        var start = 0
+        while start < chunk.count {
+            if let feed = indexOfLineFeed(in: chunk, from: start) {
+                try append(UnsafeRawBufferPointer(rebasing: chunk[start..<feed]))
                 frames.append(try finishLine())
-                start = chunk.index(after: feed)
+                start = feed + 1
             } else {
-                try append(chunk[start...])
+                try append(UnsafeRawBufferPointer(rebasing: chunk[start..<chunk.count]))
                 break
             }
         }
         return frames
     }
 
-    private mutating func append(_ bytes: Data.SubSequence) throws(MuxViolation) {
+    private mutating func append(_ bytes: UnsafeRawBufferPointer) throws(MuxViolation) {
         guard !bytes.isEmpty else { return }
         if let header {
             guard line.count - header.bodyStart + bytes.count <= header.bodyLimit,
                 line.count + bytes.count + 1 <= MuxLimits.line
             else { throw .frameTooLarge }
-            line.append(contentsOf: bytes)
+            line.append(bytes)
             return
         }
-        line.append(contentsOf: bytes)
+        line.append(bytes)
         try readHeader()
     }
 
     /// Parses as much of the header as has arrived and fixes the body limit once the second
     /// tab is in.
     private mutating func readHeader() throws(MuxViolation) {
-        let bytes = [UInt8](line.prefix(Self.maximumChannelDigits + Self.maximumTypeBytes + 2))
+        let bytes = line.prefixBytes(Self.maximumChannelDigits + Self.maximumTypeBytes + 2)
         guard let firstTab = bytes.firstIndex(of: 0x09) else {
             try checkChannelPrefix(bytes)
             return
@@ -188,16 +205,16 @@ public struct MuxFrameReader: Sendable {
 
     private mutating func finishLine() throws(MuxViolation) -> MuxFrame {
         defer {
-            line = Data()
+            line.reset()
             header = nil
         }
         if let header {
-            let body = line.subdata(in: header.bodyStart..<line.count)
-            guard !body.isEmpty else { throw .frameInvalid }
+            guard line.count > header.bodyStart else { throw .frameInvalid }
+            let body = line.takeData(from: header.bodyStart)
             return MuxFrame(channel: header.channel, type: header.type, body: body)
         }
         // No second tab: a frame without a body, or a malformed line.
-        let bytes = [UInt8](line)
+        let bytes = line.prefixBytes(line.count)
         guard let firstTab = bytes.firstIndex(of: 0x09) else { throw .frameInvalid }
         let channel = try parseChannel(bytes[..<firstTab])
         let type = try parseType(bytes[(firstTab + 1)...])
@@ -233,6 +250,12 @@ public struct MuxFrameReader: Sendable {
         }
         return String(decoding: bytes, as: UTF8.self)
     }
+}
+
+private func indexOfLineFeed(in bytes: UnsafeRawBufferPointer, from start: Int) -> Int? {
+    guard let base = bytes.baseAddress, start < bytes.count else { return nil }
+    guard let found = memchr(base + start, 0x0a, bytes.count - start) else { return nil }
+    return UnsafeRawPointer(found) - base
 }
 
 private func isDigit(_ byte: UInt8) -> Bool { (0x30...0x39).contains(byte) }

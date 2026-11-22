@@ -163,10 +163,17 @@ final class CoreProcess: @unchecked Sendable {
                 }
                 guard case let .bytes(count) = result else { break }
                 guard handling else { continue }
-                do throws(MuxViolation) {
-                    let parsed = try reader.consume(Data(buffer[0..<count]))
+                let consumed: Result<[MuxFrame], MuxViolation> = buffer.withUnsafeBytes { raw in
+                    do throws(MuxViolation) {
+                        return .success(try reader.consume(UnsafeRawBufferPointer(rebasing: raw[0..<count])))
+                    } catch {
+                        return .failure(error)
+                    }
+                }
+                switch consumed {
+                case let .success(parsed):
                     if !parsed.isEmpty { handling = frames(parsed) }
-                } catch {
+                case let .failure(error):
                     handling = false
                     violation(error)
                 }
@@ -205,7 +212,11 @@ final class CoreProcess: @unchecked Sendable {
     }
 
     func send(_ frame: MuxFrame) {
-        input.enqueue(frame.encoded)
+        input.enqueue(frame.encodedParts)
+    }
+
+    func send(_ parts: [Data]) {
+        input.enqueue(parts)
     }
 
     /// Standard input end of file: the core closes every session and exits (§7.10).
