@@ -28,7 +28,10 @@ function runtime(answer: (sent: Sent) => Promise<Response> = async () => new Res
       sent.push({ input: String(url), init: undefined });
     }
   }
-  const scope: { fetch: Fetch; WebSocket?: unknown } = { fetch: fake, WebSocket: Socket };
+  const scope: { fetch: Fetch; WebSocket?: unknown; AI_SDK_DEFAULT_PROVIDER?: unknown } = {
+    fetch: fake,
+    WebSocket: Socket,
+  };
   return { scope, sent, egress: installEgress(scope) };
 }
 
@@ -123,8 +126,64 @@ describe("the global WebSocket", () => {
     vi.stubEnv("LOG_LEVEL", "debug");
     runtime();
     expect(lines).toEqual([
-      "debug [core:egress:install] success global_fetch=refused global_websocket=refused\n",
+      "debug [core:egress:install] success global_fetch=refused global_websocket=refused ai_sdk_default_provider=refused\n",
     ]);
+  });
+});
+
+/** Every factory `ai` 7.0.179 calls on its default provider for a model id given as a string. */
+const FACTORIES = [
+  "languageModel",
+  "embeddingModel",
+  "imageModel",
+  "transcriptionModel",
+  "speechModel",
+  "rerankingModel",
+  "videoModel",
+  "speechTranslationModel",
+  "decisionModel",
+  "evaluationModel",
+  "extractionModel",
+  "experimental_batch",
+];
+
+describe("the AI SDK's default provider", () => {
+  test("is a version 4 provider whose every factory refuses, before the runtime sees anything", () => {
+    const { scope, sent } = runtime();
+    const provider = scope.AI_SDK_DEFAULT_PROVIDER as Record<string, unknown>;
+    expect(provider.specificationVersion).toBe("v4");
+    expect(Object.keys(provider).sort()).toEqual(["specificationVersion", ...FACTORIES].sort());
+    for (const name of FACTORIES) {
+      expect(() => (provider[name] as (id: string) => unknown)("claude-sonnet-4-5")).toThrow(
+        expect.objectContaining({
+          name: "EgressDeniedError",
+          code: "egress_denied",
+          reason: "string_model_id",
+        }),
+      );
+    }
+    expect(sent).toEqual([]);
+    expect(lines).toEqual(
+      Array(FACTORIES.length).fill(refused("default-provider", "string_model_id")),
+    );
+  });
+
+  test("cannot be assigned back, redefined or changed", () => {
+    const { scope } = runtime();
+    const gateway = { specificationVersion: "v4", languageModel: () => ({}) };
+    expect(() => {
+      scope.AI_SDK_DEFAULT_PROVIDER = gateway;
+    }).toThrow(TypeError);
+    expect(() =>
+      Object.defineProperty(scope, "AI_SDK_DEFAULT_PROVIDER", { value: gateway }),
+    ).toThrow(TypeError);
+    const provider = scope.AI_SDK_DEFAULT_PROVIDER as Record<string, unknown>;
+    expect(() => {
+      provider.languageModel = gateway.languageModel;
+    }).toThrow(TypeError);
+    expect(() => (provider.languageModel as (id: string) => unknown)("m")).toThrow(
+      EgressDeniedError,
+    );
   });
 });
 
@@ -339,5 +398,37 @@ describe("a base URL", () => {
       "https://models.example:8443/openai/v1/chat/completions",
       "https://models.example:8443/other",
     ]);
+  });
+});
+
+describe(`Bun ${Bun.version}'s certificate authorities`, () => {
+  // A provider's certificate is valid when this store holds its root (ADR-0012 위험 9, contract
+  // §7.1). Each child runs in / without this process's environment, as the app starts the core.
+  // Where the system store holds nothing beyond the bundled roots, both halves pass trivially.
+  const STORES = ["default", "bundled", "system", "extra"] as const;
+  const SCRIPT = `const tls = require("node:tls");
+console.log(JSON.stringify({ bun: Bun.version, ...Object.fromEntries(${JSON.stringify(STORES)}.map((store) => [store, tls.getCACertificates(store)])) }));`;
+
+  function stores(
+    flags: string[],
+    env: Record<string, string> = {},
+  ): Record<(typeof STORES)[number], string[]> & { bun: string } {
+    const child = Bun.spawnSync({
+      cmd: [process.execPath, ...flags, "-e", SCRIPT],
+      cwd: "/",
+      env: { HOME: "/var/empty", PATH: "/usr/bin:/bin", ...env },
+    });
+    expect(child.stderr.toString()).toBe("");
+    return JSON.parse(child.stdout.toString());
+  }
+
+  test("are its bundled ones, never the system's unless --use-system-ca or NODE_USE_SYSTEM_CA asks", () => {
+    const plain = stores([]);
+    expect(plain.bun).toBe(Bun.version);
+    expect(plain.extra).toEqual([]);
+    expect(new Set(plain.default)).toEqual(new Set(plain.bundled));
+    for (const system of [stores(["--use-system-ca"]), stores([], { NODE_USE_SYSTEM_CA: "1" })]) {
+      expect(new Set(system.default)).toEqual(new Set([...system.bundled, ...system.system]));
+    }
   });
 });

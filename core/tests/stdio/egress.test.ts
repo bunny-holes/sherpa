@@ -1,20 +1,18 @@
 import { join } from "node:path";
-import { afterAll, afterEach, expect, test, vi } from "vite-plus/test";
-import { allowedOrigin, EgressDeniedError, installEgress } from "../../src/chat/egress.ts";
+import { afterAll, afterEach, expect, test } from "vite-plus/test";
 import type { CoreFrame, FakeApp } from "./fake-app.ts";
 import { BINARY, cleanHomes, launch, scratchHome } from "./launch.ts";
 
 // ADR-0012 "시험으로 지키기" and app-connection-v1 §7.1, §7.11 on real sockets: the built core holds
 // no internet socket and listens on nothing while it serves MCP, a model list for an origin the
 // egress refuses never connects, one for an origin whose certificate the core does not trust gets
-// no request through, and the `redirect: "error"` the turn fetch relies on refuses a redirect
-// before it is followed. The servers here belong to the test process; the rule they check is the
-// core's.
+// no request through, one for an origin whose certificate it trusts holds a connection to that
+// origin only, and a redirect from there is refused before it is followed. The servers here belong
+// to the test process; the rule they check is the core's.
 const apps: FakeApp[] = [];
 afterEach(() => {
   for (const app of apps.splice(0)) app.stop();
   cleanHomes();
-  vi.unstubAllEnvs();
 });
 
 /** A listening socket of the test process: lsof must see it, or seeing none in the core proves nothing. */
@@ -33,13 +31,16 @@ function lsof(pid: number, ...selection: string[]): string {
   ]).stdout.toString();
 }
 
+/** The values of one field in lsof's field output (`-F`). */
+function fields(output: string, tag: string): string[] {
+  return output
+    .split("\n")
+    .filter((line) => line.startsWith(tag))
+    .map((line) => line.slice(1));
+}
+
 /** What lsof sees of a process: its standard descriptors, its internet sockets, its Unix listeners. */
 function sockets(pid: number) {
-  const fields = (output: string, tag: string) =>
-    output
-      .split("\n")
-      .filter((line) => line.startsWith(tag))
-      .map((line) => line.slice(1));
   return {
     descriptors: fields(lsof(pid, "-d", "0-2", "-F", "f"), "f").length,
     internet: lsof(pid, "-i"),
@@ -50,7 +51,7 @@ function sockets(pid: number) {
 
 const QUIET = { descriptors: 3, internet: "", unixListeners: [] };
 const INSTALLED =
-  "debug [core:egress:install] success global_fetch=refused global_websocket=refused";
+  "debug [core:egress:install] success global_fetch=refused global_websocket=refused ai_sdk_default_provider=refused";
 const range = { from: "2026-11-21T00:00:00+09:00", to: "2026-11-22T00:00:00+09:00" };
 const isConfirm = (frame: CoreFrame) => frame.channel === 0 && frame.type === "confirm";
 
@@ -200,58 +201,202 @@ test("a command other than app serve starts with the global fetch and WebSocket 
   expect(child.stderr.toString()).toContain(INSTALLED);
 });
 
-test(`Bun ${Bun.version} refuses the redirect a turn fetch forwards, and its target sees no request`, async () => {
-  vi.stubEnv("LOG_LEVEL", "error");
+/**
+ * A certificate authority made for this run and a certificate for 127.0.0.1 it signed, with the
+ * system's openssl. The core trusts the authority only when NODE_EXTRA_CA_CERTS names its file at
+ * start, and the app passes no such variable (§7.1).
+ */
+async function trustedCertificate(): Promise<{ ca: string; cert: string; key: string }> {
+  const dir = scratchHome();
+  const at = (name: string) => join(dir, name);
+  await Bun.write(
+    at("openssl.cnf"),
+    ["[req]", "distinguished_name = dn", "[dn]"]
+      .concat(["[authority]", "basicConstraints = critical,CA:TRUE"])
+      .concat(["keyUsage = critical,keyCertSign,cRLSign", "[server]"])
+      .concat(["subjectAltName = IP:127.0.0.1", "basicConstraints = critical,CA:FALSE"])
+      .concat(["keyUsage = critical,digitalSignature,keyEncipherment"])
+      .concat(["extendedKeyUsage = serverAuth", ""])
+      .join("\n"),
+  );
+  const openssl = (...args: string[]) => {
+    const made = Bun.spawnSync(["/usr/bin/openssl", ...args], { stdout: "ignore", stderr: "pipe" });
+    if (made.exitCode !== 0) {
+      throw new Error(`openssl ${args[0]} exited with ${made.exitCode}: ${made.stderr.toString()}`);
+    }
+  };
+  const key = ["-newkey", "rsa:2048", "-nodes", "-config", at("openssl.cnf")];
+  openssl(
+    "req",
+    "-x509",
+    ...key,
+    "-days",
+    "1",
+    "-subj",
+    "/CN=Sherpa stdio test authority",
+    "-extensions",
+    "authority",
+    "-keyout",
+    at("ca-key.pem"),
+    "-out",
+    at("ca.pem"),
+  );
+  openssl(
+    "req",
+    ...key,
+    "-subj",
+    "/CN=127.0.0.1",
+    "-keyout",
+    at("key.pem"),
+    "-out",
+    at("server.csr"),
+  );
+  openssl(
+    "x509",
+    "-req",
+    "-days",
+    "1",
+    "-set_serial",
+    "1",
+    "-in",
+    at("server.csr"),
+    "-CA",
+    at("ca.pem"),
+    "-CAkey",
+    at("ca-key.pem"),
+    "-extfile",
+    at("openssl.cnf"),
+    "-extensions",
+    "server",
+    "-out",
+    at("cert.pem"),
+  );
+  return {
+    ca: at("ca.pem"),
+    cert: await Bun.file(at("cert.pem")).text(),
+    key: await Bun.file(at("key.pem")).text(),
+  };
+}
+
+/** Resolves once `done` holds, checking every 10 ms for at most 5 s. */
+async function until(done: () => boolean): Promise<void> {
+  for (const deadline = Date.now() + 5_000; !done(); await Bun.sleep(10)) {
+    if (Date.now() > deadline) throw new Error("timed out waiting");
+  }
+}
+
+test("a model list for an https loopback origin with a certificate the core trusts reaches that server, the core's one socket", async () => {
+  const { ca, ...tls } = await trustedCertificate();
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
+  const seen: { method: string; path: string; authorization: string | null }[] = [];
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    tls,
+    fetch: async (request) => {
+      const { pathname } = new URL(request.url);
+      const authorization = request.headers.get("authorization");
+      seen.push({ method: request.method, path: pathname, authorization });
+      await held;
+      return Response.json({ data: [{ id: "m-1" }, { id: "m-2" }] });
+    },
+  });
+  try {
+    const app = launch({ LOG_LEVEL: "debug", NODE_EXTRA_CA_CERTS: ca });
+    apps.push(app);
+    await app.handshake();
+    app.frame(1, "open", { kind: "chat" });
+    app.frame(1, "data", {
+      type: "list_models",
+      provider: "openai-compatible",
+      base_url: `https://127.0.0.1:${server.port}/v1`,
+      api_key: KEY,
+    });
+    await until(() => seen.length > 0);
+    // While the server holds its answer, every internet socket of the core is a connection to it.
+    const peers = fields(lsof(app.pid, "-i", "-F", "n"), "n");
+    expect(peers.length).toBeGreaterThan(0);
+    for (const peer of peers) {
+      expect(peer).toMatch(new RegExp(`^127\\.0\\.0\\.1:\\d+->127\\.0\\.0\\.1:${server.port}$`));
+    }
+    expect(sockets(app.pid).unixListeners).toEqual([]);
+    release();
+    expect((await app.next(isChat(1))).body).toEqual({
+      type: "models",
+      models: ["m-1", "m-2"],
+      truncated: false,
+    });
+    expect(seen).toEqual([{ method: "GET", path: "/v1/models", authorization: `Bearer ${KEY}` }]);
+    app.closeInput();
+    expect(await app.exited).toBe(0);
+    const stderr = app.stderr.join("");
+    expect(stderr).toContain("info [core:egress:fetch] success status=200");
+    expect(stderr).toContain(
+      "info [core:chat:list-models] success channel=1 provider=openai-compatible models=2 pages=1 skipped=0 truncated=false",
+    );
+    expect(stderr).not.toContain(KEY);
+    expect(JSON.stringify(app.log)).not.toContain(KEY);
+  } finally {
+    release();
+    await server.stop(true);
+  }
+});
+
+test("a model list whose trusted origin redirects ends with egress_denied, and the redirect's target sees no request", async () => {
+  const { ca, ...tls } = await trustedCertificate();
   const reached: string[] = [];
   const collect = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
+    tls,
     fetch: (request) => {
-      reached.push(new URL(request.url).pathname);
+      reached.push(`collect ${new URL(request.url).pathname}`);
       return new Response("collected");
     },
   });
   const provider = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
+    tls,
     fetch: (request) => {
       const { pathname } = new URL(request.url);
       reached.push(pathname);
-      if (pathname === "/v1/away") {
-        return Response.redirect(`http://127.0.0.1:${collect.port}/collect`, 307);
+      if (pathname === "/away/v1/models") {
+        return Response.redirect(`https://127.0.0.1:${collect.port}/v1/models`, 307);
       }
-      if (pathname === "/v1/back") {
-        return new Response(null, { status: 302, headers: { location: "/v1/final" } });
+      if (pathname === "/back/v1/models") {
+        return new Response(null, { status: 302, headers: { location: "/v1/models" } });
       }
-      return new Response("final");
+      return Response.json({ data: [{ id: "m-1" }] });
     },
   });
   try {
-    // A trusted local TLS server is out of reach here, so what the turn fetch lets out for
-    // https://provider.example goes to the plain local server, its init untouched.
-    const local = `http://127.0.0.1:${provider.port}`;
-    const runtime = Object.assign(
-      (input: string | URL | Request, init?: BunFetchRequestInit) => {
-        // The turn fetch hands on the URL it checked, as a string; this test sends no Request.
-        if (typeof input !== "string") throw new TypeError("expected the checked URL");
-        return fetch(input.replace("https://provider.example", local), init);
-      },
-      { preconnect: fetch.preconnect },
-    );
-    const send = installEgress({ fetch: runtime }).turnFetch(
-      allowedOrigin("https://provider.example/v1"),
-      new AbortController().signal,
-    );
-    for (const path of ["/v1/away", "/v1/back"]) {
-      const error = await send(`https://provider.example${path}`, { redirect: "follow" }).catch(
-        (caught: unknown) => caught,
-      );
-      expect(error).toBeInstanceOf(EgressDeniedError);
-      expect(error).toMatchObject({ reason: "redirect" });
-      expect((error as Error).cause).toBeInstanceOf(TypeError);
-      expect((error as Error).cause).toMatchObject({ code: "UnexpectedRedirect" });
+    const app = launch({ LOG_LEVEL: "debug", NODE_EXTRA_CA_CERTS: ca });
+    apps.push(app);
+    await app.handshake();
+    app.frame(1, "open", { kind: "chat" });
+    for (const path of ["/away/v1", "/back/v1"]) {
+      app.frame(1, "data", {
+        type: "list_models",
+        provider: "openai-compatible",
+        base_url: `https://127.0.0.1:${provider.port}${path}`,
+        api_key: KEY,
+      });
+      expect((await app.next(isChat(1))).body).toEqual({
+        type: "error",
+        in_reply_to: "list_models",
+        code: "egress_denied",
+        retryable: false,
+        status: null,
+      });
     }
-    expect(reached).toEqual(["/v1/away", "/v1/back"]);
+    // A 307 to another origin and a 302 back to the same one: neither is followed.
+    expect(reached).toEqual(["/away/v1/models", "/back/v1/models"]);
+    app.closeInput();
+    expect(await app.exited).toBe(0);
+    const stderr = app.stderr.join("");
+    expect(stderr.match(/warn \[core:egress:fetch\] refused reason=redirect\n/g)).toHaveLength(2);
+    expect(stderr).not.toContain(KEY);
   } finally {
     await Promise.all([collect.stop(true), provider.stop(true)]);
   }

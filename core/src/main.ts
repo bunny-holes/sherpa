@@ -1,6 +1,7 @@
 import { proxyAppleRequest } from "./apple/helper.ts";
 import { serveApp } from "./app/serve.ts";
 import { type Egress, installEgress } from "./chat/egress.ts";
+import { installWarningLog } from "./chat/warnings.ts";
 import { integer, optionalValue, requireConfirmation, unsigned, value } from "./cli/args.ts";
 import { codes, invalidRequest, SherpaError } from "./cli/errors.ts";
 import { help } from "./cli/help.ts";
@@ -169,8 +170,10 @@ export async function main(args: readonly string[], egress: Egress): Promise<num
 }
 
 if (import.meta.main) {
-  // Every command runs with the global fetch and WebSocket refusing (ADR-0012 "네트워크"); only
-  // `app serve` takes the egress, for its chat channels.
+  // Every command runs with the global fetch, WebSocket and AI SDK default provider refusing
+  // (ADR-0012 "네트워크") and the AI SDK's warnings in the Sherpa log; only `app serve` takes the
+  // egress, for its chat channels.
   const egress = installEgress();
+  installWarningLog();
   process.exitCode = await main(process.argv.slice(2), egress);
 }

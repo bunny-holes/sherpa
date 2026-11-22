@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { afterAll, expect, test } from "vite-plus/test";
 import config from "../vite.config.ts";
 
-// ADR-0012 "코드로 지키기" 3: the lint rules that keep the network out of src/, against fixtures
+// ADR-0012 "코드로 지키기" 3: the lint rules that keep the network out of src/ and the AI SDK in its
+// place, against fixtures
 // that break them on purpose. A fixture line that ends in `// expect: <rule>…` must draw exactly
 // those rules, and every other line none. The fixtures are copied to a src/ of their own and linted
 // with the lint block of vite.config.ts, so its overrides reach them as they reach src/.
@@ -54,5 +55,5 @@ test("the egress rules refuse each form in the fixtures and nothing else", async
         `${diagnostic.filename}:${diagnostic.labels[0]!.span.line} ${diagnostic.code}`,
     );
   expect(found.sort()).toEqual(expected.sort());
-  expect(new Set(expected.map((entry) => entry.split(":")[0])).size).toBe(3);
+  expect(new Set(expected.map((entry) => entry.split(":")[0])).size).toBe(6);
 });
