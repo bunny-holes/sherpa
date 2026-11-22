@@ -54,17 +54,21 @@ helper_version="$("$HELPER" --version)"
   || fail failure "reason=helper_version_mismatch core=$version helper=$helper_version"
 log info version "version=$version"
 
-# 코어는 실행한 폴더와 HOME 의 설정을 읽지 않는다(app-connection-v1 §7.1). Bun 의 단일 실행 파일은 빌드가
+# 코어는 실행한 폴더와 HOME·XDG_CONFIG_HOME 의 설정을 읽지 않는다(app-connection-v1 §7.1). Bun 의 단일 실행 파일은 빌드가
 # 끄지 않으면 실행한 폴더의 .env 파일과 bunfig.toml 을 읽으므로, 그 파일들을 둔 임시 폴더에서 배포할 코어를
 # 돌려 --version 이 같은 줄만 내고 표준 오류는 비는지 본다. 파일마다 읽히면 표준 오류에 무언가를 쓴다.
 autoload_probe="$(mktemp -d "${TMPDIR:-/tmp}/sherpa-autoload.XXXXXX")"
-mkdir -p "$autoload_probe/run" "$autoload_probe/home"
+mkdir -p "$autoload_probe/run" "$autoload_probe/home" "$autoload_probe/config"
 for name in .env .env.local .env.production; do printf 'LOG_LEVEL=debug\n' >"$autoload_probe/run/$name"; done
 printf 'preload = ["./preload.js"]\n' >"$autoload_probe/run/bunfig.toml"
-printf 'preload = ["%s"]\n' "$autoload_probe/home/preload.js" >"$autoload_probe/home/.bunfig.toml"
-printf 'console.error("preloaded");\n' | tee "$autoload_probe/run/preload.js" >"$autoload_probe/home/preload.js"
+for place in home config; do
+  printf 'preload = ["%s"]\n' "$autoload_probe/$place/preload.js" >"$autoload_probe/$place/.bunfig.toml"
+  printf 'console.error("preloaded");\n' >"$autoload_probe/$place/preload.js"
+done
+printf 'console.error("preloaded");\n' >"$autoload_probe/run/preload.js"
 printf '{ not json\n' | tee "$autoload_probe/run/tsconfig.json" >"$autoload_probe/run/package.json"
-probed="$(cd "$autoload_probe/run" && env -i HOME="$autoload_probe/home" PATH=/usr/bin:/bin NODE_ENV=production \
+probed="$(cd "$autoload_probe/run" && env -i HOME="$autoload_probe/home" XDG_CONFIG_HOME="$autoload_probe/config" \
+  PATH=/usr/bin:/bin NODE_ENV=production \
   "$BINARY" --version 2>"$autoload_probe/stderr")" || probed=""
 probe_stderr_bytes="$(wc -c <"$autoload_probe/stderr" | tr -d ' ')"
 rm -rf "$autoload_probe"

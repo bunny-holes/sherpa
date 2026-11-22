@@ -12,9 +12,10 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 ## 2026-11-22 — The released 0.8.5 CLI read configuration from the directory it ran in (bunny-holes/sherpa#92)
 
 This Mac (macOS 27.3 26C5035r, Bun 1.4.5), run by the bunny-holes/sherpa#66
-worker between 10:40Z and 11:20Z. No model call was made and nothing left the
+worker between 10:40Z and 11:40Z. No model call was made and nothing left the
 loopback interface. Each run used `env -i` with only `HOME`, `TMPDIR` and
-`PATH=/usr/bin:/bin`, as the app starts the core, in a scratch directory.
+`PATH=/usr/bin:/bin`, as the app starts the core, and `XDG_CONFIG_HOME` where
+a bullet names it, in a scratch directory.
 
 - The Homebrew `sherpa` 0.8.5, whose `BUN_BE_BUN=1 sherpa --version` printed
   `1.4.4`, applied a `bunfig.toml` in that directory when it ran
@@ -25,7 +26,9 @@ loopback interface. Each run used `env -i` with only `HOME`, `TMPDIR` and
 - Standalone executables built on Bun 1.4.5 from probe scripts read `.env`,
   `.env.local`, `.env.<NODE_ENV>` when `NODE_ENV` was set, and `bunfig.toml`
   from their working directory by default, and neither `$HOME/.bunfig.toml`
-  nor `$XDG_CONFIG_HOME/.bunfig.toml`. Built with
+  nor `$XDG_CONFIG_HOME/.bunfig.toml`. The `bun` runtime itself, running a
+  script with `bun main.js` or `bun run main.js`, applied neither of those
+  two either. Built with
   `--compile-autoload-tsconfig --compile-autoload-package-json`, they also
   parsed the directory's `tsconfig.json` and `package.json` once the entry
   module had finished, and only while `.env` loading was on. Built with the four

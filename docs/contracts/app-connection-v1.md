@@ -482,14 +482,18 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 - 앱이 띄운 자식은 앱의 전체 디스크 접근 권한으로 판정된다. [실측] 코어가 띄우는 `osascript` 의 Apple Events
   가 앱의 권한과 hardened runtime 항목으로 판정되는지는 재지 않았다. [미확인]
 - 빌드한 코어는 실행한 폴더의 `.env` 파일(`.env.local`, `.env.<NODE_ENV>` 포함), `bunfig.toml`, `tsconfig.json`,
-  `package.json` 과 HOME 의 `.bunfig.toml` 을 읽지 않는다. Bun 의 단일 실행 파일은 빌드가 끄지 않으면 실행한 폴더의
+  `package.json` 과 HOME·`XDG_CONFIG_HOME` 의 `.bunfig.toml` 을 읽지 않는다. Bun 의 단일 실행 파일은 빌드가 끄지 않으면 실행한 폴더의
   `.env` 파일과 `bunfig.toml` 을 읽어 그 환경과 설정을 코어에 적용하고, `tsconfig.json`·`package.json` 은 빌드가 켤
   때 읽는다. `bun run build` 는 `--no-compile-autoload-dotenv`, `--no-compile-autoload-bunfig`,
   `--no-compile-autoload-tsconfig`, `--no-compile-autoload-package-json` 으로 넷을 모두 끈다. 뒤의 둘은 1.4.5 의
-  기본이 이미 꺼짐이지만, 다음 Bun 이 기본을 바꿔도 열리지 않게 적는다. `scripts/package.sh` 는 배포할 코어를 그
-  파일들을 둔 폴더에서 한 번 돌려 보고, 무언가 읽으면 `core_reads_working_directory` 로 멈춘다. [계약; 실측:
-  `core/tests/stdio/cli.test.ts`; 문서: Bun 1.4.5 `bun build --help`] 앱은 코어에 작업 폴더를 주지 않으므로 코어는
-  앱의 작업 폴더를 물려받고, 떠 있는 앱과 코어는 `/` 에 있었다. [실측: live-evidence 2026-11-22]
+  기본이 이미 꺼짐이지만, 다음 Bun 이 기본을 바꿔도 열리지 않게 적는다. 1.4.5 는 그 둘을 `.env` 파일을 읽을 때만
+  읽으므로 빌드한 코어의 동작으로는 그 깃발이 보이지 않는다. 그래서 단위 시험이 build 명령에 네 깃발이 모두 있고
+  다시 켜는 깃발은 없음을 본다. HOME·`XDG_CONFIG_HOME` 의 `.bunfig.toml` 은 1.4.5 의 단일 실행 파일이 깃발 없이도
+  읽지 않으므로, 시험의 그 경우는 다음 Bun 을 지킨다. `scripts/package.sh` 는 배포할 코어를 그 파일들을 둔 폴더와
+  HOME·`XDG_CONFIG_HOME` 으로 한 번 돌려 보고, 무언가 읽으면 `core_reads_working_directory` 로 멈춘다. [계약; 실측:
+  `core/tests/stdio/cli.test.ts`, `core/tests/build.test.ts`, live-evidence 2026-11-22; 문서: Bun 1.4.5
+  `bun build --help`] 앱은 코어에 작업 폴더를 주지 않으므로 코어는 앱의 작업 폴더를 물려받고, 떠 있는 앱과 코어는
+  `/` 에 있었다. [실측: live-evidence 2026-11-22]
 
 ### 7.2 문법
 
