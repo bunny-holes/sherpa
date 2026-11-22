@@ -474,11 +474,16 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   서명한 https 루프백 출처의 모델 목록은 그 서버에 닿고, 서버가 답을 잡고 있는 동안 코어의 인터넷 소켓은 모두 그
   서버로 가는 연결이며, 그 출처가 보낸 리디렉트는 따르지 않는다. [실측: `core/tests/stdio/egress.test.ts`]
 - 환경은 물려주지 않는다. `HOME`, `TMPDIR`, `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, `LOG_LEVEL` 만 넘긴다.
-  [계약] 그래서 Bun 이 시작 때 읽는 `NODE_EXTRA_CA_CERTS` 는 앱이 띄운 코어에 닿지 않는다. Bun 1.4.5 로 빌드한 코어는
-  그 변수가 가리킨 인증 기관을 믿고, 시험만 이것으로 믿을 수 있는 로컬 TLS 서버를 만든다. [실측:
-  `core/tests/stdio/egress.test.ts`] 그 밖에 코어가 믿는 인증 기관은 Bun 에 든 것뿐이다. macOS 의 시스템 저장소는
-  `--use-system-ca` 나 `NODE_USE_SYSTEM_CA=1` 이 있을 때만 더해지고 빌드도 앱도 그것을 주지 않으므로, 키체인에서
-  신뢰한 루트 인증서는 코어가 믿지 않는다. [실측: `core/tests/chat-egress.test.ts`; 추론: 끝까지는 재지 않았다(§16)]
+  [계약] 그래서 Bun 이 시작 때 읽는 `NODE_EXTRA_CA_CERTS`, `NODE_USE_SYSTEM_CA`, `BUN_OPTIONS` 는 앱이 띄운 코어에
+  닿지 않는다. Bun 1.4.5 로 빌드한 코어는 `NODE_EXTRA_CA_CERTS` 가 가리킨 인증 기관을 믿고, 시험만 이것으로 믿을 수
+  있는 로컬 TLS 서버를 만든다. [실측: `core/tests/stdio/egress.test.ts`] 그 밖에 코어는 Bun 에 든 인증 기관과
+  macOS 의 시스템 저장소를 믿는다. [소유자, 2026-11-22] Bun 은 시스템 저장소를 `--use-system-ca` 나
+  `NODE_USE_SYSTEM_CA=1` 이 있을 때만 더하므로 `bun run build` 가 `--compile-exec-argv=--use-system-ca` 로 그 깃발을
+  코어에 넣고, 앱처럼 `/` 에서 띄운 빌드한 코어의 기본 저장소는 Bun 에 든 것과 시스템 저장소를 함께 갖는다. [실측:
+  `core/tests/stdio/egress.test.ts`] 이 Mac 에서 Bun 1.4.5 의 시스템 저장소는 키체인에 있고 관리자 신뢰 설정이 믿는
+  인증서 5개였다. 사용자 신뢰 설정의 인증서 10개는 모두 키체인에 있고 7개는 SSL 서버에 신뢰했는데도 하나도 들지
+  않았다. [실측: live-evidence 2026-11-22] 그 저장소의 루트 뒤의 출처를 코어의 `fetch` 가 끝까지 받는지는 키체인을
+  바꾸지 않고는 재지 못해 재지 않았다. [미확인; §16]
 - 앱이 띄운 자식은 앱의 전체 디스크 접근 권한으로 판정된다. [실측] 코어가 띄우는 `osascript` 의 Apple Events
   가 앱의 권한과 hardened runtime 항목으로 판정되는지는 재지 않았다. [미확인]
 - 빌드한 코어는 실행한 폴더의 `.env` 파일(`.env.local`, `.env.<NODE_ENV>` 포함), `bunfig.toml`, `tsconfig.json`,
@@ -754,8 +759,9 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   코어는 그 이름들과 `ERR_TLS_CERT_ALTNAME_INVALID` 를 `provider_certificate` 로, 그 밖의 연결 실패를 `network` 로
   읽는다. 자체 서명 인증서의 https 루프백 서버에는 연결하지만 그 처리기에 요청이 닿지 않는다. [실측:
   `core/tests/stdio/egress.test.ts`; 문서: Node.js [OpenSSL error
-  codes](https://nodejs.org/api/errors.html#openssl-error-codes)] 시험이 `NODE_EXTRA_CA_CERTS` 로 넘긴 인증 기관은
-  믿고, 키체인에서 신뢰한 루트 인증서는 코어의 저장소에 들지 않는다(§7.1). 그 뒤의 출처는 받을지 정하지 않았다(§16).
+  codes](https://nodejs.org/api/errors.html#openssl-error-codes)] 시험이 `NODE_EXTRA_CA_CERTS` 로 넘긴 인증 기관과
+  macOS 시스템 저장소의 인증서는 코어의 저장소에 든다(§7.1). 그 루트 뒤의 출처를 `fetch` 가 끝까지 받는지는 재지
+  않았다(§16).
 
 보기(`→` 는 앱, `←` 는 코어가 쓴다):
 
@@ -1519,10 +1525,10 @@ not json\n                                                                      
 - 채팅 채널의 모델 목록(§7.11): 네 제공자의 실제 목록 응답이 문서의 모양과 같은지, Anthropic 의 `/v1/models` 가
   `anthropic-version: 2026-10-21` 을 받는지, Google 이 `pageSize=1000` 을 받는지. 목록은 유료 호출이 아니지만
   소유자의 키가 있어야 하므로 소유자 실기(bunny-holes/sherpa#68)에서 잰다. 시스템 프록시 뒤의 https 출처에 빌드한
-  코어가 닿는지도 재지 않았다. 키체인에서 신뢰한 루트 인증서는 코어의 저장소에 들지 않는다(§7.1). 그런 루트 뒤의
-  출처(회사가 TLS 를 가로채는 망 등)를 받으려면 빌드에 `--compile-exec-argv=--use-system-ca` 를 넣어야 하고, 넣을지와
-  넣은 코어의 `fetch` 가 그 출처를 받는지는 정하지도 재지도 않았다(ADR-0012 위험 9, "아직 확인 전"). 끝까지 재려면
-  키체인을 바꿔야 한다.
+  코어가 닿는지도 재지 않았다. 빌드는 `--compile-exec-argv=--use-system-ca` 로 macOS 시스템 저장소를 코어의 저장소에
+  더한다(§7.1). 그 저장소의 루트 뒤의 출처(회사가 TLS 를 가로채는 망, 로컬 인증 기관을 쓰는 https 루프백 서버 등)를
+  코어의 `fetch` 가 끝까지 받는지는 키체인을 바꿔야 잴 수 있어, 같은 소유자 실기에서 잰다(ADR-0012 위험 9, "아직
+  확인 전").
 - MCP 스위치와 상태 창의 실기(§13.4): "?" 팝오버로 바꾼 창, 메뉴의 켜고 끄기, 복사한 명령, 긴 설치 경로에서 #52 가
   고쳐졌는지. 게이트는 서버의 동작과 명령 글만 보고, 창의 배치는 보지 않는다.
 
