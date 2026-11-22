@@ -9,6 +9,39 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — Claude Code against a relay turned away with `mcp_disabled` (bunny-holes/sherpa#54)
+
+This Mac, run by the main session. Claude Code 2.1.326 ran interactively in a
+pty with no prompt, so no model was called. The server was a dynamic one
+given with `--strict-mcp-config --mcp-config` and named `sherpacachetest`,
+so that no cached failure could attach to a real `sherpa` entry. Its command
+was the `sherpa-relay` of `Sherpa.app` exported from the
+bunny-holes/sherpa#54 branch at `e0e2670`.
+
+1. MCP off, session 1. Claude Code's log, in order:
+   - `version negotiation probe closed the stdio server (rmcp-class pre-init hard close); respawning pinned legacy`
+   - the relay's `mcp_disabled` remedy line, logged as `Server stderr:`
+   - `Connection failed (CONNECTION_CLOSED)`
+
+   A relay that ends at the preface makes Claude Code pin the server to the
+   earlier protocol and start it again within the same attempt; that start
+   ended the same way.
+2. Session 2, 2 s later, MCP still off: Claude Code tried again without
+   `Skipping connection (recent failure cached)` and failed the same way. This
+   dynamic server showed no failure cache.
+3. Session 3, after the app's switch turned MCP on:
+   `Successfully connected (transport: stdio) in 88ms`, `protocolEra`
+   `modern`. The pin to the earlier protocol did not carry over to the next
+   session.
+
+- Not measured: a user-scope server (`claude mcp add --scope user`), which
+  would change the user's configuration; the plugin server's failure cache,
+  which the bunny-holes/sherpa#55 work observed; and whether ADR-0011's 7-day
+  skip happens per scope. It did not happen with this dynamic server.
+- Following this, the relay's remedies and the app's connection guide give a
+  way back that holds with or without a cache: `/mcp`, then Reconnect, in
+  Claude Code, and a new session in Codex (app-connection-v1 §6).
+
 ## 2026-11-22 — The MCP switch in the exported app built from `e0e2670` (bunny-holes/sherpa#54)
 
 This Mac, run by the main session on `Sherpa.app` exported from the

@@ -356,9 +356,21 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   `error [relay:socket:connect] reason=app_not_running remedy="start Sherpa.app"`. [계약] 시험 빌드는
   `app_not_running` 과 `server_signature_rejected` 를 썼다. [실측]
 - MCP 가 꺼진 앱에 붙으면 75 로 끝나며 이 줄을 쓴다:
-  `error [relay:preface:read] reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP in the Sherpa menu or status window, then reconnect"`. 켜진 채 연결된
-  중계는 사람이 MCP 를 끄면 `reason=app_closed_session remedy="reconnect the sherpa MCP server"` 로 75 다. 모르는 사유의
-  `remedy` 는 `restart Sherpa.app, then reconnect` 다. [계약]
+  `error [relay:preface:read] reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP in Sherpa.app, then reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)"`.
+  켜진 채 연결된 중계는 사람이 MCP 를 끄면 75 로 끝나며 아래 줄을 쓴다. 중계는 앱이 왜 닫았는지 모르므로 MCP 를 끈
+  경우를 먼저 적는다:
+  `error [relay:session:copy] reason=app_closed_session remedy="if you turned MCP off in Sherpa.app, turn it on first; then reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)"`.
+  모르는 사유의 `remedy` 는 `restart Sherpa.app, then reconnect` 다. [계약]
+- 다시 붙는 법은 에이전트가 앞선 실패를 기억하든 아니든 맞게 적는다. Claude Code 는 `/mcp` 의 Reconnect, Codex 는 새
+  세션이다. 앱의 연결 방법(§2)도 같다. [계약]
+- MCP 가 꺼진 앱에서 중계가 머리말을 읽고 끝나면 Claude Code 2.1.326 대화형은 그 시도 안에서 서버를 옛 규격으로
+  고정해 다시 띄운다. 로그는 다음 순서다. [실측: live-evidence 2026-11-22 "Claude Code against a relay turned away"]
+  - `version negotiation probe closed the stdio server (rmcp-class pre-init hard close); respawning pinned legacy`
+  - 중계의 줄을 담은 `Server stderr:`
+  - `Connection failed (CONNECTION_CLOSED)`
+- `--mcp-config` 로 준 동적 서버에서는 그 고정이 다음 세션에 남지 않았다. 2초 뒤 세션은 실패 캐시 없이 다시 시도해
+  같은 이유로 실패했고, MCP 를 켠 뒤 세션은 `protocolEra` `modern` 으로 붙었다. [실측: 같은 기록] 사용자 범위와
+  플러그인 범위에서 고정이나 실패 캐시가 다음 세션에 남는지는 재지 않았다(§16). [미확인]
 - MCP 내용과 소켓의 절대 경로(사용자 이름이 들어 있다)는 쓰지 않는다. 경로는 `socket=default` 또는
   `socket=override` 로만 적는다. [계약]
 - `LOG_LEVEL` 을 따르고 기본은 warn 이다. [계약]
@@ -1007,9 +1019,13 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 - MCP 스위치와 상태 창(bunny-holes/sherpa#54, #52, §2). 2026-11-22 메인 세션이 이 작업의 `e0e2670` 을 내보낸 앱으로
   쟀다. 첫 실행에 MCP 가 꺼진 채 상태 창이 저절로 열렸다. 꺼진 동안 중계는 75 와 remedy 로 끝났고 Codex 는 서버를
   `failed` 로 두었다. 창의 스위치로 켜자 Codex 가 붙어 도구 35개를 보았고 호출은 `succeeded` 였다. 창의 중계 경로는
-  잘리지 않았다. [실측: live-evidence 2026-11-22 "The MCP switch in the exported app"] 남은 것은 다음과 같다.
+  잘리지 않았다. [실측: live-evidence 2026-11-22 "The MCP switch in the exported app"] 같은 앱의 중계를 Claude Code
+  2.1.326 대화형의 `--mcp-config` 동적 서버로 붙이자, 꺼진 동안은 `Server stderr:` 에 remedy 를 남기고 실패했고
+  켠 뒤 새 세션은 붙었다(§6). [실측: live-evidence 2026-11-22 "Claude Code against a relay turned away"] 남은 것은
+  다음과 같다.
   - 연결 방법을 "?" 팝오버로 옮긴 뒤의 창: 높이, 도움말 단추, 팝오버, 툴팁.
-  - 메뉴의 켜기·끄기, 켜진 채 끌 때 연결된 Claude Code·Codex 가 보이는 것, 꺼진 동안 Claude Code 가 보이는 오류.
+  - 메뉴의 켜기·끄기, 켜진 채 끌 때 연결된 Claude Code·Codex 가 보이는 것.
+  - 사용자 범위로 등록한 Claude Code 가 꺼진 동안 실패한 뒤, 켜고 `/mcp` 의 Reconnect 로 붙는지.
   - 복사한 명령을 그대로 넣어 붙는지.
   - `/Applications/Sherpa.app` 보다 긴 설치 경로에서 명령과 경로가 잘리지 않고, 선택해 복사한 값과 복사 단추의 값이
     `Contents/MacOS/sherpa-relay` 로 끝나는 전체 경로인지.
@@ -1099,7 +1115,10 @@ not json\n                                                                      
 
 - 중계가 앱을 띄우는 동작과 로그인 항목(ADR-0010).
 - Claude Code 가 기능 플래그나 7일 생략으로 2025-11-25 `initialize` 로 붙어 거부되는 일, Codex 의 2026 모드가
-  2025-06-18 로 내려가는 조건(ADR-0011 의 위험).
+  2025-06-18 로 내려가는 조건(ADR-0011 의 위험). 2026-11-22 `--mcp-config` 동적 서버에서는 머리말 단계에서 끝난 중계
+  뒤에도 7일 생략이 일어나지 않았다(§6).
+- 사용자 범위(`claude mcp add --scope user`)와 플러그인 범위의 Claude Code 서버에서, 머리말 단계에서 끝난 중계 뒤의
+  옛 규격 고정이나 실패 캐시가 다음 세션에 남는지(§6). 플러그인 서버의 실패 캐시는 bunny-holes/sherpa#55 가 다룬다.
 - 이 Mac 의 선 위에서 Claude Code 와 Codex 가 2026-07-28 봉투의 `clientCapabilities` 에 선언하는 elicitation(Claude
   Code 는 문서에, Codex 는 소스에 있다).
 - Claude Code 2.1.326 의 `anthropic/requiresUserInteraction` 지원.
@@ -1123,7 +1142,7 @@ not json\n                                                                      
 에서 `server/discover`·`tools/list`·`tools/call` 을 모두 2026-07-28 봉투로 보내 `reminder_authorization_status` 를
 불렀다(결과 `succeeded`). 이로써 내보낸 앱 경로의 Claude Code 도구 호출이 닫혔다(ADR-0011). 같은 날 `e0e2670` 을
 내보낸 앱으로 첫 실행 창, 꺼진 동안의 거부(중계 75, Codex `failed`), 창의 스위치로 켠 뒤의 Codex 연결과 호출을
-쟀다(§13.4).
+쟀고, 동적 서버로 머리말 단계 실패 뒤 Claude Code 가 다시 띄우는 모양과 다음 세션을 쟀다(§6, §13.4).
 
 ## Related
 
