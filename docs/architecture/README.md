@@ -120,8 +120,8 @@ the one provider the person chose. Outbound HTTPS to that provider's origin is
 then the only connection the core opens; every other outbound connection and
 every listening socket stays forbidden. The API key lives in the app's data
 protection keychain and reaches the core only inside the turn message on the
-pipe. Whether a chat transcript may be stored is an open owner decision, so the
-rule below against a long-lived content archive still binds. Until that work
+pipe. The owner decided on 2026-11-22 that the app stores chat history, within
+the exception to the content-archive rule below. Until that work
 lands, the current behavior above and contract §7.1 stand.
 
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of
@@ -130,7 +130,13 @@ source of truth for communication content. Sherpa reads their local stores
 read-only and never retains message or mail bodies in a long-lived content
 archive. It stores a minimal owner-only control/provenance ledger and keeps
 selected exact evidence in memory or an encrypted hard-TTL spill for one
-workflow.
+workflow. The one exception, once the in-app chat lands, is its history (owner
+decision 2026-11-22, [ADR-0012](../adr/0012-in-app-chat.md)): `Sherpa.app` will
+keep each conversation, including the mail and message text its tool results
+carried, only on this Mac, encrypted with a key in its data protection keychain
+and excluded from Time Machine, until the person deletes it or the retention
+they chose runs out, at most 90 days after the conversation's last turn. The
+core writes no conversation to disk.
 
 No external messaging CLI is involved. iMessage reads `~/Library/Messages/chat.db`
 and KakaoTalk reads its SQLCipher database with a key derived in the core from
