@@ -18,30 +18,45 @@ log info "$LOG_SCOPE:start" "root=${REPO_ROOT##*/}"
 #    설치·시험·빌드하고, bun build --compile 은 그 런타임을 dist/sherpa 에 넣는다. Bun 은 이 필드를 읽지 않는다.
 #    1.4.5 의 bun install 은 판이 달라도, onFail 이 error 여도 말없이 설치했고, 이 필드를 읽는 것은 Vite+ 의 vp 다
 #    (live-evidence.md 2026-11-22). 그래서 PATH 의 첫 bun 이 선언한 판이 아니면 아무것도 빌드하기 전에 멈춘다.
-readonly CORE_MANIFEST="$REPO_ROOT/core/package.json"
-# 홈 아래 경로는 ~ 로 줄여 적는다. 게이트 출력은 PR 본문에 옮겨진다.
-shown_path() { case "$1" in "$HOME"/*) printf '~/%s' "${1#"$HOME"/}" ;; *) printf '%s' "$1" ;; esac; }
+#    확인은 scripts/lib/bun-pin.sh 한 곳에 있고 scripts/package.sh 도 그것을 쓴다.
+. "$REPO_ROOT/scripts/lib/bun-pin.sh"
 log info "check:environment:start" "manifest=core/package.json"
-declared_bun="$(python3 -c '
-import json, re, sys
-manager = json.load(open(sys.argv[1])).get("devEngines", {}).get("packageManager")
-version = manager.get("version") if isinstance(manager, dict) and manager.get("name") == "bun" else None
-if not isinstance(version, str) or not re.fullmatch(r"[0-9]+[.][0-9]+[.][0-9]+", version):
-    sys.exit(1)
-print(version)
-' "$CORE_MANIFEST")" || fail "reason=bun_version_undeclared file=core/package.json"
-bun_path="$(command -v bun)" || fail "reason=bun_missing expected=$declared_bun"
-actual_bun="$(bun --version)" || fail "reason=bun_version_unreadable path=$(shown_path "$bun_path")"
-[ "$actual_bun" = "$declared_bun" ] \
-  || fail "reason=bun_version_mismatch expected=$declared_bun actual=$actual_bun path=$(shown_path "$bun_path")"
+bun_pin_require "$REPO_ROOT" || fail "$BUN_PIN_FAILURE"
+# 고정이 실제로 거부하는지도 본다. 다른 판을 답하는 가짜 bun 을 PATH 앞에 두면 package.sh 는 아무것도 빌드하기 전에
+# 게이트와 같은 이름으로 멈춰야 한다. 가짜는 --version 밖의 호출에 실패하므로 확인을 건너뛴 package.sh 는 다른 이름으로
+# 멈춘다. 같은 가짜를 컴파일한 코어로 넘기면 다른 런타임을 품은 코어이므로 core_runtime_mismatch 여야 한다.
+pin_probe="$(mktemp -d)"
+cat >"$pin_probe/bun" <<'SH'
+#!/bin/sh
+[ "$1" = --version ] && { echo 0.0.1; exit 0; }
+exit 97
+SH
+chmod +x "$pin_probe/bun"
+if package_refusal="$(PATH="$pin_probe:$PATH" SHERPA_DIST="$pin_probe/dist" bash "$REPO_ROOT/scripts/package.sh" 2>&1 >/dev/null)"; then
+  rm -rf "$pin_probe"
+  fail "reason=package_ignored_bun_pin"
+fi
+case "$package_refusal" in
+  *"[release:package:failure] reason=bun_version_mismatch expected=$BUN_PIN_VERSION actual=0.0.1 path="*) ;;
+  *)
+    printf '%s\n' "$package_refusal" | tail -5 >&2
+    rm -rf "$pin_probe"
+    fail "reason=package_bun_refusal_unexpected"
+    ;;
+esac
+runtime_refusal=accepted
+bun_pin_verify_runtime "$pin_probe/bun" probe || runtime_refusal="$BUN_PIN_FAILURE"
+rm -rf "$pin_probe"
+[ "$runtime_refusal" = "reason=core_runtime_mismatch expected=$BUN_PIN_VERSION actual=0.0.1 file=probe" ] \
+  || fail "reason=runtime_check_unexpected result=${runtime_refusal%% *}"
 xcode_version="$(xcodebuild -version 2>/dev/null | awk 'NR == 1 { v = $2 } NR == 2 { b = $3 } END { print v "/" b }')" \
   || xcode_version=unknown
 swift_version="$(swift --version 2>&1 | sed -nE 's/.*Swift version ([0-9.]+).*/\1/p')" || swift_version=unknown
-log info "check:environment:success" "bun=$actual_bun xcode=$xcode_version swift=${swift_version:-unknown}"
+log info "check:environment:success" "bun=$BUN_PIN_VERSION xcode=$xcode_version swift=${swift_version:-unknown}"
 
 # 새 릴리스 알림. 바깥 릴리스로 같은 커밋의 결과가 바뀌면 안 되므로 warn 만 내고 게이트를 실패시키지 않는다.
 # 출처와 한도는 스크립트에 적었다.
-python3 "$REPO_ROOT/scripts/checks/notify_new_releases.py" "$REPO_ROOT" "$declared_bun" \
+python3 "$REPO_ROOT/scripts/checks/notify_new_releases.py" "$REPO_ROOT" "$BUN_PIN_VERSION" \
   || log warn "check:currency:failure" "reason=notifier_exit_$? — new releases are UNCHECKED"
 
 # 1. Swift 서식(bunny-holes/sherpa#70). 기준은 저장소 루트의 .swift-format 하나다. swift-format 은 파일의 폴더에서
@@ -216,11 +231,8 @@ cli_version="$(printf '%s' "$raw" | awk '{print $2}')"
 [ "$("$SHERPA_APPLE_BIN" --version)" = "sherpa-apple $cli_version" ] \
   || fail "reason=helper_version_mismatch cli=$cli_version"
 
-# 코어가 품은 Bun 런타임도 0 에서 확인한 판이어야 한다(bunny-holes/sherpa#71). BUN_BE_BUN=1 이면 컴파일한 실행
-# 파일이 자기 진입점 대신 bun CLI 로 돈다(Bun 문서 "Act as the Bun CLI").
-core_runtime="$(BUN_BE_BUN=1 "$binary" --version)" || fail "reason=core_runtime_unreadable"
-[ "$core_runtime" = "$declared_bun" ] \
-  || fail "reason=core_runtime_mismatch expected=$declared_bun actual=$core_runtime"
+# 코어가 품은 Bun 런타임도 0 에서 확인한 판이어야 한다(bunny-holes/sherpa#71).
+bun_pin_verify_runtime "$binary" core/dist/sherpa || fail "$BUN_PIN_FAILURE"
 
 # 실패는 이름 있는 오류 코드로 끝나야 한다. 최상위 catch 가 알 수 없는 실패를 stdout·stderr
 # 0 바이트로 끝내던 것을 이 호출로 재현했다. {} 는 봉투 검사에서 거부되므로 EventKit 과
