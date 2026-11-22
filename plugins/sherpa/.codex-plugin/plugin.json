@@ -1,7 +1,7 @@
 {
   "name": "sherpa",
-  "version": "0.8.4+codex.20261120230207",
-  "description": "Agent workflows for the deterministic Sherpa macOS orchestration CLI.",
+  "version": "0.9.0+codex.20261122095024",
+  "description": "Agent workflows for the MCP server of Sherpa.app: Apple Calendar, Reminders, Mail, iMessage and local KakaoTalk on macOS.",
   "author": {
     "name": "XIYO",
     "url": "https://github.com/XIYO"
@@ -11,6 +11,7 @@
   "license": "MIT",
   "keywords": [
     "agent",
+    "mcp",
     "calendar",
     "reminders",
     "mail",
@@ -20,10 +21,11 @@
     "macos"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Sherpa",
-    "shortDescription": "Deterministic local orchestration for agent workflows",
-    "longDescription": "Turns user intent into validated Sherpa CLI requests, evaluates machine-readable evidence, and continues or stops the agent loop without bypassing Sherpa's safety boundaries.",
+    "shortDescription": "Calendar, Reminders, Mail and messages through Sherpa.app",
+    "longDescription": "Connects the agent to the MCP server of Sherpa.app, which reads and changes Apple Calendar and Reminders with native read-back, reads Mail, iMessage and the local KakaoTalk database in bounded ranges, and asks the person in its own window before a delete or a send.",
     "developerName": "XIYO",
     "category": "Productivity",
     "capabilities": [

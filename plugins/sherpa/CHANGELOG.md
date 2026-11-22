@@ -1,7 +1,7 @@
 ---
 uuid: 01a0ed5e-6dc7-74b3-a2ba-6b39e4060eeb
 type: changelog
-audience: "Sherpa 플러그인과 CLI 를 갱신하는 소유자. 무엇이 바뀌었고 왜 올려야 하는지 볼 때"
+audience: "Sherpa 플러그인과 Sherpa.app 을 갱신하는 소유자. 무엇이 바뀌었고 왜 올려야 하는지 볼 때"
 goal: "릴리스마다 사용자에게 보이는 변경과 그 근거를 확인하고 갱신 여부를 판단하게 한다"
 tone: "평어체. 바뀐 동작과 고친 결함을 재현한 사실로 적는다"
 manner: "버전별로 Added·Changed·Fixed 를 나누고 긴 실측 근거는 live-evidence 로 내린다"
@@ -10,6 +10,39 @@ manner: "버전별로 Added·Changed·Fixed 를 나누고 긴 실측 근거는 l
 # Changelog
 
 ## [Unreleased]
+
+## [0.9.0] - 2026-11-22
+
+Sherpa.app 이 `/Applications` 에 있고 그 "MCP Server" 스위치가 켜져 있어야 한다. 셸의 `sherpa` CLI 는
+더 필요 없다. 로컬 KakaoTalk 을 처음 읽기 전에 한 번 돌리는 `sherpa kakaotalk setup` 만 남는다.
+
+### Added
+
+- `.mcp.json`: Sherpa.app 의 MCP 서버 `sherpa` 를 `/Applications/Sherpa.app/Contents/MacOS/sherpa-relay`
+  로 등록한다. Claude Code 는 플러그인 루트의 이 파일을 읽고, Codex 는 매니페스트의
+  `"mcpServers": "./.mcp.json"` 으로 같은 파일을 읽는다. env 의 `CODEX_MCP_PROTOCOL_VERSION=2026-07-28` 은
+  Codex 가 MCP 2026-07-28 로 열게 한다. Codex 는 기능 `mcp_2026_07_28` 도 켜야 한다(ADR-0011).
+- `scripts/checks/verify_tools.py`: 스킬이 적은 도구가 코어의 도구 등록부 35개 안에 있는지, 도구 이름
+  앞머리가 두 에이전트의 형식인지, 스킬이 Sherpa CLI 명령을 부르지 않는지 본다. 게이트가 등록부의
+  이름을 넘긴다.
+
+### Changed
+
+- `sherpa`, `planner`, `context`, `kakaotalk-local-search` 스킬이 CLI 명령 대신 MCP 도구를 부른다.
+  Claude Code 는 `mcp__plugin_sherpa_sherpa__<도구>`, Codex 는 `mcp__sherpa__<도구>` 로 본다. 결과는
+  `sherpa.mcp.tool-outcome.v1` 이고, 스킬은 `status`·`error.retry`·`operation_id` 로 다음 걸음을 정한다.
+  삭제와 발송은 Sherpa.app 창에서 사람이 한 번 더 허용해야 한다.
+- 캘린더·미리 알림·전체 디스크 접근 권한은 Sherpa.app 에 붙는다. `planner` 스킬은
+  `*.authorization.request` 를 보내지 않고 Sherpa 메뉴 막대 항목을 안내한다(MCP 도구에 없다).
+- KakaoTalk 설정은 MCP 도구가 아니다. `kakaotalk-local-search` 스킬은 사용자가 전체 디스크 접근이 있는
+  터미널에서 `sherpa kakaotalk setup` 을 한 번 돌리게 안내하고, 스스로 돌리지 않는다.
+- 매니페스트의 설명을 Sherpa.app 의 MCP 서버에 맞춰 고쳤다.
+
+### Removed
+
+- `cli-contract.json`, `scripts/require-cli.sh`, SessionStart 훅(`hooks/hooks.json`,
+  `hooks/session-start.sh`)과 그 검사(`scripts/checks/verify_session_start.py`). 스킬이 CLI 를 부르지
+  않으므로 지킬 CLI 버전이 없다. cask 로 설치하면 `sherpa` 명령은 앱 안 코어와 같은 파일이다.
 
 ## [0.8.4] - 2026-11-20
 
