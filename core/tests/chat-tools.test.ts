@@ -250,13 +250,16 @@ const tool = (
   code: string | null = null,
   operationID: string | null = null,
 ) => ({ type: "tool", call_id: callID, name, status, code, operation_id: operationID });
-/** The `done` of a turn of two model requests, each 11 tokens in and 3 out. */
-const done = (reason = "stop", input: number | null = 22, output: number | null = 6) => ({
-  type: "done",
-  reason,
-  input_tokens: input,
-  output_tokens: output,
-});
+/**
+ * The `done` of a turn of two model requests, each 11 tokens in and 3 out. `resend` is whether a
+ * turn without text would start after it (§7.11 "다시 보내기"): not after the model's answer.
+ */
+const done = (
+  reason = "stop",
+  input: number | null = 22,
+  output: number | null = 6,
+  resend = false,
+) => ({ type: "done", reason, input_tokens: input, output_tokens: output, resend });
 const answered = (text = "Done") => ({ type: "delta", text });
 
 /** The messages of a turn up to and including the `done` or `error` that ends it. */
@@ -399,7 +402,7 @@ describe("a turn whose model calls a tool", () => {
     const channel = open();
     channel.write(compatible());
     const messages = await ending(channel);
-    expect(messages.at(-1)).toEqual(done("step-limit", 220, 60));
+    expect(messages.at(-1)).toEqual(done("step-limit", 220, 60, true));
     expect(messages.slice(0, -1)).toEqual(
       Array.from({ length: 20 }, (_, index) => [
         tool(index + 1, "event_list", "started"),
@@ -566,7 +569,7 @@ describe("a call the AI SDK did not run (§7.11)", () => {
       expect(await ending(channel)).toEqual([
         tool(1, "event_list", "started"),
         tool(1, "event_list", "failed", "chat.not_run"),
-        done(reason, 11, 3),
+        done(reason, 11, 3, true),
       ]);
       expect(asked()).toEqual([]);
       expect(lines).toContain("warn [core:chat:tool-call] not_run channel=1 tool=event_list\n");
@@ -590,7 +593,7 @@ describe("a call the AI SDK did not run (§7.11)", () => {
       answered("Let me look."),
       tool(1, "event_list", "started"),
       tool(1, "event_list", "failed", "chat.not_run"),
-      done("length", 11, 3),
+      done("length", 11, 3, true),
     ]);
   });
 
@@ -635,7 +638,7 @@ describe("a call the AI SDK did not run (§7.11)", () => {
       tool(1, "event_list", "failed", "chat.invalid_call"),
       tool(2, "event_list", "started"),
       tool(2, "event_list", "failed", "chat.not_run"),
-      done("length", 11, 3),
+      done("length", 11, 3, true),
     ]);
     expect(asked()).toEqual([]);
     channel.write(compatible("다시"));
@@ -681,7 +684,7 @@ describe("a call the AI SDK did not run (§7.11)", () => {
       expect(await ending(channel)).toEqual([
         tool(1, "event_list", "started"),
         tool(1, "event_list", "failed", "chat.invalid_call"),
-        done("length", 11, 3),
+        done("length", 11, 3, true),
       ]);
       expect(sent).toHaveLength(1);
       expect(asked()).toEqual([]);
@@ -718,7 +721,7 @@ describe("a call the AI SDK did not run (§7.11)", () => {
       expect(await ending(channel)).toEqual([
         tool(1, "event_list", "started"),
         tool(1, "event_list", "failed", "chat.invalid_call"),
-        done("content-filter", 11, 3),
+        done("content-filter", 11, 3, true),
       ]);
       expect(sent).toHaveLength(1);
       channel.write({ ...message, text: "다시" });
@@ -738,7 +741,7 @@ describe("a call the AI SDK did not run (§7.11)", () => {
     expect(await ending(channel)).toEqual([
       tool(1, "event_list", "started"),
       tool(1, "event_list", "failed", "chat.invalid_call"),
-      done("other", 11, 3),
+      done("other", 11, 3, true),
     ]);
     expect(sent).toHaveLength(1);
     channel.write(compatible("다시"));
@@ -764,6 +767,7 @@ describe("a call the AI SDK did not run (§7.11)", () => {
         code: "provider_unavailable",
         retryable: true,
         status: 502,
+        resend: true,
       },
     ]);
     expect(sent).toHaveLength(1);
@@ -784,7 +788,7 @@ describe("a call the AI SDK did not run (§7.11)", () => {
     expect(await ending(channel)).toEqual([
       tool(1, "event_list", "started"),
       tool(1, "event_list", "failed", "chat.not_run"),
-      done("length", 11, 3),
+      done("length", 11, 3, true),
     ]);
     channel.write(compatible("다시"));
     expect(await ending(channel)).toEqual([
@@ -928,7 +932,7 @@ describe("a cancel while a step's calls run (§7.11)", () => {
     expect(await ending(channel)).toEqual([
       tool(1, "event_delete", "started"),
       tool(1, "event_delete", "withdrawn", "chat.cancelled"),
-      done("aborted", 11, 3),
+      done("aborted", 11, 3, true),
     ]);
     expect(frames.map((frame) => frame.type)).toEqual(["request", "confirm", "withdraw"]);
     expect(asked()).toEqual(["event.get"]);
@@ -963,7 +967,7 @@ describe("a cancel while a step's calls run (§7.11)", () => {
     expect(await ending(channel)).toEqual([
       tool(1, "event_list", "started"),
       tool(1, "event_list", "withdrawn", "chat.cancelled"),
-      done("aborted", 11, 3),
+      done("aborted", 11, 3, true),
     ]);
     expect(sent).toHaveLength(1);
     // The answer that comes after is late.
@@ -990,7 +994,7 @@ describe("a cancel while a step's calls run (§7.11)", () => {
       tool(1, "event_create", "succeeded", null, "op-1"),
       tool(2, "event_list", "started"),
       tool(2, "event_list", "withdrawn", "chat.cancelled"),
-      done("aborted", 11, 3),
+      done("aborted", 11, 3, true),
     ]);
     expect(asked()).toEqual(["event.create"]);
     expect(sent).toHaveLength(1);
@@ -1038,7 +1042,7 @@ describe("a cancel while a step's calls run (§7.11)", () => {
       tool(1, call.name, "succeeded", null, operationID),
       tool(2, "event_list", "started"),
       tool(2, "event_list", "withdrawn", "chat.cancelled"),
-      done("aborted", 11, 3),
+      done("aborted", 11, 3, true),
     ]);
     expect(sent).toHaveLength(1);
   });
@@ -1061,7 +1065,7 @@ describe("a cancel while a step's calls run (§7.11)", () => {
     expect(await channel.next()).toEqual(answered("Adding it."));
     await pause();
     channel.write({ type: "cancel" });
-    expect(await ending(channel)).toEqual([done("aborted", null, null)]);
+    expect(await ending(channel)).toEqual([done("aborted", null, null, true)]);
     expect(frames).toEqual([]);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.signal?.aborted).toBe(true);
@@ -1093,8 +1097,9 @@ describe("a cancel while a step's calls run (§7.11)", () => {
   });
 });
 
-// §7.11 "다시 보내기": the rows of the contract's table with a tool in them, each a test; the rows
-// without are in tests/chat-turn.test.ts.
+// §7.11 "다시 보내기": the rows of the contract's table with a tool in them, each a test that reads
+// `resend` in what ended the turn and sends a turn without text after it, which the core takes
+// exactly when `resend` said so. The rows without are in tests/chat-turn.test.ts.
 describe("a turn without text after a turn that called tools", () => {
   /** JSON leaves out a key whose value is undefined. */
   const again = () => ({ ...compatible(), text: undefined });
@@ -1135,7 +1140,7 @@ describe("a turn without text after a turn that called tools", () => {
       expect(await ending(channel)).toEqual([
         tool(1, "event_list", "started"),
         tool(1, "event_list", "failed", code),
-        done(reason, 11, 3),
+        done(reason, 11, 3, true),
       ]);
       channel.write(again());
       expect(await ending(channel)).toEqual([answered(), done("stop", 11, 3)]);
@@ -1157,7 +1162,7 @@ describe("a turn without text after a turn that called tools", () => {
     expect(await ending(channel)).toEqual([
       tool(1, "event_delete", "started"),
       tool(1, "event_delete", "withdrawn", "chat.cancelled"),
-      done("aborted", 11, 3),
+      done("aborted", 11, 3, true),
     ]);
     channel.write(again());
     expect(await ending(channel)).toEqual([answered(), done("stop", 11, 3)]);
@@ -1173,9 +1178,9 @@ describe("a turn without text after a turn that called tools", () => {
     );
     const channel = open();
     channel.write(compatible());
-    expect((await ending(channel)).at(-1)).toEqual(done("step-limit", 220, 60));
+    expect((await ending(channel)).at(-1)).toEqual(done("step-limit", 220, 60, true));
     channel.write(again());
-    expect((await ending(channel)).at(-1)).toEqual(done("step-limit", 220, 60));
+    expect((await ending(channel)).at(-1)).toEqual(done("step-limit", 220, 60, true));
     expect(sent).toHaveLength(40);
     // The second turn's first request follows the twentieth call's result, and no text after it.
     const next = sent[20]!.body.messages as { role: string; tool_call_id?: string }[];
@@ -1202,6 +1207,7 @@ describe("a turn without text after a turn that called tools", () => {
         code: "provider_rejected",
         retryable: false,
         status: 400,
+        resend: true,
       },
     ]);
     channel.write(again());
@@ -1222,7 +1228,7 @@ describe("a turn without text after a turn that called tools", () => {
     expect(await ending(channel)).toEqual([
       tool(1, "event_list", "started"),
       tool(1, "event_list", "succeeded", null, "op-1"),
-      done("length"),
+      done("length", 22, 6, false),
     ]);
     channel.write(again());
     expect(await channel.next()).toEqual({
@@ -1231,6 +1237,7 @@ describe("a turn without text after a turn that called tools", () => {
       code: "invalid_message",
       retryable: false,
       status: null,
+      resend: false,
     });
     expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=nothing_to_retry\n");
     expect(sent).toHaveLength(2);
@@ -1267,7 +1274,7 @@ describe("a turn without text after a turn that called tools", () => {
         tool(1, "event_list", "started"),
         tool(1, "event_list", "failed", "chat.invalid_call"),
         answered("After"),
-        done("length", 11, 3),
+        done("length", 11, 3, true),
       ],
       answer: anthropic,
     },
@@ -1283,7 +1290,7 @@ describe("a turn without text after a turn that called tools", () => {
         answered("After"),
         tool(1, "event_list", "started"),
         tool(1, "event_list", "failed", "chat.invalid_call"),
-        done("length", 11, 3),
+        done("length", 11, 3, true),
       ],
       answer: chat,
     },
@@ -1309,9 +1316,11 @@ describe("a turn without text after a turn that called tools", () => {
     );
     const channel = open();
     channel.write(compatible());
+    // The step's result is last, yet the conversation is past its limit.
     expect((await ending(channel)).at(-1)).toMatchObject({
       type: "error",
       code: "provider_rejected",
+      resend: false,
     });
     const limit = {
       type: "error",
@@ -1319,6 +1328,7 @@ describe("a turn without text after a turn that called tools", () => {
       code: "conversation_limit",
       retryable: false,
       status: null,
+      resend: false,
     };
     channel.write(again());
     expect(await channel.next()).toEqual(limit);

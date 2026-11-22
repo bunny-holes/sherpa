@@ -1,7 +1,7 @@
 /**
  * The error codes of a chat channel (app-connection-v1 §7.11) and how a failed provider request
- * reads as one. An HTTP status reads as the AI SDK reads it, so a model list and a turn are
- * offered again alike (`@ai-sdk/provider` 4.0.39 `APICallError.isRetryable`).
+ * reads as one. An HTTP status reads as the AI SDK reads it, so a model list and a turn read the
+ * same status as the same code (`@ai-sdk/provider` 4.0.39 `APICallError.isRetryable`).
  */
 import { EgressDeniedError } from "./egress.ts";
 
@@ -27,7 +27,10 @@ const RETRYABLE: ReadonlySet<ChatErrorCode> = new Set<ChatErrorCode>([
   "provider_unavailable",
 ]);
 
-/** Whether the same request may succeed later, so the app offers it again. */
+/**
+ * Whether the same request may succeed later, so the app offers a model list again. A turn is
+ * offered again on its `resend`, which its conversation decides (§7.11 "다시 보내기").
+ */
 export function retryable(code: ChatErrorCode): boolean {
   return RETRYABLE.has(code);
 }

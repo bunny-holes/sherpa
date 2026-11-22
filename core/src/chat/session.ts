@@ -17,6 +17,7 @@ import {
   errorEvent,
   type ListModelsRequest,
   readMessage,
+  type TurnAnswer,
   type TurnRequest,
 } from "./protocol.ts";
 import { FIXED_BASE_URLS } from "./providers.ts";
@@ -102,7 +103,8 @@ class ChatSession {
       log.warn(
         `[core:chat:message] refused channel=${this.channel.id} reason=${message.reason} bytes=${body.byteLength}`,
       );
-      this.reply(errorEvent(message.inReplyTo, "invalid_message"));
+      if (message.inReplyTo === "turn") this.answer(errorEvent("turn", "invalid_message"));
+      else this.reply(errorEvent(message.inReplyTo, "invalid_message"));
       return;
     }
     if (message.type === "turn") {
@@ -168,9 +170,9 @@ class ChatSession {
    */
   private startTurn(request: TurnRequest): void {
     const id = this.channel.id;
-    const refuse = (reason: string, event: ChatEvent) => {
+    const refuse = (reason: string, event: TurnAnswer) => {
       log.warn(`[core:chat:turn] refused channel=${id} reason=${reason}`);
-      this.reply(event);
+      this.answer(event);
     };
     if (this.turn) {
       refuse("busy", errorEvent("turn", "busy"));
@@ -218,8 +220,19 @@ class ChatSession {
       .then((end) => {
         // The next turn is taken once this one is answered, as the next list is.
         this.turn = null;
-        if (end) this.reply(end);
+        if (end) this.answer(end);
       });
+  }
+
+  /**
+   * Writes what answers a `turn`, with `resend`: whether a turn without text sent right after it
+   * would start (§7.11 "다시 보내기"). None does while a turn runs, which is `busy`, nor one the
+   * conversation would refuse. Such a turn carries this chat's provider, base URL and model, and
+   * the egress let that base URL out when the chat's first turn started: its rule reads the URL
+   * alone.
+   */
+  private answer(event: TurnAnswer): void {
+    this.reply({ ...event, resend: this.turn === null && this.conversation.resendable() });
   }
 
   private reply(event: ChatEvent): void {

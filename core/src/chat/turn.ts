@@ -19,7 +19,7 @@ import { TurnCalls } from "./calls.ts";
 import type { Fetch } from "./egress.ts";
 import { ChatFailure } from "./errors.ts";
 import { loadTurn } from "./load.ts";
-import { type ChatEvent, type DoneReason, errorEvent } from "./protocol.ts";
+import { type ChatEvent, type DoneReason, errorEvent, type TurnAnswer } from "./protocol.ts";
 import type { TurnCall, TurnHooks, TurnOutcome } from "./sdk/turn.ts";
 
 /** The limits of one turn (§7.11); tests shorten them. */
@@ -185,7 +185,10 @@ export interface TurnContext {
   callNumber: () => number;
 }
 
-/** One turn: its answer goes out as `delta` events, and `run` resolves the event that ends it. */
+/**
+ * One turn: its answer goes out as `delta` events, and `run` resolves the `done` or `error` that
+ * ends it, which the session sends with its `resend`.
+ */
 export class ChatTurn {
   private readonly stopped = new AbortController();
   private cancelled = false;
@@ -216,7 +219,7 @@ export class ChatTurn {
   async run(
     call: Omit<TurnCall, "fetch" | "signal" | "chunkMs" | "steps" | "tools">,
     keep: TurnHooks["step"],
-  ): Promise<ChatEvent | null> {
+  ): Promise<TurnAnswer | null> {
     const { channel, provider, limits } = this.context;
     const fields = `channel=${channel} provider=${provider}`;
     const started = Date.now();
@@ -270,7 +273,7 @@ export class ChatTurn {
     return this.end(outcome, fields, ms);
   }
 
-  private end(outcome: TurnOutcome, fields: string, ms: number): ChatEvent {
+  private end(outcome: TurnOutcome, fields: string, ms: number): TurnAnswer {
     const steps = `steps=${outcome.steps}`;
     if (outcome.type === "finished") {
       const reason = doneReason(outcome, this.context.limits.steps, this.calls?.cancelled ?? false);

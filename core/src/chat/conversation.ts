@@ -53,6 +53,14 @@ export class Conversation {
     return this.take(identity, null);
   }
 
+  /**
+   * Whether a turn without text for this chat's provider, base URL and model would start now
+   * (§7.11 "다시 보내기"): what `again` would answer, without taking anything.
+   */
+  resendable(): boolean {
+    return this.refusal(null) === null;
+  }
+
   private take(identity: ChatIdentity, said: ModelMessage | null): TurnStart {
     const chat = this.identity;
     if (
@@ -63,19 +71,27 @@ export class Conversation {
     ) {
       return { type: "refused", reason: "other_chat" };
     }
-    // A chat past its limit takes no later turn, one without text included.
-    if (this.full) return { type: "refused", reason: "conversation_limit" };
-    if (said === null && !answerable(this.messages.at(-1))) {
-      return { type: "refused", reason: "nothing_to_retry" };
-    }
-    const messages = said === null ? [...this.messages] : [...this.messages, said];
-    if (Buffer.byteLength(JSON.stringify(messages)) > chatLimits.conversationBytes) {
-      this.full = true;
-      return { type: "refused", reason: "conversation_limit" };
+    const refusal = this.refusal(said);
+    if (refusal !== null) {
+      if (refusal === "conversation_limit") this.full = true;
+      return { type: "refused", reason: refusal };
     }
     this.identity ??= identity;
     if (said !== null) this.messages.push(said);
-    return { type: "started", messages };
+    return { type: "started", messages: [...this.messages] };
+  }
+
+  /**
+   * Why the conversation would not go with `said` last, or as it is when `said` is `null`. A chat
+   * past its limit takes no later turn, one without text included, so the limit comes first.
+   */
+  private refusal(said: ModelMessage | null): Exclude<TurnRefusal, "other_chat"> | null {
+    if (this.full) return "conversation_limit";
+    if (said === null && !answerable(this.messages.at(-1))) return "nothing_to_retry";
+    const messages = said === null ? this.messages : [...this.messages, said];
+    return Buffer.byteLength(JSON.stringify(messages)) > chatLimits.conversationBytes
+      ? "conversation_limit"
+      : null;
   }
 
   /** Keeps the messages of a step that finished. */

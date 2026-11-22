@@ -443,6 +443,7 @@ test("a turn for a plain http loopback origin is refused before it connects, and
       code: "egress_denied",
       retryable: false,
       status: null,
+      resend: false,
     });
     expect(sockets(app.pid)).toEqual(QUIET);
     app.closeInput();
@@ -555,7 +556,13 @@ test("a turn for an https loopback origin the core trusts streams its answer fro
     expect(sockets(app.pid).unixListeners).toEqual([]);
     release();
     expect((await app.next(isChat(1))).body).toEqual({ type: "delta", text: "marker" });
-    const done = { type: "done", reason: "stop", input_tokens: 11, output_tokens: 3 };
+    const done = {
+      type: "done",
+      reason: "stop",
+      input_tokens: 11,
+      output_tokens: 3,
+      resend: false,
+    };
     expect((await app.next(isChat(1))).body).toEqual(done);
     // The next turn goes on the same conversation, with the AI SDK already loaded.
     app.frame(1, "data", { ...message, text: SECOND });

@@ -2,7 +2,8 @@
  * The messages of a chat channel, `sherpa.chat.v1` (app-connection-v1 §7.11, ADR-0012 "앱과 코어
  * 사이 채널"): one JSON object per `data` frame each way, told apart by `type`. This edition
  * reads `list_models`, `turn` and `cancel` and writes `models`, `delta`, `tool`, `done` and
- * `error`. A `turn` without `text` sends the conversation again.
+ * `error`. A `turn` without `text` sends the conversation again, and what answers a `turn` says
+ * whether one would start (`resend`).
  */
 import { z } from "zod";
 import { type ChatErrorCode, retryable } from "./errors.ts";
@@ -141,6 +142,25 @@ export type ToolStatus =
   | "declined"
   | "withdrawn";
 
+/** The `error` that ends a message: `in_reply_to` is `null` when the message could not be read. */
+type ErrorEvent<Answered extends AnsweredMessage | null> = {
+  type: "error";
+  in_reply_to: Answered;
+  code: ChatErrorCode;
+  retryable: boolean;
+  status: number | null;
+};
+
+/** What answers a `turn`: the `done` or `error` that ends it, or the `error` that refuses it. */
+export type TurnAnswer =
+  | {
+      type: "done";
+      reason: DoneReason;
+      input_tokens: number | null;
+      output_tokens: number | null;
+    }
+  | ErrorEvent<"turn">;
+
 /** What the core writes on a chat channel. */
 export type ChatEvent =
   | { type: "models"; models: string[]; truncated: boolean }
@@ -155,26 +175,19 @@ export type ChatEvent =
       code: string | null;
       operation_id: string | null;
     }
-  | {
-      type: "done";
-      reason: DoneReason;
-      input_tokens: number | null;
-      output_tokens: number | null;
-    }
-  | {
-      type: "error";
-      in_reply_to: AnsweredMessage | null;
-      code: ChatErrorCode;
-      retryable: boolean;
-      status: number | null;
-    };
+  /**
+   * What answers a `turn`, and whether a `turn` without text sent right after it would start
+   * (§7.11 "다시 보내기"): only the core holds the conversation that decides it.
+   */
+  | (TurnAnswer & { resend: boolean })
+  | ErrorEvent<Exclude<AnsweredMessage, "turn"> | null>;
 
-/** The `error` that ends a message: `inReplyTo` is `null` when the message could not be read. */
-export function errorEvent(
-  inReplyTo: AnsweredMessage | null,
+/** The `error` that ends a message; one that answers a `turn` takes its `resend` as it goes out. */
+export function errorEvent<Answered extends AnsweredMessage | null>(
+  inReplyTo: Answered,
   code: ChatErrorCode,
   status: number | null = null,
-): ChatEvent {
+): ErrorEvent<Answered> {
   return { type: "error", in_reply_to: inReplyTo, code, retryable: retryable(code), status };
 }
 

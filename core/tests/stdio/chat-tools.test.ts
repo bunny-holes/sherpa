@@ -146,7 +146,7 @@ test("a delete the person approves runs under the operation id of the window the
     tool("started"),
     tool("succeeded", null, id),
     { type: "delta", text: ANSWER },
-    { type: "done", reason: "stop", input_tokens: 22, output_tokens: 6 },
+    { type: "done", reason: "stop", input_tokens: 22, output_tokens: 6, resend: false },
   ]);
   expect(requests).toHaveLength(2);
   expect(outcome(requests[1]!)).toMatchObject({ status: "succeeded", operation_id: id });
@@ -163,7 +163,7 @@ test("a delete the person declines asks the planner for nothing more, and the mo
     tool("started"),
     tool("declined", "confirmation.declined", confirm.operation_id as string),
     { type: "delta", text: ANSWER },
-    { type: "done", reason: "stop", input_tokens: 22, output_tokens: 6 },
+    { type: "done", reason: "stop", input_tokens: 22, output_tokens: 6, resend: false },
   ]);
   expect(outcome(requests[1]!)).toMatchObject({
     status: "failed",
@@ -181,15 +181,16 @@ test("a cancel while the window is open withdraws it on channel 0, and a turn wi
   expect(await ending(app)).toEqual([
     tool("started"),
     tool("withdrawn", "chat.cancelled"),
-    { type: "done", reason: "aborted", input_tokens: 11, output_tokens: 3 },
+    { type: "done", reason: "aborted", input_tokens: 11, output_tokens: 3, resend: true },
   ]);
   expect(app.requested()).toEqual(["capabilities", "event.get"]);
   expect(requests).toHaveLength(1);
-  // §7.11 "다시 보내기": the conversation ends with the call's result, so it is sent again as it is.
+  // §7.11 "다시 보내기": the conversation ends with the call's result, so it is sent again as it is,
+  // as the done's resend said.
   app.frame(1, "data", { ...message, text: undefined });
   expect(await ending(app)).toEqual([
     { type: "delta", text: ANSWER },
-    { type: "done", reason: "stop", input_tokens: 11, output_tokens: 3 },
+    { type: "done", reason: "stop", input_tokens: 11, output_tokens: 3, resend: false },
   ]);
   expect(requests).toHaveLength(2);
   expect(requests[1]!.filter((item) => item.role === "user")).toHaveLength(1);
