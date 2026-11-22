@@ -499,6 +499,62 @@ describe("the conversation", () => {
     ]);
   });
 
+  // How an answer that closes early ends follows what its package reports: OpenAI's and Google's
+  // say `interrupted`, Anthropic's only after output, and OpenAI-compatible's sends an error that
+  // the stream ended without a finish reason (§7.11 "오류").
+  const hi = { type: "delta", text: "Hi" };
+  test.each([
+    {
+      provider: "openai",
+      model: "gpt-5.1",
+      when: "after its output",
+      events: openai(["Hi"]).slice(0, 4),
+      frames: [hi, error("network", true)],
+    },
+    {
+      provider: "openai",
+      model: "gpt-5.1",
+      when: "before any output",
+      events: openai(["Hi"]).slice(0, 2),
+      frames: [error("network", true)],
+    },
+    {
+      provider: "google",
+      model: "gemini-3-pro",
+      when: "after its output",
+      events: google(["Hi"]).slice(0, 3),
+      frames: [hi, error("network", true)],
+    },
+    {
+      provider: "google",
+      model: "gemini-3-pro",
+      when: "before any output",
+      events: google(["Hi"]).slice(0, 1),
+      frames: [error("network", true)],
+    },
+    {
+      provider: "openai-compatible",
+      model: "m-1",
+      when: "after its output",
+      events: chat(["Hi"]).slice(0, 1),
+      frames: [hi, error("provider_invalid_response")],
+    },
+    {
+      provider: "anthropic",
+      model: "claude-sonnet-5-5",
+      when: "before any output",
+      events: anthropic(["Hi"]).slice(0, 1),
+      frames: [error("provider_invalid_response")],
+    },
+  ])("an answer from $provider that closes $when ends as its package reports it", async (row) => {
+    const { sent, open } = turns(() => sse(row.events));
+    const channel = open();
+    const extra = row.provider === "openai-compatible" ? { base_url: BASE } : {};
+    channel.write(turn(row.provider, row.model, extra));
+    expect(await channel.untilEnd()).toEqual(row.frames);
+    expect(sent).toHaveLength(1);
+  });
+
   test("a turn for another provider, base URL or model is not this chat's, and sends nothing", async () => {
     const { sent, open } = turns(() => sse(chat(["Hello"])));
     const channel = open();
