@@ -1,13 +1,13 @@
 {
   "name": "sherpa",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Agent workflows for the MCP server of Sherpa.app: Apple Calendar, Reminders, Mail, iMessage and local KakaoTalk on macOS.",
   "author": {
     "name": "XIYO",
     "url": "https://github.com/XIYO"
   },
-  "homepage": "https://github.com/XIYO/sherpa",
-  "repository": "https://github.com/XIYO/sherpa",
+  "homepage": "https://github.com/bunny-holes/sherpa",
+  "repository": "https://github.com/bunny-holes/sherpa",
   "license": "MIT",
   "keywords": [
     "agent",
