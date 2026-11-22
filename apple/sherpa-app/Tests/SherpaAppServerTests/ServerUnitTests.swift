@@ -494,6 +494,14 @@ private func eventually(_ condition: () -> Bool) async -> Bool {
     ])
 }
 
+@Test func tellsEachAgentHowToConnectOnceRegistered() {
+    // Claude Code: /mcp Reconnect, which holds whether or not it remembers a failed attempt
+    // from while MCP was off; Codex: a new session (contract §6).
+    #expect(AgentSetup.Agent.claudeCode.afterRegistering
+        == "Then start Claude Code. If /mcp shows sherpa as failed, choose Reconnect there.")
+    #expect(AgentSetup.Agent.codex.afterRegistering == "Then start a new Codex session.")
+}
+
 @Test func quotesARelayPathOnlyWhenAShellWouldReadItAsMoreThanAWord() {
     #expect(AgentSetup.shellQuoted("/Applications/Sherpa.app/Contents/MacOS/sherpa-relay")
         == "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay")

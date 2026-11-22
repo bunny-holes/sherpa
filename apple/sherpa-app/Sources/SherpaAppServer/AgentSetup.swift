@@ -21,6 +21,15 @@ public enum AgentSetup {
             case .codex: "Codex"
             }
         }
+
+        /// What to do once the commands have run. Claude Code's /mcp Reconnect also brings back a
+        /// server it saw fail while MCP was off, whether or not it remembers that failure (§6).
+        public var afterRegistering: String {
+            switch self {
+            case .claudeCode: "Then start Claude Code. If /mcp shows sherpa as failed, choose Reconnect there."
+            case .codex: "Then start a new Codex session."
+            }
+        }
     }
 
     /// One command to run in a terminal, and what it does.

@@ -68,8 +68,8 @@ struct AgentGuide: View {
                 Text(step.caption)
                 CopyableText(step.command)
             }
-            Text("Run \(steps.count == 1 ? "it" : "them in order") in Terminal, then start a new \(agent.title) "
-                + "session. Using the Sherpa plugin (sherpa@plug-hole)? It registers this server for you.")
+            Text("Run \(steps.count == 1 ? "it" : "them in order") in Terminal. \(agent.afterRegistering) "
+                + "Using the Sherpa plugin (sherpa@plug-hole)? It registers this server for you.")
                 .font(.footnote).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 

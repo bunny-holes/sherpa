@@ -61,7 +61,10 @@ func mapsEachPrefaceVectorToItsExit(line: String, expected: Int32?) {
     #expect(failure.logFields == #"reason=app_not_running socket=default remedy="start Sherpa.app""#)
     let disabled = RelayExitTable.preface(.unavailable(reason: "mcp_disabled"))
     #expect(disabled?.logFields
-        == #"reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP in the Sherpa menu or status window, then reconnect""#)
+        == #"reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP in Sherpa.app, then reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)""#)
+    #expect(RelayExitTable.appClosedSession.logFields
+        == #"reason=app_closed_session remedy="if you turned MCP off in Sherpa.app, turn it on first; then "#
+        + #"reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)""#)
     let unknown = RelayExitTable.preface(.unavailable(reason: "a_later_reason"))
     #expect(unknown?.exit == .temporaryFailure)
     #expect(unknown?.remedy == "restart Sherpa.app, then reconnect")

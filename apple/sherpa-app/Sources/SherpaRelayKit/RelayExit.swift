@@ -85,11 +85,16 @@ public enum RelayExitTable {
         remedy: "restart Sherpa.app and reconnect"
     )
 
-    /// The socket ended while standard input was still open: the app ended the session.
+    /// The socket ended while standard input was still open: the app ended the session, because
+    /// the person turned MCP off or the core ended. The relay cannot tell which (§6).
     public static let appClosedSession = RelayFailure(
         .temporaryFailure, scope: "relay:session:copy", reason: "app_closed_session",
-        remedy: "reconnect the sherpa MCP server"
+        remedy: "if you turned MCP off in Sherpa.app, turn it on first; then \(reconnectAgent)"
     )
+
+    /// How each measured agent starts the server again. It holds whether or not the agent
+    /// remembers the failed attempt: Claude Code's /mcp Reconnect, a new Codex session (§6).
+    static let reconnectAgent = "reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)"
 
     public static func signature(_ check: PeerCheck) -> RelayFailure {
         let reason = check.verdict == .otherUser ? "server_user_rejected" : "server_signature_rejected"
@@ -102,7 +107,7 @@ public enum RelayExitTable {
     /// A reason this relay does not know still ends with 75; only its remedy is generic (§5).
     static func unavailableRemedy(_ reason: String) -> String {
         switch reason {
-        case AppPreface.Reason.mcpDisabled.rawValue: "turn on MCP in the Sherpa menu or status window, then reconnect"
+        case AppPreface.Reason.mcpDisabled.rawValue: "turn on MCP in Sherpa.app, then \(reconnectAgent)"
         case AppPreface.Reason.coreStarting.rawValue: "wait a few seconds and reconnect"
         case AppPreface.Reason.coreFailed.rawValue: "restart the core from the Sherpa menu, then reconnect"
         case AppPreface.Reason.coreIncompatible.rawValue: "reinstall Sherpa.app"
