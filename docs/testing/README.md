@@ -112,7 +112,11 @@ Anything not listed here is not proven by the gate.
     may come after the first request's limit; the 600 s between outputs on a
     fake clock, which each output starts anew; Bun's idle-timeout
     `TimeoutError` before the headers, in the body and after output, each
-    sent once and ending with `timeout`; the 2 MiB conversation limit; a turn
+    sent once and ending with `timeout`; the 2 MiB conversation limit (a turn
+    whose text would pass it refused without a request; an answer that would
+    pass it cut on each provider after what fits and sent once, with no
+    `delta` when its first piece already passes; every later turn refused,
+    with text or without); a turn
     without text, which sends the conversation again, with a test for each row
     of the contract's table without a tool, each reading `resend` in what
     answered a turn, a refusal included, and sending a turn without text right
@@ -170,11 +174,32 @@ Anything not listed here is not proven by the gate.
     tools take 20 more requests; a step of reasoning alone after a tool step
     that ended with `length` is refused; a step with text after a call formed
     badly is taken on Anthropic and OpenAI-compatible, whose `tool` and
-    `delta` come in different orders; a conversation that passed 2 MiB inside
-    a turn ends it with `resend` false and is `conversation_limit`);
+    `delta` come in different orders; a step that passed 2 MiB when it ended,
+    by the error of a call with many unknown keys, kept with no request after
+    it and the turn ending `conversation_limit` with `resend` false); the
+    limit within a turn (a call whose result could pass it does not run, fails
+    with `chat.conversation_limit` and a warn line, and ends the turn
+    `conversation_limit`; the results of the calls before it count, so the
+    step's next call does not run; an answer cut in a later step leaves the
+    step before with its call's result);
     Anthropic's top-level `cache_control` and tools without a mark;
     and no arguments, results or made-up tool names in a log line. A test
     fails on any AI SDK warning it does not expect.
+  - `chat-limit.test.ts` (contract §7.11 "대화 한도") proves the room of a
+    turn: it adds a step's messages to the byte the turn's start measures,
+    passes once at the first byte past 2 MiB, fills the chat and stays past,
+    and admits a call while the largest result fits beside the answer and the
+    results before it. On the AI SDK's mock model it proves that an answer's
+    count is no less than the JSON the SDK 7.0.179 keeps of the step (text
+    with characters JSON escapes and an emoji cut between its halves,
+    reasoning whose signature comes last, metadata that changes as it
+    streams, files, and a call that runs, one to a tool the core does not
+    have, one whose input does not parse, one its schema refuses and one
+    whose input is no object), that a call whose schema finds many issues
+    keeps more than the count, and that the middleware passes what fits, cuts
+    with one `error` part carrying `ChatFailure` `conversation_limit` and
+    cancels the response, at once when the first part already passes, which
+    the SDK sends once even with `maxRetries: 2` and ends as an `error` step.
   - `mcp-tools.test.ts` proves when each call becomes irreversible: a
     planner change reports `committed` in the same tick it sends its request,
     an allowed delete or send right before its request or command, a core
