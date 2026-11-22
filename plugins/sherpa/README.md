@@ -32,15 +32,15 @@ Sherpa.app first:
    at the first launch, and while it is off the app turns every agent away.
 
 Then add the plugin. Your GitHub account needs access to the private
-`XIYO/plug-hole` repository.
+`bunny-holes/plug-hole` repository.
 
 ```bash
-claude plugin marketplace add https://github.com/XIYO/plug-hole.git
+claude plugin marketplace add https://github.com/bunny-holes/plug-hole.git
 claude plugin install sherpa@plug-hole
 ```
 
 ```bash
-codex plugin marketplace add https://github.com/XIYO/plug-hole.git
+codex plugin marketplace add https://github.com/bunny-holes/plug-hole.git
 codex plugin add sherpa@plug-hole
 codex features enable mcp_2026_07_28
 ```

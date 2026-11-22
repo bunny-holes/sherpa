@@ -11,6 +11,16 @@ manner: "버전별로 Added·Changed·Fixed 를 나누고 긴 실측 근거는 l
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-22
+
+매니페스트와 README 의 저장소 주소만 바뀌었다. 스킬과 `.mcp.json` 은 0.9.1 과 같다.
+
+### Changed
+
+- `sherpa` 와 `plug-hole` 저장소가 GitHub 의 `bunny-holes` 로 옮겨 갔다. 두 매니페스트의 `homepage`·`repository` 와
+  Codex 의 `websiteURL` 을 `https://github.com/bunny-holes/sherpa` 로, 두 README 의 마켓플레이스 추가 주소와
+  비공개 저장소 이름을 `bunny-holes/plug-hole` 로 고쳤다(bunny-holes/sherpa#79).
+
 ## [0.9.1] - 2026-11-22
 
 README 만 바뀌었다. 스킬과 `.mcp.json` 은 0.9.0 과 같다.

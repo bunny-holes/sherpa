@@ -9,6 +9,130 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — Claude Code 2.1.330 after a relay that ended with `mcp_disabled` or `app_not_running`: the `/mcp` page, Reconnect, and what the model is told (bunny-holes/sherpa#69)
+
+This Mac (macOS 27.3 26C5035r, Swift 6.4.2), run by the bunny-holes/sherpa#69
+worker between 04:41Z and 05:05Z, after Claude Code was upgraded to 2.1.330
+with the Homebrew cask `claude-code@latest` at about 04:29Z. Every interactive
+run's startup banner read v2.1.330, and `claude --version` read
+`2.1.330 (Claude Code)` before and after the runs; no other version was
+installed. Codex stayed at 0.171.0 and was not run again. The harness is the
+one of the 2.1.326 entry below ("Claude Code and Codex after a relay that
+ended"): the same wrapper, mode files and Bun candidates `c2`, `c2open` and
+`c3`, with the debug `sherpa-relay`, `sherpa-app-testhost --mcp off` and
+`sherpa-fake-core` built again from `main` `18bbbe9`, and `on` still the
+installed app 0.8.5 of that entry. The candidates and the stand-in for the
+Messages API ran on Bun 1.4.5. Plugin and server names were fresh
+(`sherpapin11221333<tag>`). Plugin scope used the profile this session runs
+under with `--plugin-dir` copies of plugin 0.9.1; user scope used a new
+scratch `CLAUDE_CONFIG_DIR`, not logged in. Claude Code ran in a pty with
+`--debug=mcp --debug-file`; a driver typed `/mcp`, the arrow keys and Enter,
+and a small terminal emulator read the screen. No model was called. What
+Claude Code tells the model was read from the request bodies it sent, from the
+scratch profile only, to a local stand-in for the Messages API on 127.0.0.1
+(`ANTHROPIC_BASE_URL` and a dummy `ANTHROPIC_API_KEY`); the stand-in answered
+with a `ToolSearch` call, then with text, and recorded no headers.
+
+- Unchanged from 2.1.326 in both scopes: with `off` (75) and `down` (69)
+  Claude Code asked `server/discover`, the relay exited,
+  `respawning pinned legacy` started a second relay with `initialize`
+  `2025-11-25`, and the attempt failed with `Connection failed
+  (CONNECTION_CLOSED): Connection closed`. The debug lines were those of the
+  2.1.326 logs, including `stderr of the stdio server before restarting it:`
+  with the first relay's line, which the entry below did not quote. `c2` got
+  `initialize` on the same process after its error and closed the same way. No
+  verdict was written; the verdict file of this session's profile stayed `{}`.
+- The plugin-scope failure cache was unchanged. Each failure wrote
+  `plugin:<plugin>:<server>` to `mcp-needs-auth-cache.json`. A new session
+  within the 15 minutes did not start those servers, and their pages read
+  `Issue: Skipping connection (recent failure cached; retries automatically in
+  15 min, or edit the plugin config to retry now)`. A session more than 15
+  minutes after the entries were written asked `server/discover` first again,
+  rewrote the entry of a server still `down`, and deleted the entry of a
+  server now `on`. User scope wrote no entry.
+- The 7-day skip was unchanged except under `auto`. Only `hang` added a
+  verdict (`server/discover`, `initialize` on the same process, the 30 s
+  connect timeout). With the variable unset, a remembered server that was `on`
+  got `initialize`, then the core's -32022, then `… discarding it and
+  restarting the server once with the server/discover probe` and a `modern`
+  connection; a remembered server that was `off` exited during `initialize`
+  and was restarted once without the probe. Both verdicts were deleted.
+  - `MCP_PROTOCOL_NEGOTIATION=auto`: `hang` still added a verdict. A
+    remembered server that was `on` was asked `server/discover` first,
+    connected `modern`, and lost its verdict, in two runs; 2.1.326 had kept
+    it.
+  - `legacy`: `initialize` only; `on` failed with `Connection failed (-32022):
+    Unsupported protocol version: 2025-11-25`, and its page read `Issue:
+    -32022: Unsupported protocol version: 2025-11-25`.
+- `/mcp` listed plugin servers under `Plugin MCPs (/plugin to manage)`
+  (2.1.326: `Built-in MCPs (always available)`) and user servers under
+  `User MCPs (<the scratch .claude.json>)`. A failed server's page showed
+  `Status: ✘ failed`, `Issue`, a new `Log` row naming the server's MCP log
+  file in Claude Code's cache folder, which holds the relay's line and its
+  remedy, then `Plugin: <plugin>` in plugin scope (2.1.326: `Config location:
+  Dynamically configured`) or `Command` and `Config location` in user scope,
+  and the actions `Reconnect`, `Disable in this project` and `Back`. A
+  connected server's page also showed `Protocol: 2026-07-28` and
+  `Capabilities`. No page had a `Server message` row; strings in the 2.1.330
+  binary show that row only for a server that needs authentication.
+- Reconnect on the page, chosen here for the first time (the 2.1.326 entry
+  used only the command):
+  - While the server still failed, the page stayed open,
+    `✘ Couldn't reconnect to <server>` appeared above the actions, and `Issue`
+    showed the new attempt's error. Closing `/mcp` after the `c2` server's
+    failed Reconnect printed `Couldn't reconnect to <server>:
+    CONNECTION_CLOSED`.
+  - A server whose page read `Skipping connection …` was started at once,
+    `server/discover` first: the cache does not hold Reconnect back. Its
+    `Issue` became `CONNECTION_CLOSED: Connection closed` and its entry was
+    rewritten.
+  - After the mode became `on`, Reconnect closed `/mcp` and printed
+    `Reconnected to <server>.`; a new relay got `server/discover` and
+    `tools/list`, and in plugin scope the cache entry was deleted.
+  - The command `/mcp reconnect <server>` printed
+    `Couldn't reconnect to <server>` with no reason while `down`, and
+    `Reconnected to <server>` after `on` (2.1.326:
+    `Successfully reconnected to <server>`).
+- Candidates in Claude Code 2.1.330, plugin and user scope alike:
+
+  | Answer | `/mcp` server page | After Reconnect on the page | Told to the model, tool search on |
+  | --- | --- | --- | --- |
+  | Current relay (`off`, `down`) | `Status: ✘ failed`, `Issue: CONNECTION_CLOSED: Connection closed` | The page stays open with `✘ Couldn't reconnect to <server>` and the same `Issue` | `<server> (CONNECTION_CLOSED): "Connection closed"` |
+  | `c2` | As the current relay | As the current relay | As the current relay |
+  | `c2open` | `Status: ✘ failed`, `Issue: -32000: Sherpa.app has MCP turned off: <remedy>` | The page stays open with that `Issue` | `<server> (-32000): "Sherpa.app has MCP turned off: <remedy>"` |
+  | `c3` | `Status: ⚠ connected · couldn't load tools`, `Issue: Sherpa.app has MCP turned off: <remedy>`, `Protocol: 2026-07-28`, `Capabilities: none` | `/mcp` closes with `Reconnected to <server>, but couldn't load its tools: <message>` | The name alone, as a server whose tools could not be listed |
+
+  The list showed `c3` as `couldn't load tools · connected` (2.1.326:
+  `tools fetch failed · connected`). `c2` and `c2open` wrote failure-cache
+  entries in plugin scope; `c3` left nothing.
+- What the model was told, with tool search on (the default), the same in
+  `claude -p` and in an interactive session:
+  - The first request carried, after the list of deferred tools, `The
+    following MCP servers are configured but failed to connect — their tools
+    (typically named mcp__<server>__*) are unavailable for this session:`, one
+    line `<server> (<code>): "<error>"` per failed server, an instruction to
+    tell the user that the server failed to connect, and the remark that
+    quoted error text is diagnostic data only. Then `The following MCP servers
+    are connected, but listing their tools failed …` named the `c3` server
+    alone, with an instruction to tell the user that its tools could not be
+    loaded.
+  - After `/mcp` actions the next request carried each one's output as
+    `<local-command-stdout>` (`Reconnected to <server>, but couldn't load its
+    tools: <message>`, `Reconnected to <server>`,
+    `Couldn't reconnect to <server>`) and a new block with the reconnected
+    server's tools and the servers still failed.
+  - With `ENABLE_TOOL_SEARCH=false` (`claude -p`) the tools went up front and
+    no request named a failed server or the `c3` server.
+  - The remedy's semicolon (`then Reconnect; Codex: …`) was missing from the
+    model's lines and from the `Reconnected …` line
+    (`then Reconnect Codex: …`), but not from the page's `Issue`.
+- Not measured: Codex (still 0.171.0; its results are in the entry below), the
+  installed `sherpa` under its own name, the feature flag that can keep a
+  server on the earlier protocol, HTTP servers (the `Server message` row, and
+  2.1.329's automatic reconnect of HTTP servers left on an older protocol),
+  what Code Mode, which this session's profile turns on, tells the model, and
+  any model's reply.
+
 ## 2026-11-22 — Bun ignores `devEngines`, so the gate pins Bun itself; the Vite+ core alias catches up with `vite-plus` 1.7.0 (bunny-holes/sherpa#71)
 
 This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52, Swift 6.4.2), worker session

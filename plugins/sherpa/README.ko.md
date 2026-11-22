@@ -31,16 +31,16 @@ Reminders, Mail, iMessage, 로컬 KakaoTalk 데이터베이스를 읽고, 변경
    Status…**가 여는 창 맨 위의 스위치로도 켤 수 있습니다. 첫 실행에는 꺼져 있고,
    꺼져 있는 동안 앱은 모든 에이전트를 돌려보냅니다.
 
-그다음 플러그인을 추가합니다. GitHub 계정에 비공개 `XIYO/plug-hole` 저장소의 접근
+그다음 플러그인을 추가합니다. GitHub 계정에 비공개 `bunny-holes/plug-hole` 저장소의 접근
 권한이 필요합니다.
 
 ```bash
-claude plugin marketplace add https://github.com/XIYO/plug-hole.git
+claude plugin marketplace add https://github.com/bunny-holes/plug-hole.git
 claude plugin install sherpa@plug-hole
 ```
 
 ```bash
-codex plugin marketplace add https://github.com/XIYO/plug-hole.git
+codex plugin marketplace add https://github.com/bunny-holes/plug-hole.git
 codex plugin add sherpa@plug-hole
 codex features enable mcp_2026_07_28
 ```
