@@ -101,12 +101,19 @@ sherpa-relay ──Unix 소켓──▶ Sherpa.app ──stdin/stdout 프레임�
   PATH 에는 bun 이 없어 이 단계는 코어를 빌드하지 않는다. xcodebuild 전에 `core/` 에서 `bun run build` 를
   한다. 단계는 빌드 설정 `SHERPA_CORE`(기본 `core/dist/sherpa`)를 `app serve </dev/null` 로 띄워 첫 줄이 채널 0
   의 Mux 2 인사이고 버전이 앱의 버전인지 본다. 아니면 `reason=core_not_mux` 로 빌드를 실패시키고, 번들에는
-  서명도 실행 파일도 남지 않는다. 통과하면 식별자 `dev.xiyo.sherpa.core`, hardened runtime, 권한 항목 없이
-  Xcode 가 앱에 고른 인증서(`EXPANDED_CODE_SIGN_IDENTITY`)로 서명해 `Contents/MacOS/sherpa-core` 에 둔다. [계약;
-  동작은 실측]
+  서명도 실행 파일도 남지 않는다. 인사를 통과한 코어는 `BUN_BE_BUN=1 <코어> --version` 이 `core/package.json` 의
+  `devEngines.packageManager` 가 선언한 Bun 판이어야 한다. 아니면 `reason=core_runtime_mismatch`(답이 없으면
+  `core_runtime_unreadable`)로 같은 식으로 실패한다. 선언 판은 게이트와 `scripts/package.sh` 가 쓰는
+  `scripts/lib/bun-pin.sh` 가 PATH 의 bun 없이 읽는다(bunny-holes/sherpa#71). 통과하면 식별자
+  `dev.xiyo.sherpa.core`, hardened runtime, 권한 항목 없이 Xcode 가 앱에 고른 인증서(`EXPANDED_CODE_SIGN_IDENTITY`)로
+  서명해 `Contents/MacOS/sherpa-core` 에 둔다. [계약; 동작은 실측]
 - 스크립트 샌드박스(`ENABLE_USER_SCRIPT_SANDBOXING`)는 켜 둔다. 샌드박스 안에서도 코어는 실행된다. codesign 은
   대상 옆에 임시 파일을 써서 번들 안에서 서명하면 "Write permissions error" 로 실패하므로, 단계는 `TEMP_DIR` 의
-  사본을 서명한 뒤 번들에 복사한다. [실측]
+  사본을 서명한 뒤 번들에 복사한다. [실측] Xcode 27.2 가 만드는 샌드박스 프로필은 `SRCROOT` 와 빌드 폴더만 막고
+  그 안에서는 선언한 입력·출력과 `TEMP_DIR` 만 연다. 그래서 단계는 `SRCROOT` 밖의 `scripts/lib/bun-pin.sh` 와
+  `core/package.json` 을 입력으로 적지 않아도 읽었다. 둘을 입력으로 적는 것은 어느 하나가 바뀌면 단계가 다시
+  돌게 하려는 것이다. 적기 전에는 `core/package.json` 만 바뀐 증분 빌드가 단계를 건너뛰었다. [실측: 2026-11-22,
+  bunny-holes/sherpa#63]
 - Info.plist 는 Xcode 가 만든다(`GENERATE_INFOPLIST_FILE`). 사용 설명 세 개는 헬퍼의
   `apple/eventkit-service/Resources/Info.plist` 를 `INFOPLIST_FILE` 로 받는다. `LSUIElement` 는 빌드 설정이다. 판은
   `apple/sherpa-app/Version.xcconfig` 의 `MARKETING_VERSION` 이 `CFBundleShortVersionString` 과
@@ -1086,9 +1093,10 @@ MCP stdio 명령 시험(빌드한 `core/dist/sherpa app serve` 를 가짜 앱 �
   [계약]
 - 번들(§2 "번들 빌드"): 게이트는 소유자의 Developer ID 인증서로 Xcode Release 번들을 빌드하고 배치(`Contents/MacOS/`
   의 셋), Info.plist(식별자, 판, `LSUIElement`, 사용 설명, Xcode 표준 키), 세 식별자와 hardened runtime, 지정
-  요건의 팀, 앱만 가진 권한 항목, `codesign --verify --strict --deep`, 번들 중계의 `--version` 을 본다. 오류
-  봉투를 쓰는 가짜 코어를 `SHERPA_CORE` 로 주면 빌드가 `core_not_mux` 로 실패하고 번들에 서명과 실행 파일이
-  없어야 한다. 보안 타임스탬프는 내보낸 번들에만 있어 게이트는 보지 않는다. [계약]
+  요건의 팀, 앱만 가진 권한 항목, `codesign --verify --strict --deep`, 번들 중계의 `--version`, 번들 코어의
+  `BUN_BE_BUN=1 … --version` 이 선언한 Bun 판인지를 본다(bunny-holes/sherpa#71). 오류 봉투를 쓰는 가짜 코어를
+  `SHERPA_CORE` 로 주면 빌드가 `core_not_mux` 로 실패하고 번들에 서명과 실행 파일이 없어야 한다. 보안
+  타임스탬프는 내보낸 번들에만 있어 게이트는 보지 않는다. [계약]
 
 DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TEST_CORE_BIN`, `SHERPA_RELAY_REQUIREMENT`,
 `SHERPA_CORE_REQUIREMENT`, 중계는 `SHERPA_APP_SOCKET`, `SHERPA_APP_REQUIREMENT`. 릴리스 빌드에는 컴파일되지

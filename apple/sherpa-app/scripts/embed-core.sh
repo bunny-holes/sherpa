@@ -10,6 +10,13 @@
 # before #44 was bundled), so its first line must be the Mux 2 hello of the app's version
 # (MARKETING_VERSION, the CLI version). The app stops a Mux 1 core, built before #63, as
 # incompatible (§7.5), so that core is stale too.
+#
+# A core that passes the hello must also carry the Bun runtime core/package.json declares
+# (devEngines.packageManager, bunny-holes/sherpa#71): `bun build --compile` puts the bun that ran it
+# into the core, and the gate tests the core only with the declared one. scripts/lib/bun-pin.sh, which
+# the gate and scripts/package.sh share, reads the declared version without a bun on PATH and asks
+# the core with BUN_BE_BUN=1. The script sandbox denies only SRCROOT and the build folders, so the
+# phase reads both files; it lists them as inputs so that a change to either runs it again.
 set -eu
 
 fail() { echo "error: [build:app:embed-core] $1" >&2; exit 1; }
@@ -22,6 +29,11 @@ version="$(printf '%s' "$hello" | plutil -extract version raw -o - - 2>/dev/null
 if [ "$hello" = "$greeting" ] || [ "$mux" != 2 ] || [ "$version" != "$MARKETING_VERSION" ]; then
   fail "reason=core_not_mux mux=${mux:-none} version=${version:-none} expected=$MARKETING_VERSION remedy=\"build the core from this checkout (bun run build in core/) or set SHERPA_CORE to a matching core\""
 fi
+repo="$SRCROOT/../.."
+. "$repo/scripts/lib/bun-pin.sh"
+bun_pin_declared "$repo" || fail "$BUN_PIN_FAILURE"
+bun_pin_verify_runtime "$SHERPA_CORE" SHERPA_CORE \
+  || fail "$BUN_PIN_FAILURE remedy=\"build the core with bun $BUN_PIN_VERSION (bun run build in core/) or set SHERPA_CORE to a matching core\""
 
 # codesign writes a temporary file beside its target, and the script sandbox lets this phase write
 # only its declared output and TEMP_DIR, so the copy is signed in TEMP_DIR and then embedded.
@@ -32,4 +44,4 @@ if [ "$CODE_SIGNING_ALLOWED" = YES ]; then
     --options runtime --timestamp=none "$signed"
 fi
 cp -f "$signed" "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/sherpa-core"
-echo "[build:app:embed-core] status=embedded version=$version"
+echo "[build:app:embed-core] status=embedded version=$version bun=$BUN_PIN_VERSION"

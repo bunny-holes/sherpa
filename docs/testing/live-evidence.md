@@ -9,6 +9,40 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — The Embed Core phase reads the Bun pin under Xcode's script sandbox and refuses a core with another runtime (bunny-holes/sherpa#63)
+
+This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52), worker session on
+`feat/mux2-channel-kind` rebased on `main` `6ffc262`, between 05:12Z and
+05:14Z, Bun 1.4.5. Each build was
+`xcodebuild build -scheme Sherpa -configuration Debug` into a scratch
+derived-data folder, signed with the owner's Developer ID identity. No model or
+paid API was called, and neither `/Applications/Sherpa.app` nor the running app
+was touched.
+
+- The sandbox profile Xcode 27.2 wrote for the Embed Core phase
+  (`ENABLE_USER_SCRIPT_SANDBOXING = YES`) starts with `(allow default)` and
+  denies reads and writes only under `SRCROOT`, `PROJECT_DIR` and the build
+  folders (`OBJROOT`, `SYMROOT`, `DSTROOT`, `CONFIGURATION_BUILD_DIR`,
+  `DERIVED_FILE_DIR` and others). Inside those it opens `TEMP_DIR`, the
+  declared inputs and outputs, and their parent folders. `SRCROOT` is
+  `apple/sherpa-app`, so the phase read `scripts/lib/bun-pin.sh` and
+  `core/package.json` and ran `python3` before either file was a declared
+  input, and logged
+  `[build:app:embed-core] status=embedded version=0.8.5 bun=1.4.5`.
+- Dependency analysis: with only `embed-core.sh` and `$(SHERPA_CORE)` as
+  inputs, an incremental build after `touch core/package.json` skipped the
+  phase. With both files added to `inputPaths`, the same touch ran it again,
+  and a build with no change skipped it.
+- A deliberate mismatch: a script passed as `SHERPA_CORE` that answers
+  `app serve` with `0\thello\t{"mux":2,"version":"0.8.5"}` and
+  `BUN_BE_BUN=1 … --version` with `0.0.1` failed a fresh build with exit 65
+  and `error: [build:app:embed-core] reason=core_runtime_mismatch
+  expected=1.4.5 actual=0.0.1 file=SHERPA_CORE remedy="build the core with bun
+  1.4.5 (bun run build in core/) or set SHERPA_CORE to a matching core"`. The
+  bundle's `Contents/MacOS` stayed empty and it had no `_CodeSignature`.
+- Not measured: an archive and export with a mismatched core, which runs the
+  same phase; a real core compiled by another Bun release.
+
 ## 2026-11-22 — The instance lock outlived its close while another thread spawned a child (bunny-holes/sherpa#78)
 
 This Mac (macOS 27.3 `26C5035r`, kernel `xnu-13432.60.57`, 14 cores, Xcode
