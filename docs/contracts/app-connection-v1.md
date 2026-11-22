@@ -171,6 +171,44 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   - Developer ID 로 서명하고 hardened runtime 을 켠 89 MB 코어의 실행 중 확인은 9–15 ms 걸렸다. 같은 코어의
     정적 확인(`kSecCSCheckAllArchitectures | kSecCSStrictValidate`)은 290–550 ms 였다.
 
+### MCP 켜기와 연결 안내
+
+소유자 요청(2026-11-22, bunny-holes/sherpa#54): 앱을 띄우면 MCP 를 켜는 곳과 에이전트를 연결하는 방법이 있게 한다. 아래
+기본값은 그 이슈의 제안이다. [소유자 요청; 기본값은 계약]
+
+- 앱에는 MCP 스위치가 있다. 켜져 있을 때만 에이전트가 중계로 붙는다. 값은 앱의 defaults(도메인 `dev.xiyo.sherpa`)
+  의 Bool `mcpEnabled` 이고, 값이 없으면 꺼짐이다. 그래서 첫 실행은 꺼진 채 시작한다. 앱은 뜰 때 한 번 읽고, 사람이
+  스위치를 바꾸면 쓴다. [계약; 구현은 `SherpaAppServer` 의 `MCPSetting`]
+- 이 값은 같은 사용자 범위의 동의 표시이지 보안 경계가 아니다. 같은 사용자의 프로세스는
+  `defaults write dev.xiyo.sherpa mcpEnabled -bool true` 로, 또는 앱을 실행 인자 `-mcpEnabled YES` 로 띄워 켤 수 있다.
+  그 프로세스는 중계를 스스로 띄울 수도 있으므로 믿는 범위가 넓어지지 않는다(§4 "믿는 범위", bunny-holes/sherpa#39).
+  위의 "릴리스 빌드는 실행 경로, 소켓 경로, 서명 요건을 바꾸는 환경 변수나 인자를 읽지 않는다" 는 앱이 다른 코드를
+  실행하게 하는 값에 대한 규칙이고, 이 스위치는 그런 값이 아니다. [계약; 실행 인자는 실측: 2026-11-22
+  `UserDefaults.standard` 를 읽는 시험 프로그램이 `-mcpEnabled YES` 로 true, 인자 없이 false 를 읽었다]
+- 스위치는 메뉴 막대 메뉴(체크 항목 "MCP Server")와 상태 창의 MCP 줄에 있다. 앱은 첫 실행과, MCP 가 꺼진 채 뜰 때마다
+  상태 창을 연다. 스위치가 없던 판에서 올린 앱은 첫 실행 표시가 이미 남아 있어도 꺼진 채 시작하기 때문이다. [계약]
+- 꺼져 있으면 앱은 중계의 서명을 확인한 뒤 머리말 `unavailable`·`mcp_disabled` 로 돌려보낸다(§5). 켜 있다가 끄면
+  열린 중계 연결을 모두 닫고(§7.6), 떠 있는 확인 창을 답 없이 닫는다(§9). 꺼져 있는 동안에도 코어는 돈다. [계약]
+- 상태 창의 본문은 머리(아이콘, 버전, 코어 상태), MCP 줄, 권한 목록만 둔다. MCP 줄은 스위치와 짧은 상태(`Off`, 또는
+  `On · <연결된 중계 수> connected`)만 보인다. 켜고 끌 때 일어나는 일과 메뉴 막대 아이콘을 찾는 안내는 그 줄과 머리의
+  툴팁(SwiftUI `.help`)에 둔다. [계약; 소유자 결정 2026-11-22: "화면을 설명으로 덮어버리지마라"]
+- 에이전트 연결 방법은 MCP 가 켜져 있을 때 MCP 줄에 보이는 macOS 표준 도움말 단추("?", SwiftUI `HelpLink`, macOS 14
+  이상)를 눌러 여는 팝오버에만 있다. 끄면 단추와 팝오버가 함께 사라진다. [계약; 소유자 결정 2026-11-22: "mcp를 활성화
+  하면 연결 방법은 ?를 통해서 직접 보게해라"]
+- 연결 방법은 이 앱으로 잰 클라이언트인 Claude Code 와 Codex 만 적는다. 명령은 앱의 실제 중계 경로(`Bundle.main` 의
+  `Contents/MacOS/sherpa-relay`)로 만들고, 경로에 셸이 특별히 읽는 글자가 있으면 작은따옴표로 감싼다. 명령과 중계
+  경로는 줄을 바꿔 전부 보이고 "…" 로 자르지 않으며(bunny-holes/sherpa#52), 선택할 수 있고, 저마다 복사 단추가 그 글을
+  그대로 복사한다. 앱은 에이전트의 설정 파일을 고치지 않는다. [계약; 구현은 `SherpaAppServer` 의 `AgentSetup`,
+  `App/StatusSections.swift`]
+
+| 에이전트 | 연결 방법의 명령 | 근거 |
+| --- | --- | --- |
+| Claude Code | `claude mcp add --scope user sherpa -- <중계 경로>` | 문서: [Claude Code MCP](https://code.claude.com/docs/en/mcp), "Option 3"(`--` 뒤는 서버 명령 그대로)와 "User scope". 실측(live-evidence 2026-11-22 "Agent registration commands"): 2.1.326 의 `claude mcp add --help`. 빈 임시 `CLAUDE_CONFIG_DIR` 의 `.claude.json` 에 `"sherpa": {"type":"stdio","command":"<중계 경로>","args":[],"env":{}}` 를 썼다 |
+| Codex | `codex features enable mcp_2026_07_28`, 이어 `codex mcp add --env CODEX_MCP_PROTOCOL_VERSION=2026-07-28 sherpa -- <중계 경로>` | 실측(같은 기록): 0.171.0 의 `codex mcp add --help`, `codex features enable --help`. 빈 임시 `CODEX_HOME` 의 `config.toml` 에 `[mcp_servers.sherpa]` 의 `command`, `[mcp_servers.sherpa.env]` 의 `CODEX_MCP_PROTOCOL_VERSION = "2026-07-28"`, `[features]` 의 `mcp_2026_07_28 = true` 를 썼다. 기능과 env 의 근거는 ADR-0011 |
+
+- 플러그인(`sherpa@plug-hole`)의 등록은 연결 방법 팝오버에 "플러그인을 쓰면 서버를 등록해 준다" 한 줄만 둔다. 그 방식은
+  bunny-holes/sherpa#55 가 정한다. [계약]
+
 ## 3. 소켓
 
 - 경로는 `~/Library/Application Support/Sherpa/run/app.sock`, 잠금 파일은 같은 폴더의 `app.lock` 이다. [계약]
@@ -263,7 +301,14 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 | --- | --- | --- |
 | `ready` | `null` | 양방향으로 바이트를 옮긴다 |
 | `refused` | `peer_signature`, `peer_user` | 앱이 닫는다 |
-| `unavailable` | `core_starting`, `core_failed`, `core_incompatible`, `too_many_sessions`, `shutting_down` | 앱이 닫는다 |
+| `unavailable` | `mcp_disabled`, `core_starting`, `core_failed`, `core_incompatible`, `too_many_sessions`, `shutting_down` | 앱이 닫는다 |
+
+- 앱은 중계의 서명을 확인한 뒤 이 순서로 본다: 끝나는 중(`shutting_down`), MCP 스위치(`mcp_disabled`, §2 "MCP 켜기와
+  연결 안내"), 세션 수(`too_many_sessions`), 코어(`core_*`, 10초까지 기다림). 코어를 기다리는 동안 MCP 가 꺼지면
+  `mcp_disabled` 로 답한다. 서명이 맞지 않는 연결은 스위치와 상관없이 `refused` 다. [계약]
+- 중계는 모르는 사유도 사유 모양(소문자와 `_`, 1–64 바이트)이면 받아들여 `status` 대로 끝난다. `unavailable` 은 75,
+  `refused` 는 77 이고, 그때 `remedy` 는 일반 문구다. 모양이 아니면 76 이다. 그래서 사유를 더하는 것은 호환되는
+  변경이고 `sherpa_app` 판을 올리지 않는다. [계약; 동작은 `AppPreface.read` 와 `RelayExitTable`, 시험은 §13.2]
 
 - 중계는 머리말을 표준 출력에 쓰지 않는다. MCP 서버의 표준 출력에는 MCP 메시지만 써야 한다. [문서: MCP
   2026-07-28 [stdio](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio), "The server MUST NOT write anything to its stdout that is
@@ -299,7 +344,7 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 | 69 | `EX_UNAVAILABLE` | 앱이 떠 있지 않다. 소켓이 없다(`ENOENT`) 또는 거부됐다(`ECONNREFUSED`) | 실측 |
 | 70 | `EX_SOFTWARE` | 중계 내부 오류 | 계약 |
 | 74 | `EX_IOERR` | 소켓이나 표준 입출력의 EOF·`EPIPE` 아닌 입출력 오류 | 계약 |
-| 75 | `EX_TEMPFAIL` | 앱은 있지만 세션을 열 수 없거나 앱이 세션을 끝냈다. 머리말 `unavailable`, 머리말 15초 초과, 입력이 열린 채 소켓 EOF | 계약 |
+| 75 | `EX_TEMPFAIL` | 앱은 있지만 세션을 열 수 없거나 앱이 세션을 끝냈다. 머리말 `unavailable`(MCP 가 꺼진 `mcp_disabled` 포함), 머리말 15초 초과, 입력이 열린 채 소켓 EOF(MCP 를 끄거나 코어가 끝나 앱이 닫음) | 계약 |
 | 76 | `EX_PROTOCOL` | 머리말이 없거나 JSON 이 아니거나 `sherpa_app` 이 1 이 아니다 | 계약 |
 | 77 | `EX_NOPERM` | 앱 서명이 요건에 맞지 않는다. 또는 앱이 이 중계를 거부했다(머리말 `refused`) | 앞은 실측, 뒤는 계약 |
 | 78 | `EX_CONFIG` | 소켓 경로가 103 바이트를 넘는다 | 계약 |
@@ -310,6 +355,22 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   줄을 반드시 쓰고 `reason` 과 사람이 할 일 `remedy` 를 단다. 예:
   `error [relay:socket:connect] reason=app_not_running remedy="start Sherpa.app"`. [계약] 시험 빌드는
   `app_not_running` 과 `server_signature_rejected` 를 썼다. [실측]
+- MCP 가 꺼진 앱에 붙으면 75 로 끝나며 이 줄을 쓴다:
+  `error [relay:preface:read] reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP in Sherpa.app, then reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)"`.
+  켜진 채 연결된 중계는 사람이 MCP 를 끄면 75 로 끝나며 아래 줄을 쓴다. 중계는 앱이 왜 닫았는지 모르므로 MCP 를 끈
+  경우를 먼저 적는다:
+  `error [relay:session:copy] reason=app_closed_session remedy="if you turned MCP off in Sherpa.app, turn it on first; then reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)"`.
+  모르는 사유의 `remedy` 는 `restart Sherpa.app, then reconnect` 다. [계약]
+- 다시 붙는 법은 에이전트가 앞선 실패를 기억하든 아니든 맞게 적는다. Claude Code 는 `/mcp` 의 Reconnect, Codex 는 새
+  세션이다. 앱의 연결 방법(§2)도 같다. [계약]
+- MCP 가 꺼진 앱에서 중계가 머리말을 읽고 끝나면 Claude Code 2.1.326 대화형은 그 시도 안에서 서버를 옛 규격으로
+  고정해 다시 띄운다. 로그는 다음 순서다. [실측: live-evidence 2026-11-22 "Claude Code against a relay turned away"]
+  - `version negotiation probe closed the stdio server (rmcp-class pre-init hard close); respawning pinned legacy`
+  - 중계의 줄을 담은 `Server stderr:`
+  - `Connection failed (CONNECTION_CLOSED)`
+- `--mcp-config` 로 준 동적 서버에서는 그 고정이 다음 세션에 남지 않았다. 2초 뒤 세션은 실패 캐시 없이 다시 시도해
+  같은 이유로 실패했고, MCP 를 켠 뒤 세션은 `protocolEra` `modern` 으로 붙었다. [실측: 같은 기록] 사용자 범위와
+  플러그인 범위에서 고정이나 실패 캐시가 다음 세션에 남는지는 재지 않았다(§16). [미확인]
 - MCP 내용과 소켓의 절대 경로(사용자 이름이 들어 있다)는 쓰지 않는다. 경로는 `socket=default` 또는
   `socket=override` 로만 적는다. [계약]
 - `LOG_LEVEL` 을 따르고 기본은 warn 이다. [계약]
@@ -413,6 +474,9 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
   쓴 프레임은 앱이 버린다. [계약]
 - 코어가 세션을 끝내면 `N\tclose` 를 보낸다. 앱은 그 채널에 쌓인 바이트를 중계에 다 쓴 뒤 소켓을 닫는다.
   [계약]
+- 사람이 MCP 를 끄면(§2) 앱은 열린 채널마다 `N\tclose\t{"reason":"mcp_disabled"}` 를 코어에 보내고, 그 중계 소켓을
+  대기열을 버리고 곧바로 닫는다. 중계는 입력이 열린 채 EOF 를 받아 75 로 끝난다. 아직 코어를 기다리던 연결은 머리말
+  `mcp_disabled` 를 받는다. 다시 켜면 같은 코어가 이어지는 번호로 채널을 연다. [계약]
 
 ### 7.7 흐름 제어
 
@@ -552,6 +616,9 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   `native_absence_readback` `matched`, 아무것도 누르지 않으면 30.01초 뒤 `confirmation.timed_out` 이었다. [실측:
   live-evidence 2026-11-21 "Delete confirmation through the exported app's relay"]
 - 미리보기 내용은 사용자 데이터다. 앱 화면에만 보이고 로그와 기록부에 남지 않는다. [계약]
+- MCP 를 끄면(§2) 모든 채널이 닫히므로, 앱은 떠 있거나 차례를 기다리는 확인 창을 답 없이 모두 닫고 그 뒤에 온 답을
+  버린다. 코어는 채널이 닫혔으므로 흐름 4 대로 그 호출을 거두고 `withdraw` 를 보낸다. 꺼진 동안 온 `confirm` 은 닫힌
+  채널의 호출이므로 창을 띄우지 않고 `unavailable` 로 답한다. [계약]
 - Claude Code 의 `_meta["anthropic/requiresUserInteraction"]: true` 는 그 도구의 권한 창을 `bypassPermissions`
   에서도 호출마다 띄우고 "다시 묻지 않기" 를 내지 않으며, `dontAsk` 모드와 답할 사람이 없는 `-p` 실행에서는
   호출을 거부한다. [문서: Claude Code MCP, "Require approval for a specific tool"] 앱 창과 두 번 묻게 되고
@@ -587,7 +654,8 @@ Calendar 와 Reminders 는 앱 안에서 부른다. [소유자, ADR-0010 결정 
   `warn [core:mcp-transport:send] refused channel=N reason=unsupported_protocol_version` 을 남긴다. [계약]
 - 에이전트: Claude Code 는 stdio 서버에 기본으로 2026-07-28 을 묻는다. [문서: Claude Code MCP, "Push messages with
   channels"] 2.1.326 은 이 판의 코어를 담은 내보낸 앱의 중계에 `server/discover` 로 붙어 2026-07-28 로 열고
-  `tools/list` 를 받았다. [실측: live-evidence 2026-11-22 "The exported app with the 2026-07-28-only core"] Codex 0.171.0 은 기능 `mcp_2026_07_28` 과 서버 항목 env
+  `tools/list` 를 받았다. [실측: live-evidence 2026-11-22 "The exported app with the 2026-07-28-only core"] `claude -p`
+  로 같은 봉투의 `tools/call` 을 보내 읽기 도구를 불렀다. [실측: live-evidence 2026-11-22 "Claude Code calls a tool"] Codex 0.171.0 은 기능 `mcp_2026_07_28` 과 서버 항목 env
   `CODEX_MCP_PROTOCOL_VERSION=2026-07-28` 이 둘 다 있을 때만 2026-07-28 로 연다(§2). [실측: 같은 기록; 문서: ADR-0011]
   기본 설정의 Codex 는 `initialize`(2025-06-18) 하나만 보내고, -32022 를 받으면 더 새 판으로 다시 묻지 않는다. 서버를
   `failed` 로 두고 `toolsError` 에 `MCP startup failed: handshaking with MCP server failed: JSON-RPC error: -32022: …`
@@ -825,6 +893,9 @@ result         object | null
   오류의 줄을 category `core` 로 옮긴다(한 줄은 4 KiB 에서 자른다). 읽을 때는
   `/usr/bin/log show --predicate 'subsystem == "dev.xiyo.sherpa"'` 를 쓴다. [계약] MCP 클라이언트는 서버 표준
   오류를 잡거나 버릴 수 있고, 그것을 오류로 여기지 않아야 한다. [문서: MCP 2026-07-28 stdio]
+- MCP 스위치(§2)는 바뀔 때 `info [app:mcp:switch] enabled=<true|false> sessions_closed=N confirmations_withdrawn=M`
+  을 남긴다. 꺼진 동안 온 중계는 `warn [app:session:open] status=unavailable reason=mcp_disabled pid=N`, 끈 뒤 온 확인
+  요청은 `warn [app:confirm:request] id=N status=refused reason=mcp_disabled decision=unavailable` 이다. [계약]
 - 남겨도 되는 값: 채널 번호, 도구와 capability 이름, `operation_id`, 작업 요청 `id`, 상태, 오류 코드, `retry`,
   걸린 시간, 바이트 수, 종료 코드와 신호, 상대의 pid 와 서명 식별자, mux·앱·코어 버전, 확인 결과 낱말, 요청 봉투
   `clientInfo` 의 이름과 버전. [계약]
@@ -874,8 +945,12 @@ MCP stdio 명령 시험(빌드한 `core/dist/sherpa app serve` 를 가짜 앱 �
 단위 시험(`swift test`. 새 패키지는 `check-all.sh` 의 `SWIFT_PACKAGES` 에 더한다):
 
 - 프레임: §14 의 벡터 전부. 코어와 같은 벡터다.
-- 머리말의 직렬화와 중계의 해석, 종료 코드를 고르는 표.
+- 머리말의 직렬화와 중계의 해석, 종료 코드를 고르는 표. `mcp_disabled` 는 75 와 MCP 를 켜라는 `remedy`, 모르는 사유는
+  `status` 대로 75·77 과 일반 `remedy`, 사유 모양이 아니면 76.
 - 소켓 경로 계산(홈은 사용자 데이터베이스에서), 103 바이트 경계.
+- MCP 스위치 값(§2): 값이 없는 defaults 에서 꺼짐, 쓴 값을 읽음. 에이전트 명령: Claude Code 와 Codex 의 명령 글,
+  경로 따옴표, 따옴표 친 경로를 `/bin/sh`·`/bin/zsh`·`/bin/bash` 가 한 낱말 그대로 받음(빈칸, 작은따옴표, `$`,
+  역따옴표, `*`, `~`, 한글).
 
 소켓과 서명(실제 프로세스, 임시 폴더, DEBUG 빌드):
 
@@ -891,6 +966,13 @@ MCP stdio 명령 시험(빌드한 `core/dist/sherpa app serve` 를 가짜 앱 �
   함), 연결마다 `open`·`close`, 코어가 끝나면 모든 중계가 75, 재시작 간격과 다섯 번 뒤 멈춤(시간은 주입), 코어
   준비 전 연결의 10초 대기, `slow_consumer` 가 다른 채널을 멈추지 않음, 16개 초과 거부, 확인 요청에 시험용
   결정기로 답함.
+- MCP 스위치(§2, §5, §7.6, §9): 시험 호스트는 `--mcp on|off` 로 시작하고, 없으면 앱의 첫 실행처럼 꺼진 채
+  시작한다. 표준 입력의 `mcp on`·`mcp off` 한 줄이 앱의 스위치처럼 바꾼다. 꺼진 호스트에서 직접 연결은 여전히
+  `peer_signature` 이고, 중계는 75·`mcp_disabled` 로 끝나며 코어에 `open` 이 가지 않음. 켜면 같은 호스트가 중계에
+  채널을 엶. 켜진 채 끄면 열린 중계 둘이 75(`app_closed_session`), 코어가 채널마다 `close`
+  `{"reason":"mcp_disabled"}` 를 받고, 떠 있던 확인 창이 닫히며, 새 중계는 `mcp_disabled`. 다시 켜면 같은 코어의 다음
+  채널. 끈 뒤 도착한 확인 요청은 창 없이 `unavailable`. 스위치에는 시험용 환경 변수가 없다. 이 인자와 표준 입력은
+  DEBUG 시험 호스트만 읽고(릴리스 시험 호스트는 `--print-configuration` 만 한다), 앱은 defaults 만 읽는다.
 - 릴리스 빌드는 시험용 변수를 읽지 않음: 릴리스 중계에 시험용 변수를 줘도 기본 경로와 운영 요건을 쓴다. 게이트
   (`scripts/check-all.sh`)가 아래 이름이 DEBUG 빌드에는 있고 릴리스 빌드에는 없는지 본다. 보는 파일은 패키지의
   `sherpa-relay` 와 Xcode 가 빌드한 Debug·Release 번들의 `Sherpa`·`sherpa-relay` 다. Debug 앱 타깃은
@@ -924,13 +1006,29 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 - Developer ID 로 서명하고 공증한 번들: Claude Code 와 Codex(기능과 env 를 켠, §2) 설정으로 `tools/list` 와 읽기
   호출, 기본 설정 Codex 의 거부, 앱을 끈 상태의 69, 코어를 `kill -9` 했을 때 중계 75 와 재시작 뒤 에이전트의 재연결.
   2026-11-22 공증 전 내보낸 앱(이 판의 코어)으로 Codex 의 `tools/list`·읽기 호출, 기본 설정 Codex 의 거부, Claude
-  Code 의 `server/discover`·`tools/list` 를 쟀다. Claude Code 의 도구 호출은 남았다. [실측: live-evidence 2026-11-22 "The exported app with the 2026-07-28-only core"]
+  Code 의 `server/discover`·`tools/list` 를 쟀다. [실측: live-evidence 2026-11-22 "The exported app with the 2026-07-28-only core"]
+  같은 날 `main` `8de36c6` 을 처음부터 빌드해 내보낸 앱으로 Claude Code 의 읽기 호출(`claude -p`)과 Codex 의
+  읽기 호출·기본 설정의 거부를 다시 쟀다. [실측: live-evidence 2026-11-22 "Claude Code calls a tool"] 공증한 번들과
+  앱을 끈 상태의 69, 코어 `kill -9` 는 남았다.
 - 삭제와 보내기: 확인 창이 맨 앞에 뜨는지, 허용·거부·30초 초과, 호출이 Codex 기본 60초 안에 끝나는지. 삭제의
   창·허용·거부·30초는 2026-11-21 내보낸 앱으로 쟀다(§9). 보내기와 Codex 를 거친 호출은 남았다.
 - Codex 가 띄운 중계가 `~/Library/Application Support/Sherpa/run/app.sock` 에 붙는지. 2026-11-22 Codex 0.171.0
   `app-server` 가 띄운 중계(앞에 tee)가 내보낸 앱의 기본 소켓에 붙었다. [실측: live-evidence 2026-11-22]
 - 앱이 띄운 코어의 `osascript` 보내기가 앱의 Apple Events 권한으로 판정되는지.
 - 오래 켜 둔 앱과 코어의 메모리. 시험 빌드는 8분 동안 코어 13.6 MB, 호스트 5.2 MB 로 고정됐다.
+- MCP 스위치와 상태 창(bunny-holes/sherpa#54, #52, §2). 2026-11-22 메인 세션이 이 작업의 `e0e2670` 을 내보낸 앱으로
+  쟀다. 첫 실행에 MCP 가 꺼진 채 상태 창이 저절로 열렸다. 꺼진 동안 중계는 75 와 remedy 로 끝났고 Codex 는 서버를
+  `failed` 로 두었다. 창의 스위치로 켜자 Codex 가 붙어 도구 35개를 보았고 호출은 `succeeded` 였다. 창의 중계 경로는
+  잘리지 않았다. [실측: live-evidence 2026-11-22 "The MCP switch in the exported app"] 같은 앱의 중계를 Claude Code
+  2.1.326 대화형의 `--mcp-config` 동적 서버로 붙이자, 꺼진 동안은 `Server stderr:` 에 remedy 를 남기고 실패했고
+  켠 뒤 새 세션은 붙었다(§6). [실측: live-evidence 2026-11-22 "Claude Code against a relay turned away"] 남은 것은
+  다음과 같다.
+  - 연결 방법을 "?" 팝오버로 옮긴 뒤의 창: 높이, 도움말 단추, 팝오버, 툴팁.
+  - 메뉴의 켜기·끄기, 켜진 채 끌 때 연결된 Claude Code·Codex 가 보이는 것.
+  - 사용자 범위로 등록한 Claude Code 가 꺼진 동안 실패한 뒤, 켜고 `/mcp` 의 Reconnect 로 붙는지.
+  - 복사한 명령을 그대로 넣어 붙는지.
+  - `/Applications/Sherpa.app` 보다 긴 설치 경로에서 명령과 경로가 잘리지 않고, 선택해 복사한 값과 복사 단추의 값이
+    `Contents/MacOS/sherpa-relay` 로 끝나는 전체 경로인지.
 
 ## 14. 시험 벡터
 
@@ -987,6 +1085,7 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 ```text
 {"sherpa_app":1,"status":"ready","reason":null,"version":"0.9.0"}\n                 이어서 옮긴다
 {"sherpa_app":1,"status":"unavailable","reason":"core_starting","version":"0.9.0"}\n 75
+{"sherpa_app":1,"status":"unavailable","reason":"mcp_disabled","version":"0.9.0"}\n  75
 {"sherpa_app":1,"status":"refused","reason":"peer_signature","version":"0.9.0"}\n    77
 {"sherpa_app":2,"status":"ready","reason":null,"version":"9.0.0"}\n                 76
 not json\n                                                                           76
@@ -1015,10 +1114,11 @@ not json\n                                                                      
 ## 16. 미확인
 
 - 중계가 앱을 띄우는 동작과 로그인 항목(ADR-0010).
-- 내보낸 앱 경로로 Claude Code 가 도구를 부르는지. 2026-11-22 실측은 모델을 부르지 않아 연결과 `tools/list` 까지만
-  쟀다(ADR-0011).
 - Claude Code 가 기능 플래그나 7일 생략으로 2025-11-25 `initialize` 로 붙어 거부되는 일, Codex 의 2026 모드가
-  2025-06-18 로 내려가는 조건(ADR-0011 의 위험).
+  2025-06-18 로 내려가는 조건(ADR-0011 의 위험). 2026-11-22 `--mcp-config` 동적 서버에서는 머리말 단계에서 끝난 중계
+  뒤에도 7일 생략이 일어나지 않았다(§6).
+- 사용자 범위(`claude mcp add --scope user`)와 플러그인 범위의 Claude Code 서버에서, 머리말 단계에서 끝난 중계 뒤의
+  옛 규격 고정이나 실패 캐시가 다음 세션에 남는지(§6). 플러그인 서버의 실패 캐시는 bunny-holes/sherpa#55 가 다룬다.
 - 이 Mac 의 선 위에서 Claude Code 와 Codex 가 2026-07-28 봉투의 `clientCapabilities` 에 선언하는 elicitation(Claude
   Code 는 문서에, Codex 는 소스에 있다).
 - Claude Code 2.1.326 의 `anthropic/requiresUserInteraction` 지원.
@@ -1031,12 +1131,18 @@ not json\n                                                                      
 - 내보낸 앱의 메뉴 막대 아이콘이 보이는지와 미리보기 앱에서 보이지 않은 원인, 메뉴의 Quit, 오래 켜 둔 앱과 코어의
   메모리. 2026-11-21 의 #29 실기에서 재지 않았다.
 - 도구별 결과 스키마. Swift 와 ObjC 응답의 null 키 차이가 정리된 뒤 정한다.
+- MCP 스위치와 상태 창의 실기(§13.4): "?" 팝오버로 바꾼 창, 메뉴의 켜고 끄기, 끌 때 에이전트가 보이는 것, 복사한
+  명령, 긴 설치 경로에서 #52 가 고쳐졌는지. 게이트는 서버의 동작과 명령 글만 보고, 창의 배치는 보지 않는다.
 
 닫힌 것: 2026-11-21 #29 실기는 내보낸 앱에서 삭제 확인 창의 내용·허용·거부·30초와 1초 무장, 상태 창의 권한
 표시를 쟀다(§9). 같은 실기에서 상태 창이 중계 경로를 "…" 로 자른 결함은 bunny-holes/sherpa#52 다. 2026-11-22 Codex
 실측은 Codex 가 띄운 중계의 기본 소켓 연결과, 기능과 env 를 켠 Codex 의 2026-07-28 연결을 쟀다. 같은 날 이 판의
 코어를 담은 내보낸 앱으로 Claude Code 의 2026-07-28 연결과 기본 설정 Codex 의 거부(서버 `failed`, 도구 호출 -32603,
-다시 묻지 않음)를 쟀다(§10.1).
+다시 묻지 않음)를 쟀다(§10.1). `main` `8de36c6` 을 처음부터 빌드해 내보낸 앱으로 Claude Code 2.1.326 이 `claude -p`
+에서 `server/discover`·`tools/list`·`tools/call` 을 모두 2026-07-28 봉투로 보내 `reminder_authorization_status` 를
+불렀다(결과 `succeeded`). 이로써 내보낸 앱 경로의 Claude Code 도구 호출이 닫혔다(ADR-0011). 같은 날 `e0e2670` 을
+내보낸 앱으로 첫 실행 창, 꺼진 동안의 거부(중계 75, Codex `failed`), 창의 스위치로 켠 뒤의 Codex 연결과 호출을
+쟀고, 동적 서버로 머리말 단계 실패 뒤 Claude Code 가 다시 띄우는 모양과 다음 세션을 쟀다(§6, §13.4).
 
 ## Related
 

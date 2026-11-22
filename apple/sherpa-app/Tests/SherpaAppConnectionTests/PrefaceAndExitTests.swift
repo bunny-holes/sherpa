@@ -9,6 +9,8 @@ import Testing
         == Data("{\"sherpa_app\":1,\"status\":\"ready\",\"reason\":null,\"version\":\"0.9.0\"}\n".utf8))
     #expect(AppPreface.unavailable(.coreStarting, version: "0.9.0").line()
         == Data("{\"sherpa_app\":1,\"status\":\"unavailable\",\"reason\":\"core_starting\",\"version\":\"0.9.0\"}\n".utf8))
+    #expect(AppPreface.unavailable(.mcpDisabled, version: "0.9.0").line()
+        == Data("{\"sherpa_app\":1,\"status\":\"unavailable\",\"reason\":\"mcp_disabled\",\"version\":\"0.9.0\"}\n".utf8))
     #expect(AppPreface.refused(.peerSignature, version: "0.9.0").line()
         == Data("{\"sherpa_app\":1,\"status\":\"refused\",\"reason\":\"peer_signature\",\"version\":\"0.9.0\"}\n".utf8))
     for reason in AppPreface.Reason.allCases {
@@ -19,6 +21,11 @@ import Testing
 @Test(arguments: [
     (#"{"sherpa_app":1,"status":"ready","reason":null,"version":"0.9.0"}"#, nil as Int32?),
     (#"{"sherpa_app":1,"status":"unavailable","reason":"core_starting","version":"0.9.0"}"#, 75),
+    (#"{"sherpa_app":1,"status":"unavailable","reason":"mcp_disabled","version":"0.9.0"}"#, 75),
+    // A reason this relay does not know, in the shape of one: the status decides.
+    (#"{"sherpa_app":1,"status":"unavailable","reason":"a_later_reason","version":"0.9.0"}"#, 75),
+    (#"{"sherpa_app":1,"status":"refused","reason":"a_later_reason","version":"0.9.0"}"#, 77),
+    (#"{"sherpa_app":1,"status":"unavailable","reason":"Not A Reason","version":"0.9.0"}"#, 76),
     (#"{"sherpa_app":1,"status":"refused","reason":"peer_signature","version":"0.9.0"}"#, 77),
     (#"{"sherpa_app":2,"status":"ready","reason":null,"version":"9.0.0"}"#, 76),
     ("not json", 76),
@@ -52,6 +59,15 @@ func mapsEachPrefaceVectorToItsExit(line: String, expected: Int32?) {
 @Test func errorLinesNameAReasonAndARemedy() {
     let failure = RelayExitTable.connectFailure(errno: ENOENT, socket: SocketLocation(socketPath: "/x", isOverride: false))
     #expect(failure.logFields == #"reason=app_not_running socket=default remedy="start Sherpa.app""#)
+    let disabled = RelayExitTable.preface(.unavailable(reason: "mcp_disabled"))
+    #expect(disabled?.logFields
+        == #"reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP in Sherpa.app, then reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)""#)
+    #expect(RelayExitTable.appClosedSession.logFields
+        == #"reason=app_closed_session remedy="if you turned MCP off in Sherpa.app, turn it on first; then "#
+        + #"reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)""#)
+    let unknown = RelayExitTable.preface(.unavailable(reason: "a_later_reason"))
+    #expect(unknown?.exit == .temporaryFailure)
+    #expect(unknown?.remedy == "restart Sherpa.app, then reconnect")
 }
 
 @Test func findsTheHomeInTheUserDatabaseNotInHOME() throws {

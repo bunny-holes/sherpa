@@ -35,9 +35,10 @@ public final class AppServer: @unchecked Sendable {
     private var shuttingDown = false
     private var coreGone = NSCondition()
 
+    /// `mcpEnabled` is the MCP switch as the app found it at launch (contract §2).
     /// `coreLogger` receives each line of the core's standard error, cut at 4 KiB.
     public init(
-        configuration: AppServerConfiguration, lock: InstanceLock, planner: PlannerPort,
+        configuration: AppServerConfiguration, lock: InstanceLock, mcpEnabled: Bool, planner: PlannerPort,
         confirmations: ConfirmationPort, logger: SherpaLogger,
         coreLogger: @escaping @Sendable (String) -> Void, observe: @escaping StatusObserver
     ) {
@@ -48,6 +49,7 @@ public final class AppServer: @unchecked Sendable {
         self.coreLogger = coreLogger
         self.observe = observe
         status = ServerStatus(version: configuration.version)
+        status.mcpEnabled = mcpEnabled
         policy = RestartPolicy(scale: configuration.timing.restartScale)
         workers = WorkerQueue(planner: planner, logger: logger) { [weak self] job, output in
             self?.answer(job, output)
@@ -93,6 +95,42 @@ public final class AppServer: @unchecked Sendable {
         guard stopped else { return }
         logger.info("app:core:restart", "trigger=menu")
         launchCore()
+    }
+
+    /// The MCP switch (contract §2). While it is off, every relay is turned away with
+    /// `mcp_disabled` once its signature passes. Turning it off closes every open session at
+    /// once: the core gets `close` for each channel and withdraws the calls that were waiting
+    /// for a confirmation (§9), and the windows of those confirmations close unanswered.
+    public func setMCPEnabled(_ enabled: Bool) {
+        state.lock()
+        guard status.mcpEnabled != enabled else {
+            state.unlock()
+            return
+        }
+        status.mcpEnabled = enabled
+        var closed = 0
+        var withdrawn = 0
+        if !enabled {
+            for (channel, connection) in channels {
+                if let core, core.generation == connection.generation {
+                    core.send(MuxFrame(channel: channel, type: "close", json: #"{"reason":"mcp_disabled"}"#))
+                }
+                connections[connection.id] = nil
+                // Under the lock, as for a slow consumer: the reader still holds the descriptor.
+                connection.closeNow()
+                closed += 1
+            }
+            channels.removeAll()
+            status.sessions = connections.count
+            withdrawn = pendingConfirmations.count
+            pendingConfirmations.removeAll()
+        }
+        // A relay still waiting for the core wakes up and is turned away.
+        state.broadcast()
+        publishLocked()
+        state.unlock()
+        logger.info("app:mcp:switch", "enabled=\(enabled) sessions_closed=\(closed) confirmations_withdrawn=\(withdrawn)")
+        if !enabled { confirmations.withdrawAll() }
     }
 
     /// The orderly end of §7.10. Blocks; call it off the main thread.
@@ -421,6 +459,13 @@ public final class AppServer: @unchecked Sendable {
                 process.send(MuxFrame(channel: 0, type: "confirmation",
                                       json: #"{"id":\#(id),"decision":"unavailable"}"#))
             case let .success(request):
+                // Every channel closed when MCP was turned off; this call was on one of them.
+                guard status.mcpEnabled else {
+                    logger.warn("app:confirm:request", "id=\(request.id) status=refused reason=mcp_disabled decision=unavailable")
+                    process.send(MuxFrame(channel: 0, type: "confirmation",
+                                          json: #"{"id":\#(request.id),"decision":"unavailable"}"#))
+                    return nil
+                }
                 pendingConfirmations.insert(request.id)
                 logger.info("app:confirm:request", "id=\(request.id) tool=\(logToken(request.tool)) "
                     + "operation_id=\(logToken(request.operationID)) client=\(logToken(request.clientName)) "
@@ -533,7 +578,8 @@ public final class AppServer: @unchecked Sendable {
     }
 
     /// Signature, preface, channel (§4, §5, §7.6). Nothing reaches the core before the
-    /// relay's signature passes and the preface `ready` is queued.
+    /// relay's signature passes and the preface `ready` is queued. After the signature the
+    /// checks run in this order: shutting down, the MCP switch, the session limit, the core.
     private func admit(_ descriptor: Int32) {
         let check: PeerCheck
         do {
@@ -559,6 +605,12 @@ public final class AppServer: @unchecked Sendable {
             connection.reject(with: .unavailable(.shuttingDown, version: configuration.version))
             return
         }
+        guard status.mcpEnabled else {
+            state.unlock()
+            logger.warn("app:session:open", "status=unavailable reason=mcp_disabled pid=\(check.pid)")
+            connection.reject(with: .unavailable(.mcpDisabled, version: configuration.version))
+            return
+        }
         guard connections.count < AppServerConfiguration.maximumSessions else {
             state.unlock()
             logger.warn("app:session:open", "status=refused reason=too_many_sessions pid=\(check.pid)")
@@ -571,11 +623,13 @@ public final class AppServer: @unchecked Sendable {
 
         // A relay that arrives before the core is ready waits up to 10 seconds (§3).
         let deadline = Date(timeIntervalSinceNow: configuration.timing.coreReadyWait)
-        while !shuttingDown, status.core == .starting || (status.core == .ready && !helloReceived) {
+        while !shuttingDown, status.mcpEnabled, status.core == .starting || (status.core == .ready && !helloReceived) {
             if !state.wait(until: deadline) { break }
         }
         let refusal: AppPreface.Reason? = if shuttingDown {
             .shuttingDown
+        } else if !status.mcpEnabled {
+            .mcpDisabled
         } else if let core, helloReceived, status.core == .ready {
             admitReady(connection, core: core)
         } else {

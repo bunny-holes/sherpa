@@ -19,10 +19,13 @@ struct MenuContent: View {
     var body: some View {
         Text("Sherpa \(model.version)")
         Text(model.coreSummary)
-        Text("Agent sessions: \(model.status.sessions)")
         if model.canRestartCore {
             Button("Restart the Sherpa core") { model.restartCore() }
         }
+        Divider()
+        // A checkmark item: agents connect only while it is on (contract §2).
+        Toggle("MCP Server", isOn: Binding(get: { model.mcpEnabled }, set: { model.setMCPEnabled($0) }))
+        Text(model.mcpEnabled ? "Agent sessions: \(model.status.sessions)" : "Agents are turned away")
         Divider()
         ForEach(PermissionKind.allCases) { kind in
             let state = model.permissions.state(kind)
@@ -56,9 +59,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         source.resume()
         terminateSource = source
         // The first launch shows the window: the menu bar item may be hidden (see the
-        // window's note), and an LSUIElement app has no other way in.
-        if !UserDefaults.standard.bool(forKey: Self.statusWindowShownKey) {
-            UserDefaults.standard.set(true, forKey: Self.statusWindowShownKey)
+        // window's note), and an LSUIElement app has no other way in. So does every launch with
+        // MCP off, the first one included: agents are turned away until the person turns it on
+        // there, and an app upgraded from before the switch starts with it off (contract §2).
+        let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: Self.statusWindowShownKey) || !AppModel.shared.mcpEnabled {
+            defaults.set(true, forKey: Self.statusWindowShownKey)
             StatusWindowController.shared.show()
         }
     }

@@ -296,9 +296,12 @@ final class Rig: @unchecked Sendable {
         return child
     }
 
-    /// The DEBUG test host: Sherpa.app's server with a scripted confirmation decider.
+    /// The DEBUG test host: Sherpa.app's server with a scripted confirmation decider. `mcp` is
+    /// the MCP switch it starts with; nil leaves it to the host, which starts off as the app's
+    /// first launch does. A line `mcp on` or `mcp off` on its input turns it later.
     func startHost(
         _ arguments: [String] = [],
+        mcp: Bool? = true,
         core: String? = nil,
         relayRequirement: String? = Program.relay.testRequirement,
         coreRequirement: String? = Program.core.testRequirement,
@@ -309,7 +312,8 @@ final class Rig: @unchecked Sendable {
         environment["SHERPA_TEST_CORE_BIN"] = try core ?? Program.core.path
         if let relayRequirement { environment["SHERPA_RELAY_REQUIREMENT"] = relayRequirement }
         if let coreRequirement { environment["SHERPA_CORE_REQUIREMENT"] = coreRequirement }
-        let host = try launch(try Program.host.path, ["--version", Self.appVersion] + arguments, environment)
+        let switchArguments = mcp.map { ["--mcp", $0 ? "on" : "off"] } ?? []
+        let host = try launch(try Program.host.path, ["--version", Self.appVersion] + switchArguments + arguments, environment)
         if listening, !(await host.waitForError("[app:socket:listen] status=listening")) {
             throw ProcessTestError("the host did not listen: \(host.errorText)")
         }

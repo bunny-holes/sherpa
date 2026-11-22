@@ -91,7 +91,14 @@ app and relay in `apple/sherpa-app`. The Swift package there holds the
 connection, server, planner and relay libraries and the test programs;
 `apple/sherpa-app/Sherpa.xcodeproj` builds `Sherpa.app` from them, embeds its
 `sherpa-relay` target and the core built in `core/`, and exports it with
-Developer ID (contract §2 "번들 빌드"). They are not released yet (notarized cask,
+Developer ID (contract §2 "번들 빌드"). Agents reach the core only while the
+app's MCP switch is on. The switch is off at the first launch and lives in the
+app's defaults as a same-user consent mark, not a security boundary. While it
+is off the app turns every relay away with the preface reason `mcp_disabled`,
+and turning it off closes the open sessions. The status window holds the
+switch; while it is on, the switch's help button opens the commands that
+register the bundled relay with Claude Code and Codex. The app copies them and
+never writes an agent's configuration (contract §2 "MCP 켜기와 연결 안내"). The app and relay are not released yet (notarized cask,
 bunny-holes/sherpa#31), and the CLI keeps the helper path above until then.
 
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of

@@ -9,6 +9,124 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — Claude Code against a relay turned away with `mcp_disabled` (bunny-holes/sherpa#54)
+
+This Mac, run by the main session. Claude Code 2.1.326 ran interactively in a
+pty with no prompt, so no model was called. The server was a dynamic one
+given with `--strict-mcp-config --mcp-config` and named `sherpacachetest`,
+so that no cached failure could attach to a real `sherpa` entry. Its command
+was the `sherpa-relay` of `Sherpa.app` exported from the
+bunny-holes/sherpa#54 branch at `e0e2670`.
+
+1. MCP off, session 1. Claude Code's log, in order:
+   - `version negotiation probe closed the stdio server (rmcp-class pre-init hard close); respawning pinned legacy`
+   - the relay's `mcp_disabled` remedy line, logged as `Server stderr:`
+   - `Connection failed (CONNECTION_CLOSED)`
+
+   A relay that ends at the preface makes Claude Code pin the server to the
+   earlier protocol and start it again within the same attempt; that start
+   ended the same way.
+2. Session 2, 2 s later, MCP still off: Claude Code tried again without
+   `Skipping connection (recent failure cached)` and failed the same way. This
+   dynamic server showed no failure cache.
+3. Session 3, after the app's switch turned MCP on:
+   `Successfully connected (transport: stdio) in 88ms`, `protocolEra`
+   `modern`. The pin to the earlier protocol did not carry over to the next
+   session.
+
+- Not measured: a user-scope server (`claude mcp add --scope user`), which
+  would change the user's configuration; the plugin server's failure cache,
+  which the bunny-holes/sherpa#55 work observed; and whether ADR-0011's 7-day
+  skip happens per scope. It did not happen with this dynamic server.
+- Following this, the relay's remedies and the app's connection guide give a
+  way back that holds with or without a cache: `/mcp`, then Reconnect, in
+  Claude Code, and a new session in Codex (app-connection-v1 §6).
+
+## 2026-11-22 — The MCP switch in the exported app built from `e0e2670` (bunny-holes/sherpa#54)
+
+This Mac, run by the main session on `Sherpa.app` exported from the
+bunny-holes/sherpa#54 branch at `e0e2670`; that session keeps the
+screenshots. Recorded from its report, which gave no Codex version or command
+line.
+
+- At the first launch the status window opened by itself, with MCP off.
+- While MCP was off, the relay ended with exit 75 and its remedy line, and
+  Codex showed the server as `failed`.
+- Turned on with the window's switch, Codex connected, listed 35 tools, and a
+  tool call `succeeded`.
+- The relay path in the window was shown whole.
+- The owner then asked that the connection guide not fill the window: "mcp를
+  활성화 하면 연결 방법은 ?를 통해서 직접 보게해라. 화면을 설명으로
+  덮어버리지마라". The window now holds the header, the MCP row and the
+  permissions, and the guide opens from the MCP row's help button while MCP is
+  on (app-connection-v1 §2). That layout is not measured yet.
+- Not in the report: the menu's switch, turning MCP off under a connected
+  agent, Claude Code while MCP is off, a copied command, and an install path
+  longer than `/Applications/Sherpa.app` (app-connection-v1 §13.4).
+
+## 2026-11-22 — Agent registration commands written into empty configuration homes (bunny-holes/sherpa#54)
+
+This Mac, run by the worktree session of bunny-holes/sherpa#54 to fix the
+commands the status window shows (app-connection-v1 §2 "MCP 켜기와 연결 안내").
+Each agent wrote into an empty temporary folder, so `~/.claude` and
+`~/.codex` did not change. No relay started and no model was called. The
+relay path in both commands held a space and was single-quoted by the shell,
+as the app quotes it.
+
+- Claude Code 2.1.326: `claude mcp add --help` gives
+  `claude mcp add [options] <name> <commandOrUrl> [args...]` with
+  `-s, --scope <scope>` (`local`, `user` or `project`). With
+  `CLAUDE_CONFIG_DIR` set to the empty folder,
+  `claude mcp add --scope user sherpa -- '<path>/sherpa-relay'` printed
+  `Added stdio MCP server sherpa with command: <path>/sherpa-relay  to user
+  config`. That folder's `.claude.json` then held
+  `"mcpServers": {"sherpa": {"type": "stdio", "command": "<path>/sherpa-relay",
+  "args": [], "env": {}}}`.
+- Codex 0.171.0: `codex mcp add --help` gives
+  `codex mcp add [OPTIONS] <NAME> (--url <URL> | -- <COMMAND>...)` with
+  `--env <KEY=VALUE>`. With `CODEX_HOME` set to the empty folder,
+  `codex features enable mcp_2026_07_28` printed that it enabled the feature
+  in `config.toml`, with a warning that under-development features are
+  enabled.
+  `codex mcp add --env CODEX_MCP_PROTOCOL_VERSION=2026-07-28 sherpa -- '<path>/sherpa-relay'`
+  printed `Added global MCP server 'sherpa'.` The folder's `config.toml`
+  then held `[mcp_servers.sherpa]` with that `command`,
+  `[mcp_servers.sherpa.env]` with `CODEX_MCP_PROTOCOL_VERSION = "2026-07-28"`,
+  and `[features]` with `mcp_2026_07_28 = true`.
+- A program that reads `UserDefaults.standard` read `mcpEnabled` as false
+  without arguments and true when started with `-mcpEnabled YES` (the
+  argument domain). The app's MCP switch is a consent mark, not a security
+  boundary (app-connection-v1 §2).
+- Not measured: the app's MCP switch, its status window and menu, whether a
+  copied command connects, and the relay path under a long install path
+  (bunny-holes/sherpa#52). They are the owner-operated checks of
+  app-connection-v1 §13.4.
+
+## 2026-11-22 — Claude Code calls a tool through the exported app built from `main` (bunny-holes/sherpa#51)
+
+This Mac, run by the main session. `main` at `8de36c6` was built from
+scratch and exported: `Sherpa.app` 0.8.5, Developer ID,
+`codesign --verify --deep --strict` passed, not notarized. A `tee` in front
+of the bundled `sherpa-relay` recorded the wire; only methods and versions
+were kept.
+
+- Claude Code 2.1.326, `claude -p` with `--model haiku` (`claude-haiku-5-5`),
+  `--strict-mcp-config --mcp-config` and
+  `--allowedTools mcp__sherpa__reminder_authorization_status`:
+  - The requests were `server/discover`, `tools/list` and `tools/call`, all
+    three with the 2026-07-28 envelope and `clientInfo.name` `claude-code`.
+    The first answer gave `supportedVersions: ["2026-07-28"]`.
+  - The tool result's `status` was `succeeded`. The run took 3 turns and
+    about 0.006 USD.
+- Codex 0.171.0 `codex app-server` on the same build:
+  - With the feature `mcp_2026_07_28` and `CODEX_MCP_PROTOCOL_VERSION=2026-07-28`
+    in the server entry's env, it connected, listed 35 tools, and the call
+    succeeded.
+  - In its default configuration it was refused, and a tool call returned
+    `-32603` `failed to get client`.
+- This closes "a tool call from Claude Code through the exported app", left
+  open in the entry below, in ADR-0011 and in app-connection-v1 §16.
+
 ## 2026-11-22 — The exported app with the 2026-07-28-only core serves both agents' 2026-07-28 opening and refuses Codex's default `initialize` (bunny-holes/sherpa#51)
 
 This Mac, run by the main session. Branch `feat/mcp-2026-07-28` at `233ee48`
