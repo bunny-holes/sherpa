@@ -11,6 +11,17 @@ manner: "버전별로 Added·Changed·Fixed 를 나누고 긴 실측 근거는 l
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-22
+
+README 만 바뀌었다. 스킬과 `.mcp.json` 은 0.9.0 과 같다.
+
+### Changed
+
+- 문제 해결 표: MCP 가 꺼졌거나 앱이 없을 때 두 에이전트에 보이는 글(Claude Code `/mcp` 의
+  `CONNECTION_CLOSED: Connection closed`, Codex 의 `connection closed`)과 15분 건너뜀의 `/mcp` 글을 적었다.
+  `MCP_PROTOCOL_NEGOTIATION=legacy` 가 낸 Claude Code 의 -32022 줄을 더했다. 2026-11-22 실측에서 꺼진 앱 뒤의 옛
+  규격 고정은 그 시도로 끝나 다음 세션에 남지 않았다(`docs/testing/live-evidence.md`, bunny-holes/sherpa#69).
+
 ## [0.9.0] - 2026-11-22
 
 Sherpa.app 이 `/Applications` 에 있고 그 "MCP Server" 스위치가 켜져 있어야 한다. 셸의 `sherpa` CLI 는

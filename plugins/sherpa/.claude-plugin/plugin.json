@@ -1,6 +1,6 @@
 {
   "name": "sherpa",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Agent workflows for the MCP server of Sherpa.app: Apple Calendar, Reminders, Mail, iMessage and local KakaoTalk on macOS.",
   "author": {
     "name": "XIYO",
