@@ -86,7 +86,8 @@ Anything not listed here is not proven by the gate.
     and the four provider packages against hand-written server-sent events
     behind the egress, with model ids the packages know: each provider's
     request (the URL, the key only in its header, Anthropic's version, cached
-    instructions without sampling or thinking settings and the model's 128,000
+    instructions and conversation without sampling or thinking settings and
+    the model's 128,000
     `max_tokens`, OpenAI's `store: false` and the old `include` only for
     reasoning models, Google's Interactions, OpenAI-compatible's
     `stream_options`) and the tokens of `done`; the `max_tokens` Anthropic's
@@ -108,11 +109,52 @@ Anything not listed here is not proven by the gate.
     first-output limit sent once, and the wait after a failure status outside
     it); the 600 s limit on a fake clock, which a request sent again after
     OpenAI reported an error a second before it starts anew, so its answer
-    may come after the first request's limit; Bun's idle-timeout
+    may come after the first request's limit; the 600 s between outputs on a
+    fake clock, which each output starts anew; Bun's idle-timeout
     `TimeoutError` before the headers, in the body and after output, each
     sent once and ending with `timeout`; the 2 MiB conversation limit; and no
     key, text or answer in a log line.
-    A test fails on any AI SDK warning it does not expect.
+    A test fails on any AI SDK warning it does not expect. The providers'
+    event shapes live in `tests/support/provider-events.ts`, which
+    `chat-tools.test.ts` shares.
+  - `chat-tools.test.ts` (contract §7.11 "도구") hands a chat the 35 tools
+    built from the planner's descriptors, as `app serve` does: each
+    provider's request carries the tool definitions without `$schema` or
+    safe-integer bounds and gets the outcome envelope back under the call's
+    id; each call goes through the call lifecycle and reaches the app as two
+    `tool` events, after the text before it; a step's calls run one at a time
+    in the model's order; a failed request sent again after a tool step runs
+    no tool again; `step-limit` after the 20th request, and the turn after
+    it; the 64 KiB fit (a read `failed`, a change that happened `partial`);
+    `chat.invalid_call` for a malformed call and for a tool the core does not
+    have (name `null`, `unknown` in the log); call numbers counted from 1 in
+    each channel; a change answered after 11 minutes; a declined confirmation,
+    one past 30 s, and its `channel` and `client`; a `cancel` while calls run
+    (it withdraws the waiting window, cuts planner reads, waits for a change
+    already asked for, lets the core's own sends and reads run out, and
+    before the response ends runs and keeps nothing); a channel closed during
+    a call; calls the AI SDK did not run (the `chat.not_run` envelope, two
+    `tool` events, the warn line and the next turn's request after
+    OpenAI-compatible and Anthropic `length` and an OpenAI-compatible unknown
+    reason; the text before them first; results in call order beside a
+    malformed call; call numbers that go on); no request after a step that
+    ended for a reason other than `stop` or `tool-calls` (a call cut in the
+    middle of its arguments read as malformed, the turn ending with `length`
+    after one request and the next turn's request carrying the call and its
+    error; a malformed call in an OpenAI-compatible `content_filter` answer or
+    an Anthropic refusal ending with `content-filter` and nothing kept, in an
+    answer ending for a reason the package does not know with `other`, and
+    before a stream error with `error` and nothing kept); a conversation holding a
+    call without its result ending `internal` with one error line and no
+    request; Anthropic's top-level `cache_control` and tools without a mark;
+    and no arguments, results or made-up tool names in a log line. A test
+    fails on any AI SDK warning it does not expect.
+  - `mcp-tools.test.ts` proves when each call becomes irreversible: a
+    planner change reports `committed` in the same tick it sends its request,
+    an allowed delete or send right before its request or command, a core
+    read right before its command; a signal aborted after that does not stop
+    the step, and a call that ended before it reports nothing. The chat's
+    `cancel` reads this to choose the calls it withdraws.
   - `tools-call.test.ts` proves the tool call lifecycle
     (`core/src/tools/call.ts`): its start and end lines, the set of active
     calls, a thrown handler as a core failure, an abandoned call left

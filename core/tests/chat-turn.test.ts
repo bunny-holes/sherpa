@@ -6,6 +6,7 @@ import { chatLimits } from "../src/chat/protocol.ts";
 import { type ChatOptions, ChatSessions } from "../src/chat/session.ts";
 import { installWarningLog } from "../src/chat/warnings.ts";
 import { FakeChannel, openStream, type ServerEvent, sse } from "./support/chat.ts";
+import { anthropic, chat, chunk, failure, google, openai } from "./support/provider-events.ts";
 
 // app-connection-v1 §7.11 and ADR-0012 "스트리밍", "중단", "재시도": a turn through the AI SDK
 // 7.0.179 and the four providers, against a runtime fetch that answers with hand-written
@@ -51,7 +52,8 @@ function turns(
     },
     { preconnect: () => {} },
   );
-  const sessions = new ChatSessions(installEgress({ fetch }), {
+  // These turns carry no tools; tests/chat-tools.test.ts gives a chat the core's.
+  const sessions = new ChatSessions(installEgress({ fetch }), async () => [], {
     clock: () => AT,
     timeZone: () => ZONE,
     ...options,
@@ -75,84 +77,6 @@ const turn = (provider: string, model: string, extra: Record<string, unknown> = 
 const compatible = (extra: Record<string, unknown> = {}) =>
   turn("openai-compatible", "m-1", { base_url: BASE, ...extra });
 
-// The events each provider streams for a text answer, as its package 4.x reads them.
-const anthropic = (texts: string[], stop = "end_turn"): ServerEvent[] => [
-  {
-    event: "message_start",
-    data: {
-      type: "message_start",
-      message: {
-        id: "msg_1",
-        model: "claude-sonnet-5-5",
-        role: "assistant",
-        usage: { input_tokens: 11 },
-      },
-    },
-  },
-  {
-    event: "content_block_start",
-    data: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
-  },
-  ...texts.map((text) => ({
-    event: "content_block_delta",
-    data: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
-  })),
-  { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
-  {
-    event: "message_delta",
-    data: { type: "message_delta", delta: { stop_reason: stop }, usage: { output_tokens: 3 } },
-  },
-  { event: "message_stop", data: { type: "message_stop" } },
-];
-const created = { id: "resp_1", created_at: 1, model: "gpt-5.1" };
-const openai = (texts: string[]): ServerEvent[] => [
-  { data: { type: "response.created", response: created } },
-  { data: { type: "response.in_progress", response: created } },
-  {
-    data: {
-      type: "response.output_item.added",
-      output_index: 0,
-      item: { type: "message", id: "msg_1" },
-    },
-  },
-  ...texts.map((delta) => ({
-    data: {
-      type: "response.output_text.delta",
-      item_id: "msg_1",
-      output_index: 0,
-      content_index: 0,
-      delta,
-      logprobs: [],
-    },
-  })),
-  {
-    data: {
-      type: "response.output_item.done",
-      output_index: 0,
-      item: {
-        type: "message",
-        id: "msg_1",
-        role: "assistant",
-        status: "completed",
-        content: [{ type: "output_text", text: texts.join(""), annotations: [] }],
-      },
-    },
-  },
-  {
-    data: {
-      type: "response.completed",
-      response: {
-        ...created,
-        usage: {
-          input_tokens: 11,
-          output_tokens: 3,
-          input_tokens_details: { cached_tokens: 0 },
-          output_tokens_details: { reasoning_tokens: 0 },
-        },
-      },
-    },
-  },
-];
 /** The error OpenAI streams when its server fails before any output. */
 const serverError: ServerEvent = {
   data: {
@@ -163,49 +87,6 @@ const serverError: ServerEvent = {
     sequence_number: 1,
   },
 };
-const google = (texts: string[]): ServerEvent[] => [
-  { data: { event_type: "interaction.created", interaction: { status: "in_progress" } } },
-  { data: { event_type: "step.start", index: 0, step: { type: "model_output", content: [] } } },
-  ...texts.map((text) => ({
-    data: { event_type: "step.delta", index: 0, delta: { type: "text", text } },
-  })),
-  { data: { event_type: "step.stop", index: 0 } },
-  {
-    data: {
-      event_type: "interaction.completed",
-      interaction: {
-        status: "completed",
-        usage: { total_input_tokens: 11, total_output_tokens: 3 },
-      },
-    },
-  },
-];
-const chunk = (delta: Record<string, unknown>, finish: string | null = null) => ({
-  data: {
-    id: "c1",
-    object: "chat.completion.chunk",
-    created: 1,
-    model: "m-1",
-    choices: [{ index: 0, delta, finish_reason: finish }],
-  },
-});
-const chat = (texts: string[], finish = "stop"): ServerEvent[] => [
-  ...texts.map((content, index) =>
-    chunk(index === 0 ? { role: "assistant", content } : { content }),
-  ),
-  chunk({}, finish),
-  {
-    data: {
-      id: "c1",
-      object: "chat.completion.chunk",
-      created: 1,
-      model: "m-1",
-      choices: [],
-      usage: { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 },
-    },
-  },
-  { data: "[DONE]" },
-];
 
 const done = (reason = "stop", input: number | null = 11, output: number | null = 3) => ({
   type: "done",
@@ -220,13 +101,6 @@ const error = (code: string, retryable = false, status: number | null = null) =>
   retryable,
   status,
 });
-
-/** A failure answer the AI SDK sends again after `ms`, at once unless the test says otherwise. */
-const failure = (status: number, ms = 0) =>
-  Response.json(
-    { error: { message: "try later" } },
-    { status, headers: { "retry-after-ms": String(ms) } },
-  );
 
 /** What Bun's fetch throws when a connection fails (Bun 1.4.5). */
 const refused = () =>
@@ -324,7 +198,7 @@ describe("a turn on each provider", () => {
     },
   );
 
-  test("anthropic names API version 2026-10-21, caches the instructions and sends no sampling setting", async () => {
+  test("anthropic names API version 2026-10-21, caches the instructions and the conversation, and sends no sampling setting", async () => {
     const { sent, open } = turns(() => sse(anthropic(["Hi"])));
     const channel = open();
     channel.write(turn("anthropic", "claude-sonnet-5-5"));
@@ -334,6 +208,9 @@ describe("a turn on each provider", () => {
     expect(body.system).toEqual([
       { type: "text", text: INSTRUCTIONS, cache_control: { type: "ephemeral" } },
     ]);
+    // Automatic caching: a breakpoint at the request's top that moves to its last block, both with
+    // the default 5 minutes (ADR-0012 "비용과 모델 선택").
+    expect(body.cache_control).toEqual({ type: "ephemeral" });
     expect(body.messages).toEqual([
       { role: "user", content: [{ type: "text", text: said(TEXT) }] },
     ]);
@@ -1043,7 +920,33 @@ describe("time limits", () => {
       { type: "delta", text: "half" },
       error("timeout", true),
     ]);
-    expect(chatLimits.chunkMs).toBe(120_000);
+    // As long as the wait for the first output: a model may think quietly after it wrote (§7.11).
+    expect(chatLimits.chunkMs).toBe(600_000);
+  });
+
+  test("between two outputs the limit is 600 s on a fake clock, and each output starts it anew", async () => {
+    vi.useFakeTimers();
+    // Waiting with `vi.waitFor` would move the fake clock as well.
+    const opened = Promise.withResolvers<ReturnType<typeof openStream>>();
+    const { open } = turns((request) => {
+      const stream = openStream(request.signal);
+      opened.resolve(stream);
+      return stream.response;
+    });
+    const channel = open();
+    channel.write(compatible());
+    const stream = await opened.promise;
+    stream.send(chunk({ role: "assistant", content: "one" }));
+    await vi.advanceTimersByTimeAsync(chatLimits.chunkMs - 1);
+    stream.send(chunk({ content: " two" }));
+    await vi.advanceTimersByTimeAsync(chatLimits.chunkMs - 1);
+    expect(channel.sent.filter((message) => message.type !== "delta")).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await channel.untilEnd()).toEqual([
+      { type: "delta", text: "one" },
+      { type: "delta", text: " two" },
+      error("timeout", true),
+    ]);
   });
 
   test("the wait after a failure status is not under the limit", async () => {

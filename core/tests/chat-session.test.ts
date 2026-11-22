@@ -36,7 +36,7 @@ function chats(
     },
     { preconnect: () => {} },
   );
-  const sessions = new ChatSessions(installEgress({ fetch }), options);
+  const sessions = new ChatSessions(installEgress({ fetch }), async () => [], options);
   const open = (id: number) => {
     const channel = new FakeChannel(id);
     sessions.serve(channel);

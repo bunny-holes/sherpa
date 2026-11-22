@@ -5,6 +5,7 @@
  * none ends the channel or the core.
  */
 import { log } from "../log.ts";
+import type { ModelTool } from "../tools/call.ts";
 import { type ChatIdentity, Conversation } from "./conversation.ts";
 import { type AllowedOrigin, allowedOrigin, type Egress, EgressDeniedError } from "./egress.ts";
 import { ChatFailure } from "./errors.ts";
@@ -75,10 +76,13 @@ class ChatSession {
   private readonly conversation = new Conversation();
   private listing = false;
   private turn: ChatTurn | null = null;
+  /** The tool calls this channel has made: a `tool` message's number (§7.11). */
+  private calls = 0;
 
   constructor(
     private readonly channel: ChatChannel,
     private readonly egress: Egress,
+    private readonly tools: () => Promise<readonly ModelTool[]>,
     private readonly listMs: number,
     private readonly turnLimits: TurnLimits,
     private readonly clock: () => Date,
@@ -199,6 +203,8 @@ class ChatSession {
       send: (event) => this.reply(event),
       ended: this.ended.signal,
       limits: this.turnLimits,
+      tools: this.tools,
+      callNumber: () => ++this.calls,
     });
     this.turn = turn;
     void turn
@@ -228,14 +234,17 @@ const TURN_LIMITS: TurnLimits = {
   deltaMs: chatLimits.deltaMs,
   deltaBytes: chatLimits.deltaBytes,
   failureBodyBytes: chatLimits.failureBodyBytes,
+  steps: chatLimits.steps,
 };
 
-/** The chat channels of one app connection, which share its egress. */
+/** The chat channels of one app connection, which share its egress and the core's tools. */
 export class ChatSessions {
   private readonly open = new Set<ChatSession>();
 
   constructor(
     private readonly egress: Egress,
+    /** The tools a chat's model may call, once their discovery has settled (§10.1). */
+    private readonly tools: () => Promise<readonly ModelTool[]>,
     private readonly options: ChatOptions = {},
   ) {}
 
@@ -255,6 +264,7 @@ export class ChatSessions {
     const session: ChatSession = new ChatSession(
       channel,
       this.egress,
+      this.tools,
       this.options.listMs ?? chatLimits.listMs,
       { ...TURN_LIMITS, ...this.options.turn },
       this.options.clock ?? (() => new Date()),

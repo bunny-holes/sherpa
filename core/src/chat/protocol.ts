@@ -1,7 +1,8 @@
 /**
  * The messages of a chat channel, `sherpa.chat.v1` (app-connection-v1 §7.11, ADR-0012 "앱과 코어
  * 사이 채널"): one JSON object per `data` frame each way, told apart by `type`. This edition
- * reads `list_models`, `turn` and `cancel` and writes `models`, `delta`, `done` and `error`.
+ * reads `list_models`, `turn` and `cancel` and writes `models`, `delta`, `tool`, `done` and
+ * `error`.
  */
 import { z } from "zod";
 import { type ChatErrorCode, retryable } from "./errors.ts";
@@ -37,8 +38,22 @@ export const chatLimits = {
    * sends again starts it anew. Ten minutes: the Claude of today streams nothing while it thinks.
    */
   firstOutputMs: 600_000,
-  /** Between two outputs of one model response. */
-  chunkMs: 120_000,
+  /**
+   * Between two outputs of one model response: as long as before the first, since a model may
+   * think after it wrote, quietly, before its next words or tool call.
+   */
+  chunkMs: 600_000,
+  /**
+   * Model requests in one turn, each after the first answering the tools the one before called
+   * (owner decision, ADR-0012 "재시도"). A turn that reaches it ends with `done` `step-limit`.
+   */
+  steps: 20,
+  /**
+   * A tool result as the model reads it, the JSON of its outcome envelope (§10.5), which every
+   * later request of the chat sends again. A read past it fails with what to narrow; a change
+   * keeps its outcome without its result.
+   */
+  toolResultBytes: 64 * 1024,
   /** How long the answer's text waits for more before a `delta` takes it, and the most one takes. */
   deltaMs: 50,
   deltaBytes: 4096,
@@ -109,12 +124,36 @@ const cancel = z.strictObject({ type: z.literal("cancel") });
 export type AnsweredMessage = "list_models" | "turn" | "cancel";
 
 /** Why a turn ended with `done` (§7.11). */
-export type DoneReason = "stop" | "length" | "content-filter" | "aborted" | "other";
+export type DoneReason = "stop" | "length" | "content-filter" | "step-limit" | "aborted" | "other";
+
+/**
+ * Where a tool call stands (§7.11): `started`, then one of the others. `declined` is a refusal in
+ * the confirmation window, and `withdrawn` a call the person's cancel took back before it changed
+ * anything; the rest are the outcome's status.
+ */
+export type ToolStatus =
+  | "started"
+  | "succeeded"
+  | "failed"
+  | "partial"
+  | "uncertain"
+  | "declined"
+  | "withdrawn";
 
 /** What the core writes on a chat channel. */
 export type ChatEvent =
   | { type: "models"; models: string[]; truncated: boolean }
   | { type: "delta"; text: string }
+  | {
+      type: "tool";
+      /** The call's number on this channel, from 1: its `started` and its end share it. */
+      call_id: number;
+      /** The registry name, or `null` for a tool the model named that the core does not have. */
+      name: string | null;
+      status: ToolStatus;
+      code: string | null;
+      operation_id: string | null;
+    }
   | {
       type: "done";
       reason: DoneReason;

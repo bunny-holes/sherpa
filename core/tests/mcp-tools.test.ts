@@ -134,10 +134,16 @@ function harness(
     name: string,
     args: Record<string, unknown>,
     signal = new AbortController().signal,
+    committed?: () => void,
   ) => {
     const tool = tools.find((item) => item.entry.name === name);
     if (!tool) throw new Error(`no tool ${name}`);
-    const context: ToolCall = { signal, channel: 4, client: { name: "agent", version: "1.0" } };
+    const context: ToolCall = {
+      signal,
+      channel: 4,
+      client: { name: "agent", version: "1.0" },
+      ...(committed ? { committed } : {}),
+    };
     return tool.handle(args, context);
   };
   return { requests, prompts, timeouts, call };
@@ -485,6 +491,187 @@ describe("core tools (§10.4)", () => {
       status: "failed",
       error: { code: "sherpa.internal_failure" },
     });
+  });
+});
+
+describe("a call commits right before the step nothing takes back (§7.11)", () => {
+  /**
+   * The steps of a call in order. The commit also queues a microtask, which lands right after
+   * the step that follows it only when nothing is awaited between the two.
+   */
+  function steps() {
+    const order: string[] = [];
+    const committed = () => {
+      order.push("committed");
+      queueMicrotask(() => order.push("microtask"));
+    };
+    const approve: ConfirmationPort = {
+      confirm: async () => {
+        order.push("approved");
+        return "approved";
+      },
+    };
+    const answer: Answer = (request) => {
+      order.push(request.capability);
+      return undefined;
+    };
+    return { order, committed, approve, answer };
+  }
+
+  const lunch = { title: "Lunch", start: "2026-11-22T12:00:00Z", end: "2026-11-22T13:00:00Z" };
+  const accepted = (operationID: string | undefined) => ({
+    operationID: operationID!,
+    output: new TextEncoder().encode("{}"),
+    journalFailure: null,
+  });
+
+  test("a planner change asks the planner in the same turn of the event loop", async () => {
+    const { order, committed, answer } = steps();
+    const { call } = harness({ answer });
+    await call("event_create", lunch, undefined, committed);
+    expect(order).toEqual(["committed", "event.create", "microtask"]);
+  });
+
+  test("a delete commits after the approval, right before its request", async () => {
+    const { order, committed, approve, answer } = steps();
+    const { call } = harness({ answer, confirmations: approve });
+    await call("event_delete", { native_locator: "event-1", span: "this" }, undefined, committed);
+    expect(order).toEqual(["event.get", "approved", "committed", "event.delete", "microtask"]);
+  });
+
+  test("a send commits after the approval, right before its command", async () => {
+    const { order, committed, approve } = steps();
+    const { call } = harness({
+      confirmations: approve,
+      commands: {
+        imessageChat: async () => {
+          order.push("imessageChat");
+          return family;
+        },
+        imessageSend: async ({ operationID }) => {
+          order.push("imessageSend");
+          return accepted(operationID);
+        },
+      },
+    });
+    await call("imessage_send", { chat_id: 7, text: "hello" }, undefined, committed);
+    expect(order).toEqual(["imessageChat", "approved", "committed", "imessageSend", "microtask"]);
+  });
+
+  test("a core read commits right before its command", async () => {
+    const { order, committed } = steps();
+    const { call } = harness({
+      commands: {
+        imessageChats: async () => {
+          order.push("imessageChats");
+          return "";
+        },
+      },
+    });
+    await call("imessage_chats", { limit: 1 }, undefined, committed);
+    expect(order).toEqual(["committed", "imessageChats", "microtask"]);
+  });
+
+  test("a signal that aborts once the call committed does not stop its step", async () => {
+    const order: string[] = [];
+    const { call } = harness({
+      answer: (request) => {
+        order.push(request.capability);
+        return undefined;
+      },
+      commands: {
+        mailSend: async ({ operationID }) => {
+          order.push("mailSend");
+          return accepted(operationID);
+        },
+      },
+    });
+    const committing = (name: string, args: Record<string, unknown>) => {
+      const stop = new AbortController();
+      return call(name, args, stop.signal, () => stop.abort());
+    };
+    expect(await committing("event_create", lunch)).toMatchObject({ status: "succeeded" });
+    expect(await committing("reminder_delete", { native_locator: "rem-1" })).toMatchObject({
+      status: "succeeded",
+    });
+    expect(
+      await committing("mail_send", {
+        to: ["a@example.com"],
+        cc: [],
+        bcc: [],
+        subject: "s",
+        body: "b",
+      }),
+    ).toMatchObject({
+      status: "succeeded",
+      effect: { kind: "outbound_dispatch", state: "applied" },
+    });
+    expect(order).toEqual(["event.create", "reminder.get", "reminder.delete", "mailSend"]);
+  });
+
+  test("a call that ends before its step never commits", async () => {
+    const commits: string[] = [];
+    const ends = async (
+      options: Parameters<typeof harness>[0],
+      name: string,
+      args: Record<string, unknown>,
+      signal?: AbortSignal,
+    ) => {
+      const { call } = harness(options);
+      await call(name, args, signal, () => commits.push(name));
+    };
+    const deletion = { native_locator: "event-1", span: "this" };
+    const mail = { to: ["a@example.com"], cc: [], bcc: [], subject: "s", body: "b" };
+    for (const decision of ["declined", "timed_out", "unavailable", "withdrawn"] as const) {
+      await ends({ decisions: [decision] }, "event_delete", deletion);
+      await ends({ decisions: [decision] }, "mail_send", mail);
+    }
+    // The preview read failed, so nobody was asked.
+    await ends(
+      {
+        answer: (request) =>
+          request.capability === "event.get"
+            ? {
+                kind: "response",
+                response: v2Response(request, { status: "failed" }) as WorkerResponse,
+              }
+            : undefined,
+      },
+      "event_delete",
+      deletion,
+    );
+    // The send's arguments were refused before anyone was asked.
+    await ends({}, "imessage_send", { chat_id: 7, text: "" });
+    // The call was cancelled while its chat was read, or while the person was asked.
+    const reading = new AbortController();
+    await ends(
+      {
+        commands: {
+          imessageChat: async () => {
+            reading.abort();
+            return family;
+          },
+        },
+      },
+      "imessage_send",
+      { chat_id: 7, text: "x" },
+      reading.signal,
+    );
+    const asking = new AbortController();
+    await ends(
+      {
+        confirmations: {
+          confirm: async () => {
+            asking.abort();
+            return "approved";
+          },
+        },
+      },
+      "reminder_delete",
+      { native_locator: "rem-1" },
+      asking.signal,
+    );
+    expect(commits).toEqual([]);
   });
 });
 
