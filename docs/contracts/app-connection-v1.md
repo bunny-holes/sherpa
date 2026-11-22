@@ -13,9 +13,10 @@ manner: "경계마다 규칙을 먼저 쓰고 근거를 괄호로 붙인다. 시
 모두 구현됐고, 배포(#31)와 소유자 실기(#29)가 남았다. 2판(2026-11-22, #63)은 [ADR-0012](../adr/0012-in-app-chat.md)
 구현 단계 1 이다. `open` 이 채널 종류를 싣고(§7.3) MCP 스위치는 `mcp` 채널만 닫는다(§7.6, §9). 3판은 같은 ADR 의
 구현 단계 4 의 몫이다. `confirm` 이 그 호출이 온 채널을 싣고, 앱은 확인의 출처를 그 채널의 종류로 가리며, 스위치는
-`mcp` 채널의 확인만 거둔다(§9). 그래서 인사의 `mux` 가 3 이 되고 1 과 2 는 받지 않는다(§7.5). 그 밖의 규칙은 앞
-판 그대로이고, 본문에 "1판" 으로 적은 범위(작업자, 도구 목록, 믿는 범위 등)도 3판에 그대로 이어진다. 링크와 시험이
-이 경로를 읽으므로 파일 이름은 바꾸지 않는다.
+`mcp` 채널의 확인만 거둔다(§9). 그래서 인사의 `mux` 가 3 이 되고 1 과 2 는 받지 않는다(§7.5). 같은 3판에 단계 4 의
+다음 몫이 채널 종류 `chat` 과 그 첫 메시지인 모델 목록(§7.11)을 더했다. 종류를 더한 것이라 `mux` 는 3 그대로다. 그
+밖의 규칙은 앞 판 그대로이고, 본문에 "1판" 으로 적은 범위(작업자, 도구 목록, 믿는 범위 등)도 3판에 그대로 이어진다.
+링크와 시험이 이 경로를 읽으므로 파일 이름은 바꾸지 않는다.
 MCP 는 2026-07-28 만 받는다(소유자 결정 2026-11-22, [ADR-0011](../adr/0011-mcp-2026-07-28-only.md), §10.1). ADR-0010 2단계의
 두 작업, 코어 MCP 서버(bunny-holes/sherpa#27)와 `Sherpa.app`·`sherpa-relay`(bunny-holes/sherpa#28)는 이 문서만 보고
 동시에 만들고, 상대 쪽 없이 자기 쪽을 시험한다.
@@ -57,12 +58,12 @@ sherpa-relay ──Unix 소켓──▶ Sherpa.app ──stdin/stdout 프레임�
 정하지 않는 것: 메뉴와 창의 생김새, 공증·cask·formula 이전(3단계), 로그인 항목과 중계가 앱을 띄우는 동작(ADR-0010 의 미확인), 헬퍼 번들을 걷어 낸 뒤 `sherpa` 명령이 EventKit 에
 닿는 길(§11).
 
-판: 프레임은 `mux: 3`, 머리말은 `sherpa_app: 1`, 도구 결과는 `sherpa.mcp.tool-outcome.v1` 이다. 호환되지 않는
-변경은 그 숫자를 올리고 이 문서의 새 판을 낸다. [계약] 2판은 `open` 에 채널 종류를 실으며 `mux` 를 1 에서 2 로
-올렸다. [계약; ADR-0012 "앱과 코어 사이 채널"] 3판은 `confirm` 본문에 `channel` 을 더하며 `mux` 를 2 에서 3 으로
-올렸다. 앱은 정해진 키만 가진 `confirm` 본문을 읽으므로(§9), 판이 섞이면 2판의 앱은 3판 코어의 확인을, 3판의 앱은
-2판 코어의 확인을 모두 잘못된 본문으로 보고 `unavailable` 로 답한다. 인사가 그 섞임을 확인 전에 가려 낸다(§7.5).
-머리말과 도구 결과의 숫자는 그대로다. [계약; ADR-0012 "확인 흐름"]
+판: 프레임은 `mux: 3`, 머리말은 `sherpa_app: 1`, 도구 결과는 `sherpa.mcp.tool-outcome.v1`, 채팅 채널의 메시지는
+`sherpa.chat.v1`(§7.11)이다. 호환되지 않는 변경은 그 숫자를 올리고 이 문서의 새 판을 낸다. [계약] 2판은 `open` 에
+채널 종류를 실으며 `mux` 를 1 에서 2 로 올렸다. [계약; ADR-0012 "앱과 코어 사이 채널"] 3판은 `confirm` 본문에
+`channel` 을 더하며 `mux` 를 2 에서 3 으로 올렸다. 앱은 정해진 키만 가진 `confirm` 본문을 읽으므로(§9), 판이 섞이면
+2판의 앱은 3판 코어의 확인을, 3판의 앱은 2판 코어의 확인을 모두 잘못된 본문으로 보고 `unavailable` 로 답한다. 인사가
+그 섞임을 확인 전에 가려 낸다(§7.5). 머리말과 도구 결과의 숫자는 그대로다. [계약; ADR-0012 "확인 흐름"]
 
 ## 2. 번들과 실행 파일
 
@@ -458,13 +459,16 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 ### 7.1 코어 실행
 
 - 앱은 코어 하나를 `Contents/MacOS/sherpa-core app serve` 로 띄우고 표준 입력·출력·오류를 파이프로 잇는다.
-  코어는 소켓을 열지 않고 이 파이프만 읽는다. [소유자, ADR-0010 결정 2] 코어는 어느 명령이든 시작할 때
+  코어는 앱과 이 파이프로만 주고받고 듣는 소켓을 열지 않는다. 코어가 여는 연결은 채팅 채널(§7.11)이 사람이 고른
+  제공자의 출처로 내는 HTTPS 요청뿐이다. [소유자, ADR-0012 결정 3 이 ADR-0010 결정 2 를 고쳤다] 코어는 어느 명령이든 시작할 때
   `globalThis.fetch` 를 모든 호출을 거부하는 함수로, `globalThis.WebSocket` 을 모든 연결을 거부하는 생성자로
   바꾸고(`core/src/chat/egress.ts`), 둘 다 다시 쓰거나 재정의하지 못하게 한다. 코어 린트 규칙은
   소켓·HTTP·WebSocket·이름 풀이 API 를 `core/src` 어디서나, `fetch` 를 그 모듈 밖에서 막는다. 린트는 코어가
   번들하는 패키지를 보지 않으므로, 그 패키지가 전역 `fetch`·`WebSocket` 으로 가는 길은 시작 때의 거부가
   막는다. [계약; ADR-0012 "코드로 지키기"] 빌드한 코어는 MCP 연결을 받는 동안 인터넷 소켓도 듣는 Unix 소켓도
-  쥐지 않는다. [실측: `core/tests/stdio/egress.test.ts`]
+  쥐지 않는다. 나가는 길이 막는 출처(평문 http 루프백)의 모델 목록은 연결 없이 `egress_denied` 로 끝나고, 그 뒤에도
+  소켓이 없다. 자체 서명 인증서의 https 루프백 출처에는 연결하지만 TLS 확인이 거부해 그 서버의 처리기에 요청이
+  닿지 않는다. [실측: `core/tests/stdio/egress.test.ts`]
 - 환경은 물려주지 않는다. `HOME`, `TMPDIR`, `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, `LOG_LEVEL` 만 넘긴다.
   [계약]
 - 앱이 띄운 자식은 앱의 전체 디스크 접근 권한으로 판정된다. [실측] 코어가 띄우는 `osascript` 의 Apple Events
@@ -501,14 +505,14 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 | 0 | `confirmation` | 앱 → 코어 | §9 | 확인 결과 |
 | 0 | `withdraw` | 코어 → 앱 | `{"id":N}` | 확인 요청을 거둔다 |
 | 0 | `fatal` | 코어 → 앱 | `{"code":"mux.…"}` | 코어가 프로토콜 위반으로 곧 끝난다 |
-| 1 이상 | `open` | 앱 → 코어 | `{"kind":"mcp"}` | 그 종류의 채널이 생겼다. `mcp` 는 확인된 중계 연결 하나다 |
-| 1 이상 | `data` | 양방향 | MCP JSON-RPC 메시지 하나 | |
+| 1 이상 | `open` | 앱 → 코어 | `{"kind":"mcp"}` 또는 `{"kind":"chat"}` | 그 종류의 채널이 생겼다. `mcp` 는 확인된 중계 연결 하나, `chat` 은 앱 안 채팅 하나다(§7.11) |
+| 1 이상 | `data` | 양방향 | `mcp` 는 MCP JSON-RPC 메시지 하나, `chat` 은 `sherpa.chat.v1` 메시지 하나 | |
 | 1 이상 | `close` | 양방향 | 없음 또는 `{"reason":"…"}` | 채널의 끝 |
 
 - 같은 파이프에 쓰는 프레임은 한 덩이로 쓰고 서로 끼어들지 않게 한다. [계약]
 - `open` 의 본문은 키 `kind` 하나만 가진 JSON 객체이고, 그 값은 형식과 같은 문법의 낱말(`1*16(%x61-7A / "-")`)인
-  채널 종류다. 3판의 코어가 받는 종류는 `mcp`(중계 연결 하나, §7.6) 하나다. 채팅 채널의 `chat` 은 채팅 루프 작업
-  (bunny-holes/sherpa#66)이 더한다. [계약; ADR-0012 "앱과 코어 사이 채널"]
+  채널 종류다. 3판의 코어가 받는 종류는 `mcp`(중계 연결 하나, §7.6)와 `chat`(채팅 하나, §7.11) 둘이다. [계약;
+  ADR-0012 "앱과 코어 사이 채널"]
 - 표에 없는 조합(채널 0 의 `data`, 채널 1 이상의 `hello` 등), 문법 위반, 인사 전의 다른 프레임, 살아 있는 채널의
   두 번째 `open` 은 프로토콜 위반이다. 코어는 `fatal` 을 쓰고 65 로 끝난다. 앱은 코어 출력에서 위반을 보면
   코어를 끝낸다(§7.8 의 재시작 규칙을 따른다). [계약]
@@ -527,9 +531,9 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
   모른다고 코어를 끝내면 다른 채널의 연결과 진행 중 호출이 모두 끊긴다(§7.8). [추론]
 - 닫힌 채널이나 모르는 채널의 `data`·`close` 는 닫기와 엇갈린 것이므로 위반이 아니다. debug 로그만 남기고
   버린다. [계약]
-- `data` 본문이 JSON 이 아니면 프레임 위반이 아니라 그 연결의 MCP 오류다. 코어는 그 채널에
+- `mcp` 채널의 `data` 본문이 JSON 이 아니면 프레임 위반이 아니라 그 연결의 MCP 오류다. 코어는 그 채널에
   `{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}` 를 보내고 연결을 유지한다.
-  [계약]
+  `chat` 채널에서는 `error` `invalid_message` 를 보내고 채널을 유지한다(§7.11). [계약]
 
 ### 7.4 크기
 
@@ -546,7 +550,8 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
   더 쌓지 않고 위반으로 다룬다. worker-protocol 의 "enforce bounds while streaming" 과 같은 규칙이다. [계약]
 - 중계에서 온 한 줄이 4 MiB 를 넘으면 앱은 그 채널에 `close` `{"reason":"message_too_large"}` 를 보내고 소켓을
   닫는다. 중계는 75 로 끝난다. 앱은 MCP 를 해석하지 않으므로 JSON-RPC 오류로 답할 수 없다. [계약]
-- 코어는 4 MiB 를 넘는 `data` 를 만들지 않는다. §10.5 의 1 MiB 결과 한도가 이를 보장한다. [계약]
+- 코어는 4 MiB 를 넘는 `data` 를 만들지 않는다. `mcp` 채널은 §10.5 의 1 MiB 결과 한도가, `chat` 채널은 §7.11 의
+  한도(모델 id 1,000개, 하나에 256 바이트)가 이를 보장한다. [계약]
 
 ### 7.5 인사
 
@@ -629,6 +634,120 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
   기다림은 종료 시작 때 이미 받은 요청의 가장 늦은 마감까지이고, 고정 상한 35초를 넘지 않는다. [계약]
 - 코어는 표준 입력 EOF 를 받으면 모든 세션을 닫고 5초 안에 0 으로 끝난다. 앱은 5초 뒤 SIGTERM, 10초 뒤 SIGKILL
   을 보내고, 그다음 중계 소켓을 닫는다. [계약]
+
+### 7.11 채팅 채널
+
+앱이 `N\topen\t{"kind":"chat"}` 로 연 채널 하나가 앱 안 채팅 하나다. [계약; ADR-0012 "앱과 코어 사이 채널"] 이
+판의 코어는 모델 목록만 받는다. 차례(`turn`·`cancel` 과 `delta`·`tool`·`done`)와 대화 상태(`resume`·`state`)는
+구현 단계 4(bunny-holes/sherpa#66)의 다음 작업이 이 절에 더하고, 그때 `error` 의 코드와 `in_reply_to` 의 값도
+늘어난다. [계약]
+
+- `data` 하나에 `sherpa.chat.v1` 메시지 하나를 싣는다. 메시지는 UTF-8 JSON 객체이고 `type` 으로 가른다. 앱과
+  코어는 한 번들로 나가고 인사에서 버전이 같아야 하므로(§7.5) 메시지마다 판을 싣지 않는다. 호환되지 않는 변경은
+  이름의 판을 올리고 이 문서의 새 판을 낸다. [계약]
+- 코어는 채팅 채널을 넷까지 둔다. 넷이 열려 있을 때 온 `open` 은 그 채널만 `N\tclose\t{"reason":"chat_limit"}`
+  로 닫고 warn 로그를 남긴다(§12). 앱이 닫은 채널은 자리를 비운다. 1판의 앱은 채팅을 하나만 열고 새 채팅을 열면
+  앞 채널을 닫으므로, 넷은 닫기가 늦게 닿는 동안의 여유다. [계약; ADR-0012 "앱과 코어 사이 채널", "메모리와 크기"]
+- 앱이 채널을 닫거나 코어의 표준 입력이 끝나면 그 채널에서 도는 요청은 멈추고 답하지 않는다. [계약]
+
+| 방향 | `type` | 키 | 뜻 |
+| --- | --- | --- | --- |
+| 앱 → 코어 | `list_models` | `provider`, `api_key`, `base_url`(OpenAI 호환만) | 제공자의 모델 목록을 묻는다 |
+| 코어 → 앱 | `models` | `models`(모델 id 의 배열), `truncated` | `list_models` 의 답 |
+| 코어 → 앱 | `error` | `in_reply_to`, `code`, `retryable`, `status` | 앞의 메시지가 답 없이 끝났다 |
+
+- `provider` 는 `anthropic`, `openai`, `google`, `openai-compatible` 중 하나다. 앞의 셋은 코어가 출처를 정하므로
+  `base_url` 을 싣지 않고 `api_key` 가 있어야 한다. `openai-compatible` 은 `base_url` 이 있어야 하고, 키가 없는
+  서버면 `api_key` 를 빼고 보낸다. 그러면 코어는 인증 머리말 없이 묻는다. [계약; ADR-0012 "제공자 면", "OpenAI
+  호환의 base URL"]
+- `api_key` 는 1~512 바이트의 `!`~`~`(0x21~0x7E)다. 공백과 줄바꿈이 없으므로 머리말을 깨지 못한다. `base_url` 은
+  2,048 바이트까지이고 제어 문자가 없다. 다른 키, 빠진 키, 이 한도를 넘는 값은 `invalid_message` 다. [계약]
+- `base_url` 이 나가는 길의 규칙(https, userinfo·query·fragment 없음, §7.1)을 어기면 요청 없이 `egress_denied` 다.
+  https 루프백(`https://localhost`, `https://127.0.0.1` 등)은 이름으로 막지 않는다. 규칙은 https 와 코어가 믿는
+  인증서이고, 믿지 않는 인증서는 `provider_certificate` 로 끝난다. [소유자, 2026-11-22; ADR-0012 "OpenAI 호환의
+  base URL"]
+- 키는 그 메시지에만 있다. 코어는 키를 그 요청의 머리말에만 쓰고 답을 보내면 놓는다. 키는 로그, `error`, 다른
+  프레임 어디에도 없다. 앱은 메시지마다 키를 키체인에서 읽어 싣는다. [계약; ADR-0012 "키"]
+- `list_models` 마다 답이 하나 온다. `models` 이거나, `in_reply_to` 가 `"list_models"` 인 `error` 다. 답을 기다리는
+  동안 온 둘째 `list_models` 는 곧바로 `busy` 를 받고, 도는 것은 그대로 돈다. 코어는 답을 쓰기 전에 다음 요청을 받을
+  준비를 마치므로, 앱은 답을 받자마자 다음 것을 보내도 된다. [계약]
+- 읽지 못한 `data`(UTF-8 JSON 객체가 아님, `type` 이 없거나 이 판에 없음)는 `in_reply_to` 가 `null` 인
+  `invalid_message` 이고, 모양이 틀린 `list_models` 는 `in_reply_to` 가 `"list_models"` 인 `invalid_message` 다.
+  어느 것도 채널을 닫지 않는다. 같은 번들의 앱이 보냈다면 결함이다. [계약]
+
+| `provider` | 목록 요청 | 키를 싣는 머리말 | 다음 쪽 | 남기는 모델 |
+| --- | --- | --- | --- | --- |
+| `anthropic` | `GET https://api.anthropic.com/v1/models?limit=1000` | `x-api-key`. `anthropic-version: 2026-10-21` 을 함께 싣는다 | `has_more` 가 참이면 `after_id=<last_id>` | `lifecycle` 이 `active` 이거나 없는 것 |
+| `openai` | `GET https://api.openai.com/v1/models` | `authorization: Bearer <키>` | 없음 | 모두 |
+| `google` | `GET https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000` | `x-goog-api-key` | `nextPageToken` 이 비어 있지 않으면 `pageToken=<값>` | 모두. id 는 `name` 에서 `models/` 를 뗀 것이고, 그렇게 시작하지 않는 이름은 뺀다 |
+| `openai-compatible` | `GET <base_url>/models`(`base_url` 끝의 `/` 는 뗀다) | 키가 있을 때만 `authorization: Bearer <키>` | 없음 | 모두 |
+
+[문서: Anthropic [List Models](https://platform.claude.com/docs/en/api/models/list), OpenAI [List
+models](https://developers.openai.com/api/reference/resources/models/methods/list), Google
+[Models](https://aistudio.google.com/api-reference/models); 키를 싣는 머리말은 `@ai-sdk/anthropic` 4.0.107·
+`@ai-sdk/openai` 4.0.122·`@ai-sdk/google` 4.0.124·`@ai-sdk/openai-compatible` 3.0.94 가 싣는 것과 같다]
+`anthropic-version` 은 SDK 의 기본(2023-06-01)이 아니라 차례에 쓸 판과 같은 2026-10-21 이다(ADR-0012 "Anthropic API
+판"). [계약]
+
+- Anthropic 은 active 모델만 남긴다(ADR-0012 결정 7). 요청 인자 `lifecycle` 대신 답에서 거른다. 문서가 그 배열
+  인자의 URL 표기를 적지 않았기 때문이다. OpenAI 와 Google 은 거르지 않는다. 채팅에 쓰지 못하는 모델도 섞이지만
+  id 로 짐작하지 않고, 고른 모델이 거절되면 그 오류를 보인다. Google 문서의 예는 키를 `?key=` 에 싣지만 코어는
+  머리말로만 보내 키가 URL 에 남지 않는다. [계약; ADR-0012 "비용과 모델 선택"]
+- `models` 는 제공자가 준 차례를 지키고 같은 id 는 한 번만 싣는다. 비어 있을 수 있다. [계약]
+
+| 대상 | 한도 | 넘으면 |
+| --- | --- | --- |
+| 모델 id 하나 | 1~256 바이트의 온전한 UTF-8, 제어 문자 없음 | 그 id 를 빼고 센다(§12 의 `skipped`) |
+| `models` 의 id | 1,000개 | 거기서 멈추고 `truncated: true` |
+| 요청 | `list_models` 하나에 10번 | 거기서 멈추고 `truncated: true` |
+| 응답 몸 하나 | 풀어 낸 바이트로 4 MiB | 더 읽지 않고 `provider_invalid_response` |
+| `list_models` 하나 | 모든 쪽을 합쳐 30초 | 요청을 멈추고 `timeout` |
+
+- id 한도는 `models` 가 4 MiB `data`(§7.4)에 늘 들어가게 한다. 응답 한도는 설명과 가격을 함께 싣는 OpenAI 호환
+  모음 서버의 목록도 받게 한다. 그런 서버의 공개 목록인 `GET https://openrouter.ai/api/v1/models` 가 2026-11-22 에
+  925,503 바이트였다. [계약; 실측: 이 Mac 에서 `curl` 로 잰 응답 크기]
+- 응답 몸은 풀어 낸 바이트로 센다. `content-encoding` 이 없는 몸은 `content-length` 가 한도를 넘으면 읽지 않고
+  거절하고, 압축한 몸은 읽으면서 센다. Bun 1.4.5 의 `fetch` 는 gzip 몸을 풀어 내주면서 `content-length` 는 압축한
+  길이로 두기 때문이다. [계약; 실측: Bun 1.4.5 의 `fetch` 로 gzip 몸을 내는 로컬 서버를 읽은 2026-11-22 의 탐침]
+
+| `code` | `retryable` | `status` | 언제 |
+| --- | --- | --- | --- |
+| `invalid_message` | 거짓 | `null` | 읽지 못했거나 모양이 틀린 메시지 |
+| `busy` | 거짓 | `null` | 답을 기다리는 `list_models` 가 있다 |
+| `egress_denied` | 거짓 | `null` | 나가는 길이 막은 `base_url`, 또는 제공자의 리디렉트(§7.1) |
+| `network` | 참 | `null` | 연결이 맺어지지 않았거나 끊겼다(이름 풀이, 거부, 끊김) |
+| `timeout` | 참 | `null` | 30초 안에 끝나지 않았다 |
+| `provider_certificate` | 거짓 | `null` | 출처의 인증서를 코어가 믿지 않는다 |
+| `provider_auth` | 거짓 | 401·403 | 제공자가 키를 거절했다 |
+| `provider_rate_limited` | 참 | 429 | 제공자가 요청 수를 막았다 |
+| `provider_unavailable` | 참 | 408·409·5xx | 제공자가 지금 답하지 못한다 |
+| `provider_rejected` | 거짓 | 그 밖의 4xx | 제공자가 요청을 거절했다. 목록 끝점이 없는 OpenAI 호환 서버의 404 도 이것이다 |
+| `provider_invalid_response` | 거짓 | 그 응답의 상태 | 2xx 인데 몸이 한도를 넘거나, UTF-8 JSON 이 아니거나, 모양이 다르다 |
+| `internal` | 거짓 | `null` | 코어의 결함 |
+
+- `retryable` 이 참이면 앱은 "다시" 를 보이고, 누르면 새 `list_models` 다. 코어는 스스로 다시 보내지 않는다. HTTP
+  상태는 AI SDK 의 `APICallError` 처럼 읽는다(408·409·429·5xx 가 다시 해 볼 만하다). 차례의 오류도 같은 규칙을
+  따르게 하려는 것이다. [계약; 문서: `@ai-sdk/provider` 4.0.39 `src/errors/api-call-error.ts`]
+- Bun 1.4.5 의 `fetch` 는 믿지 않는 인증서를 `TypeError` 로 거부하고, 그 `code` 에 Node 의 OpenSSL 오류
+  이름(`DEPTH_ZERO_SELF_SIGNED_CERT`, `SELF_SIGNED_CERT_IN_CHAIN`, `UNABLE_TO_VERIFY_LEAF_SIGNATURE` 등)을 싣는다.
+  코어는 그 이름들과 `ERR_TLS_CERT_ALTNAME_INVALID` 를 `provider_certificate` 로, 그 밖의 연결 실패를 `network` 로
+  읽는다. 자체 서명 인증서의 https 루프백 서버에는 연결하지만 그 처리기에 요청이 닿지 않는다. [실측:
+  `core/tests/stdio/egress.test.ts`; 문서: Node.js [OpenSSL error
+  codes](https://nodejs.org/api/errors.html#openssl-error-codes)] 사람이 더한 루트 인증서를 빌드한 코어가 믿는지는
+  재지 않았다(§16). [미확인]
+
+보기(`→` 는 앱, `←` 는 코어가 쓴다):
+
+```text
+→ 3\topen\t{"kind":"chat"}\n
+→ 3\tdata\t{"type":"list_models","provider":"openai-compatible","base_url":"https://models.example/v1"}\n
+← 3\tdata\t{"type":"models","models":["m-1","m-2"],"truncated":false}\n
+→ 3\tdata\t{"type":"list_models","provider":"openai-compatible","base_url":"http://127.0.0.1:8080/v1"}\n
+← 3\tdata\t{"type":"error","in_reply_to":"list_models","code":"egress_denied","retryable":false,"status":null}\n
+→ 3\tdata\t{"type":"x"}\n
+← 3\tdata\t{"type":"error","in_reply_to":null,"code":"invalid_message","retryable":false,"status":null}\n
+← 7\tclose\t{"reason":"chat_limit"}\n        넷이 열려 있을 때 연 채팅 채널
+```
 
 ## 8. 앱 작업 요청
 
@@ -1047,11 +1166,25 @@ result         object | null
     `info [core:egress:fetch] abandoned ms=<걸린 시간>`(차례의 신호로 멈춘 요청),
     `error [core:egress:fetch] failure error_type=<오류 이름> code=<Bun 의 한 낱말 코드> ms=<걸린 시간>`. `code` 는
     오류에 한 낱말 코드가 있을 때만 붙는다.
+- 채팅 채널(§7.11)의 줄은 아래와 같다. 키, 메시지 본문, 제공자 응답 몸은 싣지 않는다. 제공자는 이름으로만 적고
+  `base_url` 과 그 출처도 싣지 않는다. 앞의 세 제공자는 이름이 출처를 정하고, OpenAI 호환의 출처는 사람이 적은
+  호스트 이름이다. [계약; 줄은 `core/src/chat/session.ts`]
+  - `info [core:chat:list-models] start channel=N provider=<제공자>`
+  - `info [core:chat:list-models] success channel=N provider=<제공자> models=<수> pages=<요청 수> skipped=<뺀 id 수> truncated=<true|false> ms=<걸린 시간>`
+  - `warn [core:chat:list-models] failure channel=N provider=<제공자> code=<코드> status=<HTTP 상태|none> ms=<걸린 시간>`:
+    `error` 로 끝난 목록. 코어의 결함은 `error [core:chat:list-models] failure … code=internal error_type=<오류 이름>
+    ms=<걸린 시간>` 이다.
+  - `info [core:chat:list-models] abandoned channel=N provider=<제공자> ms=<걸린 시간>`: 채널이 닫혀 멈춘 목록.
+  - `warn [core:chat:list-models] refused channel=N reason=busy`
+  - `warn [core:chat:message] refused channel=N reason=<not_json|unknown_type|schema> bytes=<바이트 수>`
+  - `warn [core:chat:open] refused channel=N reason=chat_limit chats=4`
 - 남겨도 되는 값: 채널 번호와 종류, 도구와 capability 이름, `operation_id`, 작업 요청 `id`, 상태와 HTTP 상태, 오류
   코드와 오류 이름, 거부 사유, 뺀 `fetch` 선택지의 이름, `retry`, 걸린 시간, 바이트 수, 종료 코드와 신호, 상대의
-  pid 와 서명 식별자, mux·앱·코어 버전, 확인 결과 낱말, 요청 봉투 `clientInfo` 의 이름과 버전. [계약]
+  pid 와 서명 식별자, mux·앱·코어 버전, 확인 결과 낱말, 요청 봉투 `clientInfo` 의 이름과 버전, 채팅 제공자의 이름,
+  모델 수와 요청 수. [계약]
 - 남기면 안 되는 값: MCP 메시지 본문, 도구 인자와 결과, 확인 미리보기, 제목·이름·전화번호·메일 주소·대화
-  id·`native_locator`, 메시지와 메일 본문, 홈 경로와 사용자 이름이 든 경로(소켓 절대 경로 포함). [계약;
+  id·`native_locator`, 메시지와 메일 본문, 홈 경로와 사용자 이름이 든 경로(소켓 절대 경로 포함), API 키, 채팅
+  메시지 본문, 제공자 요청·응답 몸, OpenAI 호환의 `base_url` 과 그 출처. [계약;
   아키텍처 품질 목표 6, worker-protocol 의 "Sensitive values"]
 
 ## 13. 시험 층
@@ -1066,8 +1199,14 @@ result         object | null
 - 프레임: §14 의 벡터 전부, 형식별 한도의 경계값(한도와 한도 + 1), 읽는 도중 한도를 넘으면 더 쌓지 않음.
 - 다중화: `open`·`data`·`close` 순서, 닫힌 채널과 엇갈린 프레임, 두 번째 `open` 위반, 인사 순서와 `mux`
   불일치(`fatal`, 65). Mux 1·2 앱 인사는 `mux.version_unsupported`, 본문 없는 `open` 과 모양이 틀린 종류는
-  `mux.frame_invalid`. 받지 않는 종류(`chat`, 객체 원형의 이름 `constructor`)의 `open` 은 그 채널만
-  `unsupported_kind` 로 닫고, 그 번호의 다음 `open` 은 위반이며, 다른 채널은 계속 돈다.
+  `mux.frame_invalid`. `mcp` 와 `chat` 의 `open` 은 그 종류의 처리기에 닿는다. 받지 않는 종류(`no-such-kind`,
+  객체 원형의 이름 `constructor`)의 `open` 은 그 채널만 `unsupported_kind` 로 닫고, 그 번호의 다음 `open` 은
+  위반이며, 다른 채널은 계속 돈다.
+- 채팅 채널(§7.11): 메시지 모양과 한도의 경계값(키 512 바이트와 513, base URL 2,048 바이트와 그 너머), 읽지 못한
+  메시지의 `invalid_message` 와 그 `in_reply_to`, 제공자마다 나가는 목록 요청의 URL 과 머리말(키는 머리말에만 있고
+  Google 에 `?key=` 가 없음), 쪽 넘김과 Anthropic 의 active 거르기, id·요청·응답 한도와 `truncated`, HTTP 상태·인증서
+  ·연결 실패의 코드와 `retryable`, `busy`, `timeout`, 닫힘의 중단, 다섯째 채널의 `chat_limit`, 로그(debug 포함)와
+  다른 프레임에 키가 없음. 런타임 `fetch` 는 나가는 길 뒤의 가짜다.
 - 작업 요청: `id` 상관, 늦은 응답 버림, 시간 초과에서 읽기와 변경의 구분, `report` 모양 옮기기.
 - 확인: `approved`·`declined`·`unavailable`·30초 초과, 취소와 연결 끊김의 `withdraw`, `withdraw` 뒤 답 무시,
   실행이 원래 호출 안에서만 일어남. `confirm` 본문은 앱이 읽는 여덟 키만 가지고 `channel` 은 그 호출의 채널임.
@@ -1095,7 +1234,7 @@ stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). �
   삭제의 `confirm` 은 `channel` 이 2 와 3 임.
 - 호출 중 `close` → 답이 없고 코어는 계속 돈다.
 - Mux 2 앱 인사 → `fatal` `mux.version_unsupported` 와 65, 작업 요청 없음, 표준 오류의 `app_mux=2`. 본문 없는 `open`
-  → `fatal` `mux.frame_invalid` 와 65. `chat` 종류의 `open` → 그 채널에 `close` `unsupported_kind` 와 warn 로그,
+  → `fatal` `mux.frame_invalid` 와 65. 받지 않는 종류의 `open` → 그 채널에 `close` `unsupported_kind` 와 warn 로그,
   그 채널의 `data` 는 답이 없고, 다음 채널은 열리며, 표준 입력 EOF 뒤 0.
 - 한도를 넘는 줄 → `fatal` 과 65. 표준 입력 EOF → 5초 안에 0.
 - 나가는 길(§7.1, `egress.test.ts`): 인사부터 두 MCP 연결, 읽기 호출, 사람을 기다리는 삭제 호출까지 코어에 인터넷
@@ -1103,7 +1242,10 @@ stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). �
   내지 않으므로 시험 프로세스의 듣는 소켓과 코어의 fd 0–2 를 먼저 보는 양성 대조를 둔다. `--version` 도 전역
   `fetch` 와 `WebSocket` 을 거부로 바꾼 줄(§12)을 남긴다. 리디렉트 회귀: 차례 `fetch` 가 넘긴 요청의 307·302 를 Bun 의
   `redirect: "error"` 가 따르지 않아 `redirect` 로 거부되고, 리디렉트 대상에는 요청이 가지 않는다. 이 시험만 빌드한
-  코어 대신 시험을 돌리는 Bun(선언한 판) 위에서 `core/src/chat/egress.ts` 를 로컬 서버에 돌린다.
+  코어 대신 시험을 돌리는 Bun(선언한 판) 위에서 `core/src/chat/egress.ts` 를 로컬 서버에 돌린다. 채팅 채널의 모델
+  목록: 평문 http 루프백 출처는 `egress_denied` 이고 그 서버에 연결이 오지 않으며 코어에 소켓이 없다. 자체 서명
+  인증서의 https 루프백 출처는 `provider_certificate` 이고 그 서버의 처리기에 요청이 닿지 않는다. 두 경우 모두 키가
+  표준 오류와 프레임에 없다.
 - 실제 시계(`waits.test.ts`): 답 없는 확인은 30초에 `withdraw` 되고 호출은 `confirmation.timed_out` 으로 실패하며
   늦은 승인은 아무것도 돌리지 않는다. 답 없는 발견은 5초 뒤 core 도구만 남기고 늦은 답은 버린다. planner 작업자가
   없는 앱은 core 도구를 곧바로 받는다.
@@ -1272,7 +1414,7 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 5\tdata\t{"jsonrpc":"2.0","method":"x"}\n   닫힌 채널: 버리고 debug 로그
 1\tdata\tnot json\n                         그 채널에 -32700 오류, 연결 유지
 0\tresponse\t{"id":99,"report":{"error":"x","status":"failed"}}\n   모르는 id(늦은 응답): 버리고 warn 로그
-1\topen\t{"kind":"chat"}\n                  받지 않는 종류: 그 채널에 1\tclose\t{"reason":"unsupported_kind"}\n, 코어는 계속 돈다
+1\topen\t{"kind":"no-such-kind"}\n          받지 않는 종류: 그 채널에 1\tclose\t{"reason":"unsupported_kind"}\n, 코어는 계속 돈다
 ← 0\tconfirm\t{"id":4,"tool":"reminder_delete","operation_id":"op-3","client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}\n   channel 없는 확인: 앱은 창 없이 → 0\tconfirmation\t{"id":4,"decision":"unavailable"}\n 로 답한다
 ```
 
@@ -1336,6 +1478,10 @@ not json\n                                                                      
 - 내보낸 앱의 메뉴 막대 아이콘이 보이는지와 미리보기 앱에서 보이지 않은 원인, 메뉴의 Quit, 오래 켜 둔 앱과 코어의
   메모리. 2026-11-21 의 #29 실기에서 재지 않았다.
 - 도구별 결과 스키마. Swift 와 ObjC 응답의 null 키 차이가 정리된 뒤 정한다.
+- 채팅 채널의 모델 목록(§7.11): 네 제공자의 실제 목록 응답이 문서의 모양과 같은지, Anthropic 의 `/v1/models` 가
+  `anthropic-version: 2026-10-21` 을 받는지, Google 이 `pageSize=1000` 을 받는지. 목록은 유료 호출이 아니지만
+  소유자의 키가 있어야 하므로 소유자 실기(bunny-holes/sherpa#68)에서 잰다. 사람이 더한 루트 인증서나 시스템 프록시
+  뒤의 https 출처를 빌드한 코어가 믿는지도 재지 않았다(ADR-0012 "아직 확인 전").
 - MCP 스위치와 상태 창의 실기(§13.4): "?" 팝오버로 바꾼 창, 메뉴의 켜고 끄기, 복사한 명령, 긴 설치 경로에서 #52 가
   고쳐졌는지. 게이트는 서버의 동작과 명령 글만 보고, 창의 배치는 보지 않는다.
 

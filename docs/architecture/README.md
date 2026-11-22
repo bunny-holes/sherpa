@@ -39,6 +39,7 @@ sherpa — Bun + TypeScript core (one compiled executable, core/)
     |-- commands.ts ------- the core commands both the CLI and the MCP tools call
     |-- app/ -------------- `sherpa app serve`: Mux 3 frames, control channel,
     |                       one MCP transport per `mcp` channel (app-connection-v1 §7–§9)
+    |                       and one chat session per `chat` channel (§7.11)
     |-- mcp/ -------------- tool registry, input schemas, outcome envelope,
     |                       confirmation previews (app-connection-v1 §10)
     |-- planner/ ---------- planner port: Worker Protocol V2 request and reply,
@@ -49,7 +50,8 @@ sherpa — Bun + TypeScript core (one compiled executable, core/)
     |-- imessage/ --------- Messages chat.db reads, Messages send through osascript
     |-- kakaotalk/ -------- KakaoTalk SQLCipher reads, key derivation, setup,
     |                       local-text checkpoint
-    |-- chat/ ------------- egress, the core's only way to the network (ADR-0012)
+    |-- chat/ ------------- egress, the core's only way to the network (ADR-0012);
+    |                       chat sessions and model lists (app-connection-v1 §7.11)
     `-- apple/ ------------ hands Worker Protocol V2 requests to the helper
             |
             v
@@ -106,29 +108,33 @@ register the bundled relay with Claude Code and Codex. The app copies them and
 never writes an agent's configuration (contract §2 "MCP 켜기와 연결 안내"). The app and relay are not released yet (notarized cask,
 bunny-holes/sherpa#31), and the CLI keeps the helper path above until then.
 
-Today no Sherpa process makes a network connection. The core reads only the
-pipes the app opened for it (contract §7.1), opens no socket, and has no path
-to `fetch`: the turn fetch in `core/src/chat/egress.ts` holds the runtime's
-`fetch` but has no caller yet. Every core command starts with
-`globalThis.fetch` refusing every call and `globalThis.WebSocket` refusing
-every connection, so a bundled package that falls back to either global
-reaches nothing. Lint rules keep `fetch` out of every other module and every
-socket, HTTP, WebSocket, and name-lookup API out of `core/src`, and a stdio
-test checks with `lsof` that the built core holds no internet or listening
-socket while it serves MCP. The app listens only on its
+The one network connection a Sherpa process makes is the core's HTTPS request
+to the provider origin the person chose, and today only a chat channel's model
+list (`list_models`, contract §7.11) sends one. The core reads only the pipes
+the app opened for it (contract §7.1) and listens on no socket. Every core
+command starts with `globalThis.fetch` refusing every call and
+`globalThis.WebSocket` refusing every connection, so a bundled package that
+falls back to either global reaches nothing; a model list leaves only through
+the turn fetch in `core/src/chat/egress.ts`, as HTTPS to that one origin
+without following a redirect. Lint rules keep `fetch` out of every other
+module and every socket, HTTP, WebSocket, and name-lookup API out of
+`core/src`, and stdio tests check with `lsof` that the built core holds no
+internet or listening socket while it serves MCP or refuses a model list for a
+plain-HTTP origin. The app listens only on its
 Unix socket for relays, and the relay connects only to that socket. [ADR-0012](../adr/0012-in-app-chat.md)
 (owner decision 2026-11-22, bunny-holes/sherpa#59) amends ADR-0010 decision 2
-for an in-app chat that is not built yet. When it lands, `sherpa app serve` runs
-the chat loop in a new `core/src/chat/` module on the Vercel AI SDK v7. The chat
+for an in-app chat whose turns are not built yet. When they land,
+`sherpa app serve` runs the chat loop in `core/src/chat/` on the Vercel AI SDK v7. The chat
 calls the same 35-tool registry as MCP, with the same app-window confirmation
 for deletes and sends, and sends each turn, with the tool results it reads, to
-the one provider the person chose. Outbound HTTPS to that provider's origin is
-then the only connection the core opens; every other outbound connection and
+the one provider the person chose. Outbound HTTPS to that provider's origin
+stays the only connection the core opens; every other outbound connection and
 every listening socket stays forbidden. The API key lives in the app's data
-protection keychain and reaches the core only inside the turn message on the
-pipe. The owner decided on 2026-11-22 that the app stores chat history, within
-the exception to the content-archive rule below. Until that work
-lands, the current behavior above and contract §7.1 stand.
+protection keychain and reaches the core only inside the message that needs it
+(a model list now, a turn later) on the pipe. The owner decided on 2026-11-22
+that the app stores chat history, within the exception to the content-archive
+rule below. Until the turns land, the current behavior above and contract §7.1
+stand.
 
 Sherpa is the only writer of Sherpa-owned databases. Apple remains the source of
 truth for Calendar and Reminders; Messages, KakaoTalk, and Mail.app remain the
@@ -160,7 +166,8 @@ those ports. The composition roots choose implementations.
 core/src/main.ts (composition root of the CLI)
     -> chat/egress + cli + commands + apple helper proxy; `app serve` -> app/serve
 core/src/app/serve.ts (composition root of `sherpa app serve`)
-    -> app + mcp + tools + commands; picks the control-channel planner port
+    -> app + mcp + tools + chat/session + commands; picks the control-channel
+       planner port and hands the chat sessions the egress main.ts installed
 
 app (frame, mux, control, channel transport) -> mcp/confirmation, planner/port, log
 mcp (registry, tools, outcome)    -> tools, commands, planner/port, cli/errors, journal,
@@ -171,6 +178,7 @@ planner/port                      -> no Sherpa module
 commands                          -> journal, mail, imessage, kakaotalk, cli/errors
 core adapters (mail, imessage, kakaotalk) -> cli/errors, process/runner, log
 journal                                   -> cli/errors, log
+chat (session, models, protocol, providers, errors) -> chat/egress, log
 chat/egress                               -> cli/errors, log
 
 SherpaNative (helper composition root)

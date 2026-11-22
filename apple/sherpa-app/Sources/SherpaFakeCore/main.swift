@@ -199,7 +199,8 @@ func handle(_ frame: MuxFrame) {
             record("confirmation-late \(id) \(decision)")
         }
     case (let channel, "open"):
-        // {"kind":"<word>"} since Mux 2 (contract §7.3). The core serves `mcp` and closes any other kind.
+        // {"kind":"<word>"} since Mux 2 (contract §7.3). The core serves `mcp` and `chat` (§7.11); this fake
+        // serves `mcp` only and closes any other kind, as the core closes a kind it does not serve.
         guard let body, Set(body.keys) == ["kind"], case let .string(kind)? = body["kind"], isKindWord(kind) else {
             violation("mux.frame_invalid")
         }

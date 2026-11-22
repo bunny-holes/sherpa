@@ -52,6 +52,14 @@ Anything not listed here is not proven by the gate.
     `fetch` and `WebSocket` refuse every call and connection and cannot be
     put back, that a turn fetch lets out only HTTPS to its origin with
     `redirect: "error"` and the turn's signal, and which base URLs are refused.
+  - `chat-session.test.ts` and `chat-models.test.ts` (contract §7.11) prove
+    a chat channel on a fake runtime fetch behind the egress: the message
+    shapes and limits, `invalid_message` and what it answers, each provider's
+    list request (the key only in its header, no `?key=` for Google), paging
+    and Anthropic's active filter, the 1,000-id, 10-request and 4 MiB limits,
+    the codes of HTTP statuses, certificates and broken connections, `busy`,
+    the 30 s timeout, a close that stops a list, the fifth channel's
+    `chat_limit`, and no key in a log line or another frame.
   - `tools-call.test.ts` proves the tool call lifecycle
     (`core/src/tools/call.ts`): its start and end lines, the set of active
     calls, a thrown handler as a core failure, an abandoned call left
@@ -70,8 +78,8 @@ Anything not listed here is not proven by the gate.
     concurrent MCP 2026-07-28 sessions, the refusal of 2025-era requests, the
     delete confirmation and the channel it names, a close during a call, and
     frame violations. A Mux 2 app hello and an `open` without a body end the
-    core with 65; an `open` of the `chat` kind closes only that channel with
-    `unsupported_kind`.
+    core with 65; an `open` of a kind the core does not serve closes only that
+    channel with `unsupported_kind`.
   - `egress.test.ts` (ADR-0012, contract §7.1): `lsof`, which must first see
     the test process's own listener and the core's descriptors 0–2, sees no
     internet socket and no listening Unix socket in the core from the hello
@@ -79,7 +87,11 @@ Anything not listed here is not proven by the gate.
     starts with the global `fetch` and `WebSocket` refused too. Its redirect
     test runs `core/src/chat/egress.ts` on the test's own Bun, the declared one,
     against local servers: `redirect: "error"` refuses a 307 and a 302 that a
-    turn fetch forwards, and the redirect target sees no request.
+    turn fetch forwards, and the redirect target sees no request. A chat
+    channel's model list for a plain-HTTP loopback origin ends with
+    `egress_denied` and no connection while `lsof` sees no socket, and one
+    for an HTTPS loopback server with a self-signed certificate ends with
+    `provider_certificate` before the server's handler sees a request.
   - `waits.test.ts`: the 30 s confirmation and 5 s discovery waits on the real
     clock.
   - `cli.test.ts`: the built CLI checks every argument before it opens a store.

@@ -22,6 +22,15 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > 덧붙였다. [아키텍처](../architecture/README.md) 의 "long-lived content archive" 금지 규칙에는 이 기록을 예외로
 > 적었다.
 >
+> **정정 (2026-11-22, #66, 채팅 채널).** 구현 단계 4 의 셋째 몫이 PR #89 로 들어갔다. 코어가 채널 종류 `chat` 을
+> 받고, `sherpa.chat.v1` 의 첫 메시지인 모델 목록(`list_models` 와 답 `models`·`error`)을 계약 §7.11 에 실었다. 종류를
+> 더한 것이라 계약은 3판, 인사는 Mux 3 그대로다. 코어가 처음으로 지킨 `fetch` 로 고른 제공자의 출처에 나간다. 같은 날
+> 소유자가 OpenAI 호환 출처로 https 루프백도 받기로 했다. 규칙은 "https 와 유효한 인증서" 이고 루프백을 이름으로 따로
+> 막지 않는다. [소유자, 2026-11-22] 표에 없던 것은 [설계] 로 정했다.
+> `error` 는 답하는 메시지(`in_reply_to`)와 HTTP 상태(`status`)를 더 싣고 코드는 닫힌 목록이며, 채팅 채널은 넷까지,
+> 목록은 id 1,000개·요청 10번·응답 4 MiB·30초까지다. 고친 곳은 상태 줄, "맥락", "앱과 코어 사이 채널", "시험으로
+> 지키기", "OpenAI 호환의 base URL", "비용과 모델 선택", "구현 단계" 4, "아직 확인 전" 이다.
+>
 > **정정 (2026-11-22, #66, 확인의 채널).** 구현 단계 4 의 둘째 몫으로 계약이 3판이 됐다. `confirm` 이 그 호출이 온
 > 채널의 번호를 싣고, 앱은 확인의 출처를 자기 채널 표에서 찾은 그 채널의 종류로 가린다. `client` 는 자기 신고라 MCP
 > 클라이언트도 `sherpa-chat` 이라고 댈 수 있으므로 창의 표시에만 쓴다. 앱은 열려 있지 않은 채널의 확인을 창 없이
@@ -54,10 +63,10 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 
 상태: 채택(소유자 결정, 2026-11-22, bunny-holes/sherpa#59). 구현 단계 2(코어 나가는 길 경계와 정적 검사, #64)는
 PR #74 로, 단계 1 중 #63 의 몫(mux 2, `open` 의 채널 종류, MCP 스위치가 `mcp` 채널만 닫는 것)은 PR #72 로,
-단계 4(#66) 중 호출 수명 모듈 분리와 전역 `WebSocket` 거부는 PR #86 으로 들어갔고, 확인이 그 호출의 채널을 싣는
-계약 3판(mux 3)도 들어갔다. 나머지는 구현 전이다(정정 2026-11-22, #64: 처음에는 "구현 전이다" 로 적었다. 정정
-2026-11-22, #63: 단계 1 의 몫을 더했다. 정정 2026-11-22, #66: 단계 4 의 첫 몫을 더했고, 같은 날 확인의 채널을
-더했다). 이 결정은
+단계 4(#66) 중 호출 수명 모듈 분리와 전역 `WebSocket` 거부는 PR #86 으로, 확인이 그 호출의 채널을 싣는 계약
+3판(mux 3)은 PR #87 로, 채팅 채널과 모델 목록은 PR #89 로 들어갔다. 나머지는 구현 전이다(정정 2026-11-22, #64:
+처음에는 "구현 전이다" 로 적었다. 정정 2026-11-22, #63: 단계 1 의 몫을 더했다. 정정 2026-11-22, #66: 단계 4 의 첫
+몫을 더했고, 같은 날 확인의 채널과 채팅 채널을 더했다). 이 결정은
 [ADR-0010](0010-menu-bar-app-and-mcp.md) 결정 2 의 "Bun 은 소켓을 열지 않고 앱과의 표준 입출력 파이프만 읽는다"
 를 고친다. 앱이 코어 하나를 띄우는 구조, 중계, MCP 는 2026-07-28 만 받는
 것([ADR-0011](0011-mcp-2026-07-28-only.md)), 삭제·보내기의 앱 창 확인([앱 연결
@@ -78,8 +87,9 @@ PR #74 로, 단계 1 중 #63 의 몫(mux 2, `open` 의 채널 종류, MCP 스위
   기대 적었다. 코어 소스에는 `fetch`, `WebSocket`, `Bun.connect`·`listen`·`serve`, `node:net` 류가 없다. [코드:
   `core/src` 검색] (정정 2026-11-22, #64: 단계 2 뒤로는 `core/src/chat/egress.ts` 의 지킨 `fetch` 가 런타임의
   `fetch` 를 쥐지만 부르는 곳이 아직 없어, 코어에는 `fetch` 에 닿는 길이 없다. 나머지는 지금도 없다.
-  [코드: `main` 3fda0e2 의 `core/src` 검색]) 채팅은 모델 제공자로 나가는 연결이 있어야 하므로 그 결정과
-  부딪친다.
+  [코드: `main` 3fda0e2 의 `core/src` 검색]) (정정 2026-11-22, #66: PR #89 부터 채팅 채널의 모델 목록이 지킨
+  `fetch` 로 고른 제공자의 출처에 나간다. 코어가 처음 여는 연결이다.) 채팅은 모델 제공자로 나가는 연결이 있어야
+  하므로 그 결정과 부딪친다.
 - 코어에는 이미 35개 도구의 레지스트리와 삭제·보내기 확인이 있다. 도구마다 `handle(args, { signal, client })` 가
   있고, 확인이 필요한 6개 도구는 핸들러 안에서 계약 §9 의 앱 창 확인을 낸다. [코드: `core/src/mcp/tools.ts`,
   `core/src/mcp/confirmation.ts`]
@@ -145,6 +155,14 @@ PR #74 로, 단계 1 중 #63 의 몫(mux 2, `open` 의 채널 종류, MCP 스위
 | 코어 → 앱 | `error` | 코드(`provider_auth`·`provider_rate_limited`·`provider_unavailable`·`egress_denied`·`network` 등), `retryable` |
 | 코어 → 앱 | `models` | 모델 id 목록 |
 | 코어 → 앱 | `state` | 대화 상태 전체(`sherpa.chat.state.v1`). 상태가 바뀔 때마다 보내고 앞의 것을 바꾼다("대화 기록", 정정 2026-11-22) |
+
+(정정 2026-11-22, #66: 계약 §7.11 이 `list_models`·`models`·`error` 의 키와 한도를 정했다. 메시지는 `type` 으로
+가르고, `list_models` 의 `api_key` 는 OpenAI 호환에서만 빠질 수 있으며, `models` 는 목록이 한도에서 잘렸는지
+(`truncated`)를 더 싣는다. `error` 는 답하는 메시지의 `type`(`in_reply_to`)과 HTTP 상태(`status`)를 더 싣고, 코드는
+`invalid_message`, `busy`, `egress_denied`, `network`, `timeout`, `provider_certificate`, `provider_auth`,
+`provider_rate_limited`, `provider_unavailable`, `provider_rejected`, `provider_invalid_response`, `internal` 의
+닫힌 목록이다. 차례가 더할 코드는 차례를 넣는 작업이 같은 절에 싣는다. 코어는 채팅 채널을 넷까지 두고 다섯째를
+`chat_limit` 로 닫는다. [설계; 계약 §7.11])
 
 - 대화(모델 메시지 목록)는 채팅 동안 그 채널의 코어 메모리에 있고, 코어는 바뀔 때마다 그 사본을 `state` 로 앱에
   넘긴다(정정 2026-11-22: 처음에는 "코어 메모리에만 있다" 로 적었다. "대화 기록" 을 보라). 앱은 차례마다 새 글만
@@ -402,7 +420,11 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   `hello` 부터 두 MCP 연결과 확인을 기다리는 도구 호출까지 소켓을 본다. `lsof` 는 인터넷 소켓이 없는 프로세스와
   이미 끝난 pid 에 똑같이 아무것도 내지 않고 1 로 끝나므로, 시험 프로세스의 듣는 소켓과 코어의 fd 0–2 를 먼저
   보는 양성 대조를 둔다. [실측: #64] 차례를 보내는 부분은 단계 4(#66)가 더한다. (정정 2026-11-22, #64: 처음에는
-  `-iTCP -sTCP:LISTEN` 으로 듣는 TCP 소켓만 본다고 적었다.)
+  `-iTCP -sTCP:LISTEN` 으로 듣는 TCP 소켓만 본다고 적었다.) (정정 2026-11-22, #66: PR #89 의
+  같은 파일이 차례 대신 채팅 채널의 모델 목록으로 이 시험을 한다. 평문 http 루프백 출처는 `egress_denied` 이고
+  시험이 띄운 서버에 연결이 오지 않으며, 그동안 코어에 인터넷 소켓도 듣는 Unix 소켓도 없다. 자체 서명 인증서의 https
+  루프백 출처에는 연결하지만 `provider_certificate` 로 끝나고 그 서버의 처리기에 요청이 닿지 않는다. 믿을 수 있는
+  TLS 로 허용 경로 끝까지 보는 것과 차례로 하는 같은 시험은 차례를 넣는 작업이 더한다.)
 - 게이트는 유료 API 를 부르지 않는다. 실제 제공자 연결은 소유자 실기에서 `lsof -i -a -p <코어 pid>` 로 연결이
   고른 출처 하나뿐인지 본다. [설계]
 
@@ -413,6 +435,11 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   싣지 않는다). [설계]
 - 로컬 서버(`http://localhost`, `http://127.0.0.1` 등)는 받지 않는다. https 만 받는다. [소유자, 2026-11-22,
   "남은 결정" 1] (정정 2026-11-22: 처음에는 소유자 결정 대기로 적었다.)
+  (정정 2026-11-22, #66: 소유자가 OpenAI 호환 출처로 https 루프백(`https://localhost`, `https://127.0.0.1` 등)도
+  받기로 했다. 규칙은 "https 와 유효한 인증서" 이고, 루프백을 이름으로 따로 막지 않는다. [소유자, 2026-11-22] 이름으로
+  막아도 이름 풀이가 아무 이름이나 루프백으로 풀 수 있고, Bun 의 `fetch` 에는 연결할 주소를 보고 막는 길이 없다.
+  [추론] 유효한 인증서는 빌드한 코어의 Bun 이 믿는 인증서다. 자체 서명 인증서는 요청 전에 `provider_certificate` 로
+  끝난다. [실측: `core/tests/stdio/egress.test.ts`] 사람이 더한 루트 인증서를 Bun 이 믿는지는 "아직 확인 전" 이다.)
 
 ## 확인 흐름
 
@@ -679,14 +706,19 @@ API](https://aistudio.google.com/docs/interactions-overview) 의 interaction-sco
 - 모델 목록은 코어가 같은 출처의 목록 끝점에서 받는다(`list_models`). [설계]
   - Anthropic `GET /v1/models`: `lifecycle` 으로 거를 수 있고 기본은 active 와 deprecated 를 준다. 결정 7 에
     따라 active 만 받는다. [문서: [List Models](https://platform.claude.com/docs/en/api/models/list)]
+    (정정 2026-11-22, #66: 요청 인자 `lifecycle` 대신 답의 `lifecycle` 이 `active` 이거나 없는 모델만 남긴다. 문서가
+    그 배열 인자의 URL 표기를 적지 않았기 때문이다. 요청은 `anthropic-version: 2026-10-21` 을 싣는다. [계약 §7.11])
   - OpenAI `GET /v1/models`. [문서: [List
     models](https://developers.openai.com/api/reference/resources/models/methods/list)] 채팅에 쓸 수 없는 모델도
     섞여 있다. id 로 짐작해 거르지 않고, 고른 모델이 거절되면 그 오류를 보인다. [설계]
   - Google `GET /v1beta/models`. [문서: [Models](https://aistudio.google.com/api-reference/models)] 문서의 예는
     키를 `?key=` 에 싣지만 코어는 `x-goog-api-key` 머리말로만 보낸다. 키가 URL 에 남지 않게 하려는 것이다.
-    [설계]
+    [설계] (정정 2026-11-22, #66: OpenAI 처럼 거르지 않는다. id 는 `name` 에서 `models/` 를 뗀 것이다.
+    [계약 §7.11])
   - OpenAI 호환: `/models` 는 서버마다 있을 수도 없을 수도 있다. [추론] 있으면 쓰고, 없으면 사람이 id 를 적는다.
-    [설계]
+    [설계] (정정 2026-11-22, #66: 끝점이 없는 서버의 404 는 `error` `provider_rejected` 와
+    `status` 404 로 끝난다. 목록은 어느 제공자든 id 1,000개, 요청 10번, 응답 몸 하나 4 MiB, 30초까지 받는다. [계약
+    §7.11])
 - 고른 모델 id 는 제공자마다 앱 defaults 에 둔다. Sherpa 는 기본 모델을 박아 두지 않는다. 모델은 바뀌고 물러나기
   때문이다. [설계]
 - `done` 의 토큰 수를 차례마다 보인다. 가격은 보이지 않는다. Sherpa 가 사람의 요금제를 알 길이 없다. [설계]
@@ -838,7 +870,8 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
    `sherpa.chat.v1` 과 같은 판에 키 규칙(차례마다 키를 넘기는 규칙), §9 의 `client` `sherpa-chat`, §12 의 채팅
    로그 규칙을 싣고 §7.1 의 소켓 문장을 고친다(정정 2026-11-22, #63: 단계 1 에서 옮겼다). 호출 수명 모듈 분리와
    전역 `WebSocket` 거부는 PR #86 이 먼저 넣었다(정정 2026-11-22, #66). `confirm` 의 채널과 그 종류로 가리는
-   확인(계약 3판, mux 3)도 먼저 들어갔다(정정 2026-11-22, #66).
+   확인(계약 3판, mux 3)도 먼저 들어갔다(정정 2026-11-22, #66). 채팅 채널, 모델 목록, §7.1 의 소켓 문장, §12 의
+   모델 목록 줄은 PR #89 가 넣었다(정정 2026-11-22, #66).
 5. **앱 채팅 화면:** 첫 화면의 두 타일, 동의, 제공자·모델 고르기, 원격 자원 없는 마크다운, 한글 입력, 확인
    창과의 포커스. 계약 §2 의 첫 화면도 이 단계가 싣는다(정정 2026-11-22, #63: 단계 1 에서 옮겼다). MCP 를 끈 동안 채팅 호출의
    확인 창이 뜨는지와 스위치를 끌 때 그 창이 남는지를 끝까지 보는 시험도 이 단계가 더한다. 단계 4 의 앱은 채팅
@@ -864,6 +897,8 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
 - Google Interactions 경로 전체(도구 왕복, 스키마 호환, `store: false`).
 - 실제 Anthropic API 가 AI SDK 의 요청을 `anthropic-version: 2026-10-21` 로 받는지. 받지 않으면 SDK 기본
   판(2023-06-01)으로 물러설지 소유자에게 묻고, 답을 이 ADR 에 정정으로 단다.
+- 네 제공자의 실제 모델 목록 응답이 계약 §7.11 이 문서에서 옮긴 모양과 같은지, Anthropic 의 `/v1/models` 가
+  `anthropic-version: 2026-10-21` 을 받는지, Google 이 `pageSize=1000` 을 받는지(정정 2026-11-22, #66).
 - 프로필이 없을 때 data protection keychain 이 -34018 로 거부하는지.
 - 코어와 중계가 앱의 App ID 그룹 항목을 읽지 못하는지(문서에서 끌어냈고 재현하지 않았다).
 - hardened runtime 과 Bun 1.4.5 에서의 크기와 메모리, 긴 대화의 메모리.

@@ -1,6 +1,6 @@
 import { proxyAppleRequest } from "./apple/helper.ts";
 import { serveApp } from "./app/serve.ts";
-import { installEgress } from "./chat/egress.ts";
+import { type Egress, installEgress } from "./chat/egress.ts";
 import { integer, optionalValue, requireConfirmation, unsigned, value } from "./cli/args.ts";
 import { codes, invalidRequest, SherpaError } from "./cli/errors.ts";
 import { help } from "./cli/help.ts";
@@ -57,7 +57,11 @@ function sendOutput(result: JournaledResult<Uint8Array>): Output {
   });
 }
 
-async function dispatch(args: readonly string[], commands: CoreCommands): Promise<Output> {
+async function dispatch(
+  args: readonly string[],
+  commands: CoreCommands,
+  egress: Egress,
+): Promise<Output> {
   const [domain, command] = args;
   switch (`${domain} ${command}`) {
     case "planner request":
@@ -66,7 +70,7 @@ async function dispatch(args: readonly string[], commands: CoreCommands): Promis
       return { exitCode: await proxyAppleRequest([domain!, command!]) };
     case "app serve":
       if (args.length !== 2) throw invalidRequest();
-      return { exitCode: await serveApp() };
+      return { exitCode: await serveApp(egress) };
     case "imessage chats":
       return commands.imessageChats(integer(args, "--limit"));
     case "imessage history":
@@ -138,7 +142,7 @@ function writeLine(output: string | Uint8Array): void {
   if (bytes.at(-1) !== 0x0a) process.stdout.write("\n");
 }
 
-export async function main(args: readonly string[]): Promise<number> {
+export async function main(args: readonly string[], egress: Egress): Promise<number> {
   if (args.length === 1 && (args[0] === "--version" || args[0] === "version")) {
     writeLine(`sherpa ${SHERPA_VERSION}`);
     return 0;
@@ -149,7 +153,7 @@ export async function main(args: readonly string[]): Promise<number> {
   }
   try {
     if (args.length < 2) throw invalidRequest();
-    const output = await dispatch(args, systemCommands);
+    const output = await dispatch(args, systemCommands, egress);
     if (typeof output === "object" && "exitCode" in output) return output.exitCode;
     writeLine(output);
     return 0;
@@ -165,7 +169,8 @@ export async function main(args: readonly string[]): Promise<number> {
 }
 
 if (import.meta.main) {
-  // Every command runs with the global fetch and WebSocket refusing (ADR-0012 "네트워크").
-  installEgress();
-  process.exitCode = await main(process.argv.slice(2));
+  // Every command runs with the global fetch and WebSocket refusing (ADR-0012 "네트워크"); only
+  // `app serve` takes the egress, for its chat channels.
+  const egress = installEgress();
+  process.exitCode = await main(process.argv.slice(2), egress);
 }

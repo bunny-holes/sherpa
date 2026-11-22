@@ -5,10 +5,10 @@
  * `globalThis.fetch` refusing every call for the rest of the process, so a library that falls
  * back to the global (the AI SDK reads it on every request) reaches nothing. It leaves
  * `globalThis.WebSocket` refusing every connection the same way, for a library that falls back
- * to that global (the AI SDK's WebSocket helper does), and keeps no WebSocket. A chat turn sends
- * through `Egress.turnFetch`: HTTPS to the one origin the person chose, without userinfo, never
- * following a redirect, and stopped by the turn's signal. Anything else is refused before it
- * leaves, with an `EgressDeniedError` and a `[core:egress:…] refused` line.
+ * to that global (the AI SDK's WebSocket helper does), and keeps no WebSocket. A chat turn and a
+ * model list send through `Egress.turnFetch`: HTTPS to the one origin the person chose, without
+ * userinfo, never following a redirect, and stopped by the request's signal. Anything else is
+ * refused before it leaves, with an `EgressDeniedError` and a `[core:egress:…] refused` line.
  *
  * Replacing the global reaches neither `Bun.fetch`, a separate read-only binding, nor the
  * `fetch` of a Worker's own global scope (Bun 1.4.4 and 1.4.5). The lint rules in
@@ -81,7 +81,8 @@ function suffixRefusal(url: URL): EgressRefusal | null {
  * The origin a provider's base URL allows (ADR-0012 "OpenAI 호환의 base URL"). The URL must be
  * `https:` without userinfo, query or fragment; its path stays the provider's. Plain HTTP, a
  * local server included, is refused: the owner chose HTTPS only for every provider
- * (2026-11-22, ADR-0012 "남은 결정" 1).
+ * (2026-11-22, ADR-0012 "남은 결정" 1). An HTTPS loopback origin is not refused by name: the
+ * rule is HTTPS with a certificate the core trusts (owner, 2026-11-22).
  */
 export function allowedOrigin(baseURL: string): AllowedOrigin {
   const url = URL.parse(baseURL);
@@ -191,9 +192,10 @@ function refusedWebSocket(): never {
 /** What a chat turn sends through (ADR-0012 "코드로 지키기" 2). */
 export interface Egress {
   /**
-   * The `fetch` one turn hands its provider. A request leaves only when its URL is `https:` on
-   * `origin` without userinfo, and always with `redirect: "error"` and `signal`, joined with the
-   * caller's own. Anything else is refused before it leaves, and a redirect when it comes back.
+   * The `fetch` one turn hands its provider, and one model list sends through. A request leaves
+   * only when its URL is `https:` on `origin` without userinfo, and always with
+   * `redirect: "error"` and `signal`, joined with the caller's own. Anything else is refused
+   * before it leaves, and a redirect when it comes back.
    */
   turnFetch(origin: AllowedOrigin, signal: AbortSignal): Fetch;
 }
