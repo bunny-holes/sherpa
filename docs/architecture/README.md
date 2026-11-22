@@ -52,7 +52,8 @@ sherpa — Bun + TypeScript core (one compiled executable, core/)
     |                       local-text checkpoint
     |-- chat/ ------------- egress, the core's only way to the network (ADR-0012);
     |                       chat sessions, model lists, and turns through the
-    |                       AI SDK, whose model calls the MCP tools
+    |                       AI SDK, whose model calls the MCP tools, and the
+    |                       state the app keeps to resume a chat
     |                       (app-connection-v1 §7.11)
     `-- apple/ ------------ hands Worker Protocol V2 requests to the helper
             |
@@ -163,7 +164,10 @@ keep each conversation, including the mail and message text its tool results
 carried, only on this Mac, encrypted with a key in its data protection keychain
 and excluded from Time Machine, until the person deletes it or the retention
 they chose runs out, at most 90 days after the conversation's last turn. The
-core writes no conversation to disk.
+core writes no conversation to disk: it sends a chat's conversation to the app
+as a `state` whenever it changes, and `Sherpa.app` will keep the last one with
+that history and give it back in a `resume` to continue the chat
+(app-connection-v1 §7.11).
 
 No external messaging CLI is involved. iMessage reads `~/Library/Messages/chat.db`
 and KakaoTalk reads its SQLCipher database with a key derived in the core from
@@ -194,7 +198,7 @@ planner/port                      -> no Sherpa module
 commands                          -> journal, mail, imessage, kakaotalk, cli/errors
 core adapters (mail, imessage, kakaotalk) -> cli/errors, process/runner, log
 journal                                   -> cli/errors, log
-chat (session, turn, calls, sdk, models, protocol, providers, errors)
+chat (session, turn, calls, sdk, models, protocol, providers, state, errors)
                                           -> chat/egress, tools, version, log
 chat/egress                               -> cli/errors, log
 
