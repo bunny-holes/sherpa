@@ -4,6 +4,7 @@ import {
   ControlChannelConfirmations,
   ControlChannelPlanner,
 } from "../src/app/control.ts";
+import { TurnRoom } from "../src/chat/conversation.ts";
 import { allowedOrigin, type Fetch, installEgress } from "../src/chat/egress.ts";
 import { INSTRUCTIONS } from "../src/chat/instructions.ts";
 import { chatLimits } from "../src/chat/protocol.ts";
@@ -261,6 +262,15 @@ const done = (
   resend = false,
 ) => ({ type: "done", reason, input_tokens: input, output_tokens: output, resend });
 const answered = (text = "Done") => ({ type: "delta", text });
+/** What ends a turn that passed the conversation's limit, or one refused at it: no turn follows. */
+const limit = {
+  type: "error",
+  in_reply_to: "turn",
+  code: "conversation_limit",
+  retryable: false,
+  status: null,
+  resend: false,
+};
 
 /** The messages of a turn up to and including the `done` or `error` that ends it. */
 async function ending(channel: FakeChannel): Promise<Record<string, unknown>[]> {
@@ -840,6 +850,7 @@ describe("a prompt the core built wrong", () => {
           },
           { role: "user", content: "다시" },
         ],
+        room: new TurnRoom(0, () => {}),
       },
       (messages) => kept.push(messages),
     );
@@ -1308,34 +1319,142 @@ describe("a turn without text after a turn that called tools", () => {
     },
   );
 
-  test("whose conversation grew past its limit in the turn before is conversation_limit, and the chat takes no later turn", async () => {
-    // Only a turn's start reads the limit, so the step that passes it stays.
-    const big = "가".repeat(Math.ceil((2 * 1024 * 1024) / 3));
+  test("after a step that passed the conversation's limit is conversation_limit, and the chat takes no later turn", async () => {
+    // The SDK writes the error of a call its schema refuses with every unknown key, which the
+    // answer's count does not foresee: the step's end measures it, keeps the step and sends no
+    // request after it, though every call has its result.
+    const input = {
+      ...WEEK,
+      ...Object.fromEntries(Array.from({ length: 2000 }, (_, index) => [`k${index}`, 0])),
+    };
+    // The answer's count leaves some 20 KB of the 2 MiB; what the step keeps passes it by some 40 KB.
+    const big = "가".repeat(677_600);
     const { sent, open } = world((_sent, n) =>
-      n === 1 ? sse(chatCalls([list()], [big])) : failure(400),
+      n === 1 ? sse(chatCalls([{ id: "call_1", name: "event_list", input }], [big])) : failure(400),
     );
     const channel = open();
     channel.write(compatible());
-    // The step's result is last, yet the conversation is past its limit.
-    expect((await ending(channel)).at(-1)).toMatchObject({
-      type: "error",
-      code: "provider_rejected",
-      resend: false,
-    });
-    const limit = {
-      type: "error",
-      in_reply_to: "turn",
-      code: "conversation_limit",
-      retryable: false,
-      status: null,
-      resend: false,
-    };
+    const frames = await ending(channel);
+    expect(frames.filter((frame) => frame.type !== "delta")).toEqual([
+      tool(1, "event_list", "started"),
+      tool(1, "event_list", "failed", "chat.invalid_call"),
+      limit,
+    ]);
+    expect(
+      frames
+        .filter((frame) => frame.type === "delta")
+        .map((frame) => frame.text)
+        .join(""),
+    ).toBe(big);
+    expect(sent).toHaveLength(1);
+    expect(
+      logged(
+        "warn [core:chat:turn] failure channel=1 provider=openai-compatible code=conversation_limit status=none steps=1 ms=",
+      ),
+    ).toBe(true);
     channel.write(again());
     expect(await channel.next()).toEqual(limit);
     expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=conversation_limit\n");
     channel.write(compatible("그리고"));
     expect(await channel.next()).toEqual(limit);
+    expect(sent).toHaveLength(1);
+  });
+});
+
+// §7.11 "대화 한도": before each call, the core asks whether its result, as large as one may be,
+// still fits beside the answer and the results before it; one that might not does not run, nor
+// does any later one, and the turn ends with the step. An answer cut in a later step leaves the
+// steps before it.
+describe("the conversation's limit within a turn that calls tools", () => {
+  /** Text of `bytes` bytes, three to a character. */
+  const text = (bytes: number) => "가".repeat(Math.floor(bytes / 3));
+  const deltas = (frames: Record<string, unknown>[]) =>
+    frames
+      .filter((frame) => frame.type === "delta")
+      .map((frame) => frame.text)
+      .join("");
+  const others = (frames: Record<string, unknown>[]) =>
+    frames.filter((frame) => frame.type !== "delta");
+
+  test("a call whose result could pass it does not run, fails with chat.conversation_limit, and ends the turn", async () => {
+    // The answer leaves less room than a result of 64 KiB.
+    const big = text(chatLimits.conversationBytes - 40_000);
+    const { sent, open, asked } = world((_sent, n) =>
+      n === 1 ? sse(chatCalls([list()], [big])) : failure(400),
+    );
+    const channel = open();
+    channel.write(compatible());
+    const frames = await ending(channel);
+    expect(others(frames)).toEqual([
+      tool(1, "event_list", "started"),
+      tool(1, "event_list", "failed", "chat.conversation_limit"),
+      limit,
+    ]);
+    expect(deltas(frames)).toBe(big);
+    expect(asked()).toEqual([]);
+    expect(sent).toHaveLength(1);
+    expect(lines).toContain(
+      "warn [core:chat:tool-call] refused channel=1 tool=event_list reason=conversation_limit\n",
+    );
+    expect(
+      logged(
+        "warn [core:chat:turn] failure channel=1 provider=openai-compatible code=conversation_limit status=none steps=1 ms=",
+      ),
+    ).toBe(true);
+    channel.write(compatible("그리고"));
+    expect(await channel.next()).toEqual(limit);
+    expect(sent).toHaveLength(1);
+  });
+
+  test("a call's result counts: the call after it in the step does not run", async () => {
+    // Room for one result of 64 KiB, but not for a second after the first's 48 KiB.
+    const big = text(chatLimits.conversationBytes - 96 * 1024);
+    const result = { schema: "x", items: ["e".repeat(48 * 1024)] };
+    const { sent, open, asked } = world(
+      (_sent, n) =>
+        n === 1 ? sse(chatCalls([list("call_1"), list("call_2")], [big])) : failure(400),
+      {
+        app: (frame, control) => {
+          if (frame.type === "request") answerPlanner(frame, control, { result });
+        },
+      },
+    );
+    const channel = open();
+    channel.write(compatible());
+    const frames = await ending(channel);
+    expect(others(frames)).toEqual([
+      tool(1, "event_list", "started"),
+      tool(1, "event_list", "succeeded", null, "op-1"),
+      tool(2, "event_list", "started"),
+      tool(2, "event_list", "failed", "chat.conversation_limit"),
+      limit,
+    ]);
+    expect(deltas(frames)).toBe(big);
+    expect(asked()).toEqual(["event.list"]);
+    expect(sent).toHaveLength(1);
+  });
+
+  test("an answer cut in a later step leaves the step before, whose call ran", async () => {
+    const first = "가".repeat(400_000);
+    const { sent, open } = world((_sent, n) =>
+      sse(n === 1 ? chatCalls([list()]) : chat([first, "나".repeat(350_000)])),
+    );
+    const channel = open();
+    channel.write(compatible());
+    const frames = await ending(channel);
+    expect(others(frames)).toEqual([
+      tool(1, "event_list", "started"),
+      tool(1, "event_list", "succeeded", null, "op-1"),
+      limit,
+    ]);
+    expect(deltas(frames)).toBe(first);
     expect(sent).toHaveLength(2);
+    expect(outcomes(sent[1]!)).toMatchObject([{ id: "call_1", status: "succeeded" }]);
+    expect(
+      logged(
+        "warn [core:chat:turn] failure channel=1 provider=openai-compatible code=conversation_limit status=none steps=2 ms=",
+      ),
+    ).toBe(true);
   });
 });
 

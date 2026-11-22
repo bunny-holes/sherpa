@@ -5,7 +5,8 @@
  * while a step's calls run withdraws the call that has changed nothing, cuts a read and starts no
  * later call; a call that has asked for a change runs to its end, so that the model and the person
  * learn what it did. A call that never ran, one the model formed badly or one the AI SDK did not
- * run, reaches the app as a pair of its own.
+ * run, reaches the app as a pair of its own. Each result counts against the conversation's limit,
+ * and a call whose result could pass it does not run (§7.11 "대화 한도").
  */
 import { log } from "../log.ts";
 import { type ModelTool, runToolCall } from "../tools/call.ts";
@@ -17,6 +18,7 @@ import {
   type ToolOutcome,
 } from "../tools/outcome.ts";
 import { SHERPA_VERSION } from "../version.ts";
+import type { TurnRoom } from "./conversation.ts";
 import { type ChatEvent, chatLimits, type ToolStatus } from "./protocol.ts";
 import type { TurnTools } from "./sdk/turn.ts";
 
@@ -35,10 +37,14 @@ const INVALID = "chat.invalid_call";
  * cut at the length limit say (ai 7.0.179 execute-tools-from-stream.ts).
  */
 const NOT_RUN = "chat.not_run";
+/** A call whose result could pass the conversation's limit: it did not run, nor will in this chat. */
+const LIMIT = "chat.conversation_limit";
 
 export interface CallsContext {
   channel: number;
   tools: readonly ModelTool[];
+  /** What the conversation's limit leaves the turn; each call's result counts against it. */
+  room: TurnRoom;
   /** The channel's next call number, from 1. */
   number(): number;
   /** Writes a `tool` message, after the answer's text that waits. */
@@ -115,6 +121,14 @@ export class TurnCalls implements TurnTools {
   }
 
   async run(name: string, input: unknown, signal: AbortSignal): Promise<ToolOutcome> {
+    const result = await this.outcomeOf(name, input, signal);
+    // What the model reads of the call joins the conversation with its step.
+    this.context.room.result(Buffer.byteLength(JSON.stringify(result)));
+    return result;
+  }
+
+  /** What the model reads of one call. */
+  private async outcomeOf(name: string, input: unknown, signal: AbortSignal): Promise<ToolOutcome> {
     this.step = true;
     // The AI SDK runs only the tools it was given (ai 7.0.179 execute-tools-from-stream.ts).
     const tool = this.find(name)!;
@@ -126,6 +140,15 @@ export class TurnCalls implements TurnTools {
       log.info(`[core:chat:tool-call] withdrawn channel=${this.context.channel} tool=${name}`);
       this.tell(id, name, "withdrawn", CANCELLED, null);
       return withdrawn(tool);
+    }
+    // Its result, as large as one may be, could pass the conversation's limit: neither this call
+    // nor a later one runs, and the turn takes no later step.
+    if (!this.context.room.admits()) {
+      log.warn(
+        `[core:chat:tool-call] refused channel=${this.context.channel} tool=${name} reason=conversation_limit`,
+      );
+      this.tell(id, name, "failed", LIMIT, null);
+      return unchanged(tool, LIMIT, "never");
     }
     const running: Running = {
       read: tool.entry.effectClass === "read",
