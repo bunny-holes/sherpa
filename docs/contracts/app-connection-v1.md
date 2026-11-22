@@ -979,9 +979,10 @@ result         object | null
 ## 12. 로그
 
 - 형식은 `<수준> [<층>:<모듈>:<동작>] 키=값 …` 이고 층은 `app`, `relay`, `core` 다. 외부 경계(소켓 accept 와
-  서명 확인, 코어 실행·인사·종료, 작업 요청, 확인 요청, 도구 호출)는 시작, 성공, 실패를 남긴다. error 는 실패,
-  warn 은 회복 가능한 거부(서명 거부, `slow_consumer`, 늦은 응답), info 는 주요 흐름(코어 준비, 세션 열림과
-  닫힘, 도구 호출의 끝), debug 는 세부(프레임 크기)다. [계약; 형식은 기존 `core/src/log.ts` 와 같다]
+  서명 확인, 코어 실행·인사·종료, 작업 요청, 확인 요청, 도구 호출, 코어 나가는 길의 `fetch`)는 시작, 성공, 실패를
+  남긴다. error 는 실패, warn 은 회복 가능한 거부(서명 거부, `slow_consumer`, 늦은 응답, 나가는 길이 막은 요청),
+  info 는 주요 흐름(코어 준비, 세션 열림과 닫힘, 도구 호출의 끝), debug 는 세부(프레임 크기)다. [계약; 형식은 기존
+  `core/src/log.ts` 와 같다]
 - `LOG_LEVEL` 이 수준을 정하고 기본은 warn 이다. 앱은 자기 환경의 `LOG_LEVEL` 을 코어에 넘긴다. [계약]
 - 코어와 중계는 표준 오류에 쓴다. 앱은 통합 로그(subsystem `dev.xiyo.sherpa`)에 같은 줄을 쓰고, 코어 표준
   오류의 줄을 category `core` 로 옮긴다(한 줄은 4 KiB 에서 자른다). 읽을 때는
@@ -994,9 +995,22 @@ result         object | null
 - 채널을 열 때 앱은 `info [app:session:open] channel=N kind=mcp …` 를, 코어는
   `info [core:mux:session-open] channel=N kind=<종류> sessions=M` 을 남긴다. 받지 않는 종류의 `open`(§7.3)은
   `warn [core:mux:open] refused channel=N kind=<종류> reason=unsupported_kind` 다. [계약]
-- 남겨도 되는 값: 채널 번호와 종류, 도구와 capability 이름, `operation_id`, 작업 요청 `id`, 상태, 오류 코드, `retry`,
-  걸린 시간, 바이트 수, 종료 코드와 신호, 상대의 pid 와 서명 식별자, mux·앱·코어 버전, 확인 결과 낱말, 요청 봉투
-  `clientInfo` 의 이름과 버전. [계약]
+- 코어 나가는 길(§7.1, `core/src/chat/egress.ts`)의 줄은 아래와 같다. URL, 요청 헤더와 본문, 키, URL 을 담는 오류
+  메시지는 싣지 않는다. [계약; 줄은 `core/src/chat/egress.ts`]
+  - `debug [core:egress:install] success global_fetch=refused`: 어느 명령이든 시작할 때 전역 `fetch` 를 거부로
+    바꾼 뒤.
+  - `warn [core:egress:fetch] refused reason=<사유>`: 나가기 전에 막은 요청과 따르지 않은 리디렉트. 사유는
+    `global_fetch`, `invalid_url`, `not_https`, `userinfo`, `other_origin`, `preconnect`, `redirect` 다.
+  - `warn [core:egress:base-url] refused reason=<사유>`: 받지 않은 제공자 base URL. 사유는 `invalid_url`,
+    `not_https`, `userinfo`, `query`, `fragment` 다.
+  - `warn [core:egress:fetch] dropped options=<이름,…>`: 요청에서 뺀 Bun 확장 선택지의 이름.
+  - `info [core:egress:fetch] start`, `info [core:egress:fetch] success status=<HTTP 상태> ms=<걸린 시간>`,
+    `info [core:egress:fetch] abandoned ms=<걸린 시간>`(차례의 신호로 멈춘 요청),
+    `error [core:egress:fetch] failure error_type=<오류 이름> code=<Bun 의 한 낱말 코드> ms=<걸린 시간>`. `code` 는
+    오류에 한 낱말 코드가 있을 때만 붙는다.
+- 남겨도 되는 값: 채널 번호와 종류, 도구와 capability 이름, `operation_id`, 작업 요청 `id`, 상태와 HTTP 상태, 오류
+  코드와 오류 이름, 거부 사유, 뺀 `fetch` 선택지의 이름, `retry`, 걸린 시간, 바이트 수, 종료 코드와 신호, 상대의
+  pid 와 서명 식별자, mux·앱·코어 버전, 확인 결과 낱말, 요청 봉투 `clientInfo` 의 이름과 버전. [계약]
 - 남기면 안 되는 값: MCP 메시지 본문, 도구 인자와 결과, 확인 미리보기, 제목·이름·전화번호·메일 주소·대화
   id·`native_locator`, 메시지와 메일 본문, 홈 경로와 사용자 이름이 든 경로(소켓 절대 경로 포함). [계약;
   아키텍처 품질 목표 6, worker-protocol 의 "Sensitive values"]
@@ -1030,7 +1044,9 @@ result         object | null
   에 실제로 넣어 `protocol.invalid_payload` 가 아님을 확인한다. 변경 capability 는 헬퍼에 넣지 않는다.
   소유자의 Mac 은 권한이 있어 실제로 바뀐다.
 
-MCP stdio 명령 시험(빌드한 `core/dist/sherpa app serve` 를 가짜 앱 시험기가 프레임으로 몬다):
+stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). 빌드한 `core/dist/sherpa` 를 임시
+`HOME` 으로 띄우고, `app serve` 는 가짜 앱 시험기(`core/tests/stdio/fake-app.ts`)가 프레임으로 몬다. 게이트는
+코어를 빌드한 뒤 이 층을 돈다:
 
 - 인사 → 채널 셋 열기 → 채널마다 `server/discover`(2026-07-28), 봉투를 단 `tools/list`, 읽기 `tools/call`(가짜
   `response`). 시험 빌드의 동시 세 세션 시험과 같은 모양이다.
@@ -1042,6 +1058,16 @@ MCP stdio 명령 시험(빌드한 `core/dist/sherpa app serve` 를 가짜 앱 �
   → `fatal` `mux.frame_invalid` 와 65. `chat` 종류의 `open` → 그 채널에 `close` `unsupported_kind` 와 warn 로그,
   그 채널의 `data` 는 답이 없고, 다음 채널은 열리며, 표준 입력 EOF 뒤 0.
 - 한도를 넘는 줄 → `fatal` 과 65. 표준 입력 EOF → 5초 안에 0.
+- 나가는 길(§7.1, `egress.test.ts`): 인사부터 두 MCP 연결, 읽기 호출, 사람을 기다리는 삭제 호출까지 코어에 인터넷
+  소켓(`lsof -i`)도 듣는 Unix 소켓(`lsof -U`)도 없다. `lsof` 는 소켓 없는 프로세스와 끝난 pid 에 똑같이 아무것도
+  내지 않으므로 시험 프로세스의 듣는 소켓과 코어의 fd 0–2 를 먼저 보는 양성 대조를 둔다. `--version` 도 전역
+  `fetch` 를 거부로 바꾼 줄(§12)을 남긴다. 리디렉트 회귀: 차례 `fetch` 가 넘긴 요청의 307·302 를 Bun 의
+  `redirect: "error"` 가 따르지 않아 `redirect` 로 거부되고, 리디렉트 대상에는 요청이 가지 않는다. 이 시험만 빌드한
+  코어 대신 시험을 돌리는 Bun(선언한 판) 위에서 `core/src/chat/egress.ts` 를 로컬 서버에 돌린다.
+- 실제 시계(`waits.test.ts`): 답 없는 확인은 30초에 `withdraw` 되고 호출은 `confirmation.timed_out` 으로 실패하며
+  늦은 승인은 아무것도 돌리지 않는다. 답 없는 발견은 5초 뒤 core 도구만 남기고 늦은 답은 버린다. planner 작업자가
+  없는 앱은 core 도구를 곧바로 받는다.
+- 같은 층의 `cli.test.ts` 는 이 계약 밖의 CLI 인자 검사다.
 
 ### 13.2 앱과 중계 (bunny-holes/sherpa#28)
 

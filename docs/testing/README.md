@@ -50,6 +50,26 @@ Anything not listed here is not proven by the gate.
     Sends run against a fake `osascript`; no test sends a real message.
 - **Core static checks**: `vp check` (format, lint with type-aware rules, type
   check) over `core/`.
+- **Core stdio tests** (`core/tests/stdio`, `bun run test:stdio`, right after
+  the core build). They start the built `core/dist/sherpa` with a scratch
+  `HOME` and drive it through its pipes:
+  - `serve.test.ts` drives `sherpa app serve` with a fake app written from the
+    app connection contract (§7, §14): Mux 2 hellos and `mcp` channels, three
+    concurrent MCP 2026-07-28 sessions, the refusal of 2025-era requests, the
+    delete confirmation, a close during a call, and frame violations. A Mux 1
+    app hello and an `open` without a body end the core with 65; an `open` of
+    the `chat` kind closes only that channel with `unsupported_kind`.
+  - `egress.test.ts` (ADR-0012, contract §7.1): `lsof`, which must first see
+    the test process's own listener and the core's descriptors 0–2, sees no
+    internet socket and no listening Unix socket in the core from the hello
+    through two MCP sessions and a delete waiting for the person; `--version`
+    starts with the global `fetch` refused too. Its redirect test runs
+    `core/src/chat/egress.ts` on the test's own Bun, the declared one, against
+    local servers: `redirect: "error"` refuses a 307 and a 302 that a turn
+    fetch forwards, and the redirect target sees no request.
+  - `waits.test.ts`: the 30 s confirmation and 5 s discovery waits on the real
+    clock.
+  - `cli.test.ts`: the built CLI checks every argument before it opens a store.
 - **Swift format check** (`swift format lint --strict`, the gate's second step):
   every Swift file Git sees, tracked or untracked and not ignored, is already in
   the form `swift format --in-place` gives it under the root `.swift-format`:
@@ -76,9 +96,9 @@ Anything not listed here is not proven by the gate.
   requirement with the team compiled in, the core restart backoff, the private
   run folder and socket, the four variables the core receives, and process
   tests that run `sherpa-app-testhost` and `sherpa-relay` against
-  `sherpa-fake-core`: one channel per relay; refusing a direct connection, code
-  that fails the requirement and a seventeenth session; confirmations; and the
-  MCP switch.
+  `sherpa-fake-core`: one `mcp` channel per relay; a Mux 1 core stopped as
+  incompatible without a restart; refusing a direct connection, code that fails
+  the requirement and a seventeenth session; confirmations; and the MCP switch.
 - **App release-build checks** (`check:app-release`, after the package tests):
   `swift build -c release` builds `sherpa-relay` and `sherpa-app-testhost`.
   The relay's test variables, which move its socket and its code requirement
