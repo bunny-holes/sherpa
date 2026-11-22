@@ -3,9 +3,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { codes, SherpaError } from "../cli/errors.ts";
 import { log } from "../log.ts";
+import { isPlistDictionary, readPlistFile, type PlistValue } from "../plist/plist.ts";
 import { runCommand } from "../process/runner.ts";
 import { databaseName } from "./key-derivation.ts";
-import { isDictionary, readPlistFile, type PlistValue } from "./plist.ts";
 
 /**
  * What the local system says about the KakaoTalk Mac account, read from files
@@ -74,7 +74,7 @@ export async function readPreferences(paths = preferenceFiles()): Promise<Prefer
   for (const path of paths) {
     try {
       const value = await readPlistFile(path);
-      if (isDictionary(value)) dictionaries.push(value);
+      if (isPlistDictionary(value)) dictionaries.push(value);
     } catch (error) {
       log.warn(`[adapter:kakaotalk:preferences] parsed=false error_type=${errorType(error)}`);
     }
@@ -195,7 +195,7 @@ export function applicationInstalled(path = applicationInfo): boolean {
 export async function applicationVersion(path = applicationInfo): Promise<string | null> {
   if (!existsSync(path)) return null;
   const info = await readPlistFile(path);
-  if (!isDictionary(info)) throw new SherpaError(codes.failed);
+  if (!isPlistDictionary(info)) throw new SherpaError(codes.failed);
   const version = info.CFBundleShortVersionString;
   return typeof version === "string" && /^[0-9A-Za-z.-]{1,32}$/.test(version) ? version : null;
 }

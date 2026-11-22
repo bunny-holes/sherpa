@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { codes, SherpaError } from "../src/cli/errors.ts";
-import { parseBinaryPlist, PlistUID } from "../src/imessage/bplist.ts";
+import { parseBinaryPlist, PlistUID } from "../src/plist/plist.ts";
 import { imessageCommands } from "../src/imessage/commands.ts";
 import type { Runner } from "../src/imessage/send.ts";
 import { formatAppleSeconds, parseInstant } from "../src/imessage/time.ts";
