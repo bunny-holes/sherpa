@@ -73,7 +73,8 @@ function suffixRefusal(url: URL): EgressRefusal | null {
 /**
  * The origin a provider's base URL allows (ADR-0012 "OpenAI 호환의 base URL"). The URL must be
  * `https:` without userinfo, query or fragment; its path stays the provider's. Plain HTTP, a
- * local server included, is refused until the owner decides otherwise (ADR-0012 "남은 결정" 1).
+ * local server included, is refused: the owner chose HTTPS only for every provider
+ * (2026-11-22, ADR-0012 "남은 결정" 1).
  */
 export function allowedOrigin(baseURL: string): AllowedOrigin {
   const url = URL.parse(baseURL);
