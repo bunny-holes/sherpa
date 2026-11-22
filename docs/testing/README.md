@@ -84,22 +84,33 @@ Anything not listed here is not proven by the gate.
     `chat_limit`, and no key in a log line or another frame.
   - `chat-turn.test.ts` (contract §7.11) runs text turns through the AI SDK
     and the four provider packages against hand-written server-sent events
-    behind the egress: each provider's request (the URL, the key only in its
-    header, Anthropic's version and cached instructions without sampling
-    settings, OpenAI's `store: false` and the old `include` only for
+    behind the egress, with model ids the packages know: each provider's
+    request (the URL, the key only in its header, Anthropic's version, cached
+    instructions without sampling settings and the model's 128,000
+    `max_tokens`, OpenAI's `store: false` and the old `include` only for
     reasoning models, Google's Interactions, OpenAI-compatible's
-    `stream_options`) and the tokens of `done`; `delta`s gathered for 50 ms
-    and cut at 4 KiB between code points; the conversation, which drops a
-    step that failed, broke off or was refused and keeps reasoning with its
+    `stream_options`) and the tokens of `done`; the `max_tokens` Anthropic's
+    package sends a model it does not know (128,000 with `claude-` in the id,
+    4,096 without), with its warning and `length`; `delta`s gathered for
+    50 ms and cut at 4 KiB between code points; the conversation, which drops
+    a step that failed, broke off or was refused and keeps reasoning with its
     signature without sending it to the app; the code of an answer that
-    closes early on each provider; the time line before the person's text;
-    another chat's `turn`, `busy`, `cancel` and a close; the retries (503
-    and 429 three requests; 401, 403, 400, 404, a certificate and a redirect
-    one; a refused connection again after 2 s and 4 s; a stream error before
-    output three requests on OpenAI and Anthropic, after output one); the
-    first-output and between-output limits made short, with the wait after a
-    failure status outside them; the 2 MiB conversation limit; no key, text
-    or answer in a log line; and no AI SDK warning.
+    closes early on each provider; the time line before the person's text,
+    from an injected clock and time zone read again each turn, one string for
+    an OpenAI-compatible server; another chat's `turn`, `busy`, `cancel` and
+    a close; the retries (three failures sent three times, ending with the
+    last one's code; a 503 then a 200 after the 503's `retry-after-ms`; a
+    `cancel` during the wait ending at once with nothing more sent; 401, 403,
+    400, 404, a certificate and a redirect one request; a refused connection
+    again after 2 s and 4 s; a stream error before output three requests on
+    OpenAI and Anthropic, after output one despite `onError`); the
+    first-output and between-output limits made short (a request past the
+    first-output limit sent once, the wait after a failure status outside it,
+    and a request sent again after OpenAI reported an error before output
+    starting it anew); Bun's idle-timeout `TimeoutError` before the headers,
+    in the body and after output, each sent once and ending with `timeout`;
+    the 2 MiB conversation limit; and no key, text or answer in a log line.
+    A test fails on any AI SDK warning it does not expect.
   - `tools-call.test.ts` proves the tool call lifecycle
     (`core/src/tools/call.ts`): its start and end lines, the set of active
     calls, a thrown handler as a core failure, an abandoned call left
@@ -131,7 +142,9 @@ Anything not listed here is not proven by the gate.
     bundled authorities together with the macOS system store; the same Bun
     without the flag keeps the bundled ones alone.
     A chat channel's model list for a plain-HTTP loopback origin
-    ends with `egress_denied` and no connection while `lsof` sees no socket,
+    ends with `egress_denied` and no connection while `lsof` sees no socket;
+    a turn for one ends with `egress_denied` while the port's listener in the
+    test process accepts no connection, and loads no AI SDK;
     and one for an HTTPS loopback server with a self-signed certificate ends
     with `provider_certificate` before the server's handler sees a request.
     With a certificate authority made per test and passed in
@@ -140,13 +153,20 @@ Anything not listed here is not proven by the gate.
     answer, every internet socket of the core is a connection to that server
     and the key is only in that request's `authorization` header. A 307 to
     another origin and a 302 to the same one from there end with
-    `egress_denied`, and the redirect target sees no request. A text turn to
-    such a server streams two `delta`s and `done`, and while the server
-    holds the rest of the answer every internet socket of the core is a
-    connection to that server. The built core now carries the AI Gateway's
-    OIDC code, which rewrites an expired Vercel CLI login; the turn runs with
-    one in the core's `HOME` and a `.vercel/project.json` in its working
-    directory, and both files stay as they were.
+    `egress_denied`, and the redirect target sees no request. On such a
+    server a model list answers without the AI SDK, which the first text turn
+    loads once (its debug line); that turn gives the app its first `delta`
+    while the server holds the rest and ends with `done`, the second carries
+    the first answer, the server sees one model list and two turns, and the
+    time line carries the time zone the Mac is set to (`/etc/localtime`),
+    which the core reads without `TZ`. The turn does not watch sockets with
+    `lsof`: one listing cannot show that no connection was made. The built
+    core carries the AI Gateway's OIDC code; the turns run with an expired
+    Vercel CLI login in the core's `HOME` and a `.vercel/project.json` in
+    its working directory, and both files keep their bytes and modification
+    times. As the control, the real `@vercel/oidc`, called in a child with a
+    scratch `HOME`, the same two files and `fetch` refused, rewrites that
+    login to `{}` without calling `fetch`.
   - `waits.test.ts`: the 30 s confirmation and 5 s discovery waits on the real
     clock.
   - `cli.test.ts`: the built CLI checks every argument before it opens a store,
