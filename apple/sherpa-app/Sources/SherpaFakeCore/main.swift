@@ -199,7 +199,7 @@ func handle(_ frame: MuxFrame) {
             record("confirmation-late \(id) \(decision)")
         }
     case (let channel, "open"):
-        // Mux 2: {"kind":"<word>"} (contract §7.3). The core serves `mcp` and closes any other kind.
+        // {"kind":"<word>"} since Mux 2 (contract §7.3). The core serves `mcp` and closes any other kind.
         guard let body, Set(body.keys) == ["kind"], case let .string(kind)? = body["kind"], isKindWord(kind) else {
             violation("mux.frame_invalid")
         }
@@ -230,10 +230,11 @@ func isKindWord(_ kind: String) -> Bool {
     (1...16).contains(kind.utf8.count) && kind.utf8.allSatisfy { (0x61...0x7a).contains($0) || $0 == 0x2d }
 }
 
-/// `bad-version`: another version; `mux-1`: this version under Mux 1, as a core built before Mux 2.
+/// `bad-version`: another version. `mux` in the script: this version under that mux, as a core built
+/// before the app's mux.
 func sendHello() {
     let announced = mode == "bad-version" ? "9.9.9" : version
-    let mux = mode == "mux-1" ? 1 : MuxFrame.muxVersion
+    let mux = script["mux"]?.integer.map(Int64.init) ?? MuxFrame.muxVersion
     emit(channel: 0, type: "hello", json: #"{"mux":\#(mux),"version":"\#(announced)"}"#)
 }
 

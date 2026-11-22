@@ -151,11 +151,11 @@ describe("sessions", () => {
   });
 });
 
-describe("Mux 2 (§7.3, §7.5)", () => {
-  test("the core says Mux 2, and an app hello of Mux 1 ends it with version_unsupported and 65", async () => {
+describe("Mux 3 (§7.3, §7.5)", () => {
+  test("the core says Mux 3, and an app hello of Mux 2 ends it with version_unsupported and 65", async () => {
     const app = launch();
     apps.push(app);
-    expect((await app.handshake(["planner"], 1)).body).toMatchObject({ mux: 2 });
+    expect((await app.handshake(["planner"], 2)).body).toMatchObject({ mux: 3 });
     expect(await app.exited).toBe(65);
     expect(app.log.at(-1)).toEqual({
       channel: 0,
@@ -164,7 +164,7 @@ describe("Mux 2 (§7.3, §7.5)", () => {
     });
     expect(app.requested()).toEqual([]);
     expect(app.stderr.join("")).toContain(
-      "[core:mux:hello] failure reason=version_unsupported app_mux=1",
+      "[core:mux:hello] failure reason=version_unsupported app_mux=2",
     );
   });
 

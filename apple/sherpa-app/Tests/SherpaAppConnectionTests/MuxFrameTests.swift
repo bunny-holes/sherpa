@@ -20,7 +20,7 @@ private func violation(_ text: String, _ direction: MuxDirection) -> MuxViolatio
 }
 
 private let fromCore = [
-    "0\thello\t{\"mux\":2,\"version\":\"0.9.0\"}\n",
+    "0\thello\t{\"mux\":3,\"version\":\"0.9.0\"}\n",
     "0\trequest\t{\"id\":1,\"worker\":\"planner\",\"request\":{\"kind\":\"request\",\"protocol_version\":\"2.0.0\",\"application_contract\":\"sherpa.planner.v2\",\"request_id\":\"op-1\",\"operation_id\":\"op-1\",\"capability\":\"capabilities\",\"payload\":{\"schema\":\"sherpa.planner.capabilities.request.v2\"},\"deadline_ms\":20000,\"idempotency_key\":\"op-1\",\"policy\":{\"effect\":\"read\",\"required_evidence\":\"none\",\"artifact_directory\":null}}}\n",
     "1\tdata\t{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}\n",
     "0\tconfirm\t{\"id\":3,\"tool\":\"reminder_delete\",\"operation_id\":\"op-2\",\"channel\":1,\"client\":{\"name\":\"t\",\"version\":\"0\"},\"title\":\"t\",\"lines\":[],\"timeout_ms\":30000}\n",
@@ -31,7 +31,7 @@ private let fromCore = [
 ]
 
 private let fromApp = [
-    "0\thello\t{\"mux\":2,\"version\":\"0.9.0\",\"workers\":[\"planner\"]}\n",
+    "0\thello\t{\"mux\":3,\"version\":\"0.9.0\",\"workers\":[\"planner\"]}\n",
     "0\tresponse\t{\"id\":1,\"response\":{\"application_contract\":\"sherpa.planner.v2\",\"capability\":\"capabilities\",\"effect\":{\"kind\":\"none\",\"state\":\"not_started\"},\"error\":{\"code\":\"protocol.unsupported_capability\",\"retry\":\"never\"},\"kind\":\"response\",\"operation_id\":\"op-1\",\"protocol_version\":\"2.0.0\",\"request_id\":\"op-1\",\"status\":\"failed\",\"warnings\":[]}}\n",
     "0\tresponse\t{\"id\":2,\"report\":{\"error\":\"sherpa.internal_failure\",\"status\":\"failed\"}}\n",
     "1\topen\t{\"kind\":\"mcp\"}\n",
@@ -69,7 +69,7 @@ func readsEveryValidAppFrame(line: String) throws {
     ("1\tdata\n", .frameInvalid),
     ("1\tdata\t\n", .frameInvalid),
     ("0\topen\t{\"kind\":\"mcp\"}\n", .unexpectedFrame),
-    ("1\thello\t{\"mux\":2}\n", .unexpectedFrame),
+    ("1\thello\t{\"mux\":3}\n", .unexpectedFrame),
     ("9007199254740992\topen\t{\"kind\":\"mcp\"}\n", .frameInvalid),
     ("0\tdata\t{}\n", .unexpectedFrame),
     // Mux 1's open: Mux 2 requires the kind (contract §7.3). The kind itself is the reader's owner's.

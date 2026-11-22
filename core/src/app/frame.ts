@@ -1,13 +1,16 @@
 /**
- * Mux 2 frames between Sherpa.app and `sherpa app serve` (app-connection-v1 §7.2–§7.4):
+ * Mux 3 frames between Sherpa.app and `sherpa app serve` (app-connection-v1 §7.2–§7.4):
  *
  *   frame   = channel HTAB type [HTAB body] LF
  *   channel = "0" / (%x31-39 *15DIGIT)   ; decimal, no leading zero, at most 2^53-1
  *   type    = 1*16(%x61-7A / "-")
  *   body    = 1*(%x00-09 / %x0B-FF)      ; one UTF-8 JSON value without LF
  */
-/** The `mux` of both hellos (§7.5). Mux 2 `open` carries the channel kind (§7.3); Mux 1 is refused. */
-export const MUX_VERSION = 2;
+/**
+ * The `mux` of both hellos (§7.5). Mux 2 added the channel kind of `open` (§7.3) and Mux 3 the
+ * channel of a `confirm`'s call (§9); an earlier `mux` is refused.
+ */
+export const MUX_VERSION = 3;
 
 const KiB = 1024;
 const MiB = 1024 * KiB;

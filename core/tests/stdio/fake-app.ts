@@ -55,8 +55,8 @@ export class FakeApp {
     return new FakeApp(child);
   }
 
-  /** Waits for the core hello and answers it with `mux` (Mux 2 unless a test says otherwise, §7.5). */
-  async handshake(workers: string[] = ["planner"], mux = 2): Promise<CoreFrame> {
+  /** Waits for the core hello and answers it with `mux` (Mux 3 unless a test says otherwise, §7.5). */
+  async handshake(workers: string[] = ["planner"], mux = 3): Promise<CoreFrame> {
     const hello = await this.next((frame) => frame.channel === 0 && frame.type === "hello");
     const version = (hello.body as { version: string }).version;
     this.write(`0\thello\t${JSON.stringify({ mux, version, workers })}\n`);

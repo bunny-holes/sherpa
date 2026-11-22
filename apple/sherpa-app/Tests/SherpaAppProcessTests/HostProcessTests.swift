@@ -35,8 +35,8 @@ private let capabilities =
         // The app ignores SIGPIPE and SIGTERM for itself; the core must not inherit that.
         #expect(field("ignored", in: spawn) == "none")
         #expect(field("blocked", in: spawn) == "none")
-        // Mux 2: the app's hello and an `mcp` open for each relay (contract §7.3, §7.5).
-        #expect(rig.coreLog.contains("app-hello mux=2 version=0.9.0 workers=planner"))
+        // The app's Mux 3 hello and an `mcp` open for each relay (contract §7.3, §7.5).
+        #expect(rig.coreLog.contains("app-hello mux=3 version=0.9.0 workers=planner"))
         #expect((1...3).allSatisfy { rig.coreLog.contains("open \($0) kind=mcp") })
 
         for relay in relays { try relay.closeInput() }
@@ -171,14 +171,14 @@ private let capabilities =
         #expect(host.errorLines(containing: "[app:core:restart]").isEmpty)
     }
 
-    @Test func stopsACoreOfTheFirstMuxWithoutRestart() async throws {
-        // The app's version under Mux 1: a core built before Mux 2 (contract §7.5).
-        let rig = try Rig(core: #"{"version":"0.9.0","mode":"mux-1"}"#)
+    @Test func stopsACoreOfAnEarlierMuxWithoutRestart() async throws {
+        // The app's version under Mux 2: a core built before Mux 3 (contract §7.5).
+        let rig = try Rig(core: #"{"version":"0.9.0","mux":2}"#)
         defer { rig.tearDown() }
         let host = try await rig.startHost()
         #expect(await host.waitForError("[app:core:hello] status=incompatible"))
         let refusal = try #require(host.errorLines(containing: "[app:core:hello] status=incompatible").first)
-        #expect(field("mux", in: refusal) == "1")
+        #expect(field("mux", in: refusal) == "2")
         #expect(field("core_version", in: refusal) == "0.9.0")
         let relay = try rig.startRelay()
         #expect(await relay.exitStatus() == 75)

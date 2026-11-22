@@ -266,7 +266,7 @@ export class AppConnection {
       "mux" in value &&
       value.mux !== MUX_VERSION
     ) {
-      // Mux 1 too: the app and the core ship in one bundle, so one edition is served (§7.5).
+      // An earlier one too: the app and the core ship in one bundle, so one edition is served (§7.5).
       const mux =
         typeof value.mux === "number" && Number.isSafeInteger(value.mux) ? value.mux : "invalid";
       log.error(`[core:mux:hello] failure reason=version_unsupported app_mux=${mux}`);
