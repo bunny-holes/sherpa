@@ -20,20 +20,21 @@ private func violation(_ text: String, _ direction: MuxDirection) -> MuxViolatio
 }
 
 private let fromCore = [
-    "0\thello\t{\"mux\":1,\"version\":\"0.9.0\"}\n",
+    "0\thello\t{\"mux\":2,\"version\":\"0.9.0\"}\n",
     "0\trequest\t{\"id\":1,\"worker\":\"planner\",\"request\":{\"kind\":\"request\",\"protocol_version\":\"2.0.0\",\"application_contract\":\"sherpa.planner.v2\",\"request_id\":\"op-1\",\"operation_id\":\"op-1\",\"capability\":\"capabilities\",\"payload\":{\"schema\":\"sherpa.planner.capabilities.request.v2\"},\"deadline_ms\":20000,\"idempotency_key\":\"op-1\",\"policy\":{\"effect\":\"read\",\"required_evidence\":\"none\",\"artifact_directory\":null}}}\n",
     "1\tdata\t{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}\n",
     "0\tconfirm\t{\"id\":3,\"tool\":\"reminder_delete\",\"operation_id\":\"op-2\",\"client\":{\"name\":\"t\",\"version\":\"0\"},\"title\":\"t\",\"lines\":[],\"timeout_ms\":30000}\n",
     "0\twithdraw\t{\"id\":3}\n",
     "2\tclose\t{\"reason\":\"server_closed\"}\n",
+    "1\tclose\t{\"reason\":\"unsupported_kind\"}\n",
     "0\tfatal\t{\"code\":\"mux.frame_invalid\"}\n",
 ]
 
 private let fromApp = [
-    "0\thello\t{\"mux\":1,\"version\":\"0.9.0\",\"workers\":[\"planner\"]}\n",
+    "0\thello\t{\"mux\":2,\"version\":\"0.9.0\",\"workers\":[\"planner\"]}\n",
     "0\tresponse\t{\"id\":1,\"response\":{\"application_contract\":\"sherpa.planner.v2\",\"capability\":\"capabilities\",\"effect\":{\"kind\":\"none\",\"state\":\"not_started\"},\"error\":{\"code\":\"protocol.unsupported_capability\",\"retry\":\"never\"},\"kind\":\"response\",\"operation_id\":\"op-1\",\"protocol_version\":\"2.0.0\",\"request_id\":\"op-1\",\"status\":\"failed\",\"warnings\":[]}}\n",
     "0\tresponse\t{\"id\":2,\"report\":{\"error\":\"sherpa.internal_failure\",\"status\":\"failed\"}}\n",
-    "1\topen\n",
+    "1\topen\t{\"kind\":\"mcp\"}\n",
     "1\tdata\t{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}\n",
     "0\tconfirmation\t{\"id\":3,\"decision\":\"declined\"}\n",
     "1\tclose\n",
@@ -54,7 +55,7 @@ func readsEveryValidAppFrame(line: String) throws {
 }
 
 @Test func encodesTheAppFramesOfTheVectors() {
-    #expect(MuxFrame(channel: 1, type: "open").encoded == Data("1\topen\n".utf8))
+    #expect(MuxFrame.open(channel: 1, kind: .mcp).encoded == Data("1\topen\t{\"kind\":\"mcp\"}\n".utf8))
     #expect(MuxFrame(channel: 1, type: "close").encoded == Data("1\tclose\n".utf8))
     #expect(
         MuxFrame(channel: 0, type: "confirmation", json: #"{"id":3,"decision":"declined"}"#).encoded
@@ -67,11 +68,12 @@ func readsEveryValidAppFrame(line: String) throws {
     ("1 data {}\n", .frameInvalid),
     ("1\tdata\n", .frameInvalid),
     ("1\tdata\t\n", .frameInvalid),
-    ("0\topen\n", .unexpectedFrame),
-    ("1\thello\t{\"mux\":1}\n", .unexpectedFrame),
-    ("9007199254740992\topen\n", .frameInvalid),
+    ("0\topen\t{\"kind\":\"mcp\"}\n", .unexpectedFrame),
+    ("1\thello\t{\"mux\":2}\n", .unexpectedFrame),
+    ("9007199254740992\topen\t{\"kind\":\"mcp\"}\n", .frameInvalid),
     ("0\tdata\t{}\n", .unexpectedFrame),
-    ("1\topen\t{}\n", .frameInvalid),
+    // Mux 1's open: Mux 2 requires the kind (contract §7.3). The kind itself is the reader's owner's.
+    ("1\topen\n", .frameInvalid),
 ])
 func rejectsTheViolationVectorsInBothDirections(line: String, expected: MuxViolation) {
     #expect(violation(line, .coreToApp) != nil)
@@ -107,6 +109,7 @@ func rejectsTheViolationVectorsInBothDirections(line: String, expected: MuxViola
     ("withdraw", MuxLimits.other, .coreToApp, 0),
     ("fatal", MuxLimits.other, .coreToApp, 0),
     ("close", MuxLimits.other, .coreToApp, 1),
+    ("open", MuxLimits.other, .appToCore, 1),
     ("response", MuxLimits.response, .appToCore, 0),
     ("confirmation", MuxLimits.other, .appToCore, 0),
 ])

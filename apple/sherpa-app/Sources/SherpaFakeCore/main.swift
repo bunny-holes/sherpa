@@ -174,10 +174,10 @@ func handle(_ frame: MuxFrame) {
     switch (frame.channel, frame.type) {
     case (0, "hello"):
         guard !helloAnswered else { violation("mux.unexpected_frame") }
-        guard body?["mux"] == .integer(1) else { violation("mux.version_unsupported") }
+        guard body?["mux"] == .integer(MuxFrame.muxVersion) else { violation("mux.version_unsupported") }
         helloAnswered = true
         let workers = body?["workers"]?.array?.compactMap(\.string).joined(separator: ",") ?? ""
-        record("app-hello version=\(body?["version"]?.string ?? "") workers=\(workers)")
+        record("app-hello mux=\(MuxFrame.muxVersion) version=\(body?["version"]?.string ?? "") workers=\(workers)")
     case (0, "response"):
         guard let body, case let .integer(id)? = body["id"] else { violation("mux.frame_invalid") }
         let kind = body["response"] != nil ? "response" : "report"
@@ -196,9 +196,18 @@ func handle(_ frame: MuxFrame) {
             record("confirmation-late \(id) \(decision)")
         }
     case (let channel, "open"):
+        // Mux 2: {"kind":"<word>"} (contract §7.3). The core serves `mcp` and closes any other kind.
+        guard let body, Set(body.keys) == ["kind"], case let .string(kind)? = body["kind"], isKindWord(kind) else {
+            violation("mux.frame_invalid")
+        }
         guard !openChannels.contains(channel) else { violation("mux.unexpected_frame") }
+        guard kind == MuxChannelKind.mcp.rawValue else {
+            record("open \(channel) kind=\(kind) refused")
+            emit(channel: channel, type: "close", json: #"{"reason":"unsupported_kind"}"#)
+            return
+        }
         openChannels.insert(channel)
-        record("open \(channel)")
+        record("open \(channel) kind=\(kind)")
     case (let channel, "data"):
         guard openChannels.contains(channel), let data = frame.body else {
             record("data \(channel) dropped")
@@ -213,9 +222,16 @@ func handle(_ frame: MuxFrame) {
     }
 }
 
+/// A channel kind: a word of the frame type grammar (contract §7.2, §7.3).
+func isKindWord(_ kind: String) -> Bool {
+    (1...16).contains(kind.utf8.count) && kind.utf8.allSatisfy { (0x61...0x7a).contains($0) || $0 == 0x2d }
+}
+
+/// `bad-version`: another version; `mux-1`: this version under Mux 1, as a core built before Mux 2.
 func sendHello() {
     let announced = mode == "bad-version" ? "9.9.9" : version
-    emit(channel: 0, type: "hello", json: #"{"mux":1,"version":"\#(announced)"}"#)
+    let mux = mode == "mux-1" ? 1 : MuxFrame.muxVersion
+    emit(channel: 0, type: "hello", json: #"{"mux":\#(mux),"version":"\#(announced)"}"#)
 }
 
 switch mode {
