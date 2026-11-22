@@ -9,6 +9,59 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — The core refuses the global fetch and the built core holds no socket while it serves MCP (bunny-holes/sherpa#64)
+
+This Mac, worker session on `feat/core-egress` from `main` `3ce5e60`. Every
+`bun` on `PATH` is 1.4.4. `bun run build` put that runtime in
+`core/dist/sherpa` (`BUN_BE_BUN=1 dist/sherpa --version` printed `1.4.4`),
+and `bun run test` and `bun run test:stdio` ran under it. No paid API was
+called; every server below belonged to the test or probe process and listened
+on `127.0.0.1`.
+
+- Bun version: `core/package.json` names Bun 1.4.5 only in
+  `devEngines.packageManager` (`onFail: "download"`), the field Vite+ 1.7.0
+  documents for picking a package manager. Bun 1.4.4's `bun install
+  --frozen-lockfile` installed without a warning, and no Bun 1.4.5 runtime is
+  on this Mac. `@types/bun` resolved to 1.4.5.
+- Redirects: `fetch(url, { redirect: "error" })` rejected a 307 to another
+  local server and a 302 with a relative `Location` with a `TypeError` whose
+  `code` is `UnexpectedRedirect` and whose message names the URL. Neither
+  redirect target received a request. `redirect` in the init replaced a
+  `Request`'s own. `core/tests/stdio/egress.test.ts` keeps this as a
+  regression on the gate's Bun.
+- The global fetch: `Bun.fetch` is a separate binding, not equal to
+  `globalThis.fetch`, neither writable nor configurable, and it still reached a
+  local server after the global was replaced. A `Worker` started from a Blob
+  URL had a native `fetch` of its own. In `node:vm`, `runInNewContext` has
+  no `fetch` and `runInThisContext` saw the replaced one. `globalThis.fetch`,
+  once defined neither writable nor configurable, rejected an assignment
+  (`Attempted to assign to readonly property.`) and a second
+  `Object.defineProperty` (`Attempting to change value of a readonly
+  property.`).
+- Network modules without an install: Bun resolved `ws`, `undici` (with its
+  own `fetch`, `WebSocket` and `EventSource`), `node-fetch`,
+  `isomorphic-fetch`, `cross-fetch`, `node:dns`, and Node's `_http_*` and
+  `_tls_*` internals, the latter with a deprecation warning. `Bun` and
+  `"bun"` both export `connect`, `listen`, `serve`, `udpSocket`, `fetch`,
+  `FetchSession`, `dns`, `S3Client`, `s3`, `SQL`, `sql`, `postgres`,
+  `RedisClient` and `redis`. `WebSocket` is a global, `EventSource` is not,
+  and `self` is `globalThis`.
+- lsof: `/usr/sbin/lsof -n -P -a -p <pid> -i` listed the test process's own
+  listening TCP socket. It printed nothing and exited 1 both for a process
+  without an internet socket and for a pid that had exited, so the stdio test
+  first finds a listener of its own and the core's descriptors 0–2. The
+  standard streams `Bun.spawn` gives a child are connected Unix socket pairs,
+  which `lsof -U` names `->0x…`; a listening Unix socket carries its path.
+- Built core: from `hello` through two MCP connections, `tools/list` (35
+  tools) on each, `event_list`, and a `reminder_delete` waiting for its
+  confirmation, `dist/sherpa app serve` held no internet socket and no
+  listening Unix socket. It logged
+  `debug [core:egress:install] success global_fetch=refused` at start, as did
+  `dist/sherpa --version`.
+- Not measured: Bun 1.4.5; a real provider over HTTPS (the turn fetch's allowed
+  path ran against a fake fetch, its redirect check against plain local HTTP);
+  a core that `Sherpa.app` started; a chat turn, which does not exist yet.
+
 ## 2026-11-22 — Claude Code and Codex after a relay that ended with `mcp_disabled` or `app_not_running`, in plugin and user scope (bunny-holes/sherpa#69)
 
 This Mac, run by the bunny-holes/sherpa#69 worker between 03:23Z and 03:47Z.
