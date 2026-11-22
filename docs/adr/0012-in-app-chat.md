@@ -17,8 +17,8 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > "다시" 와 "계속" 을 `resend` 로만 보인다. 받는지는 대화를 가진 코어만 정확히 알고, 글도 reasoning 도 호출도 없는
 > 답, 도구 단계 뒤에 reasoning 만 낸 단계, 잘못 만든 호출 뒤에 글이 온 단계는 앱이 받은 프레임으로 가르지 못하기
 > 때문이다. `retryable` 은 같은 요청이 나중에 될 수 있는지라 `resend` 와 따로 간다. 그 메시지를 읽는 앱이 아직 없어
-> `sherpa.chat.v1` 의 판은 그대로다. [설계] 계약 §7.11 "다시 보내기" 의 표가 차례가 끝난 길마다 대화의 마지막
-> 메시지와 `resend` 를 적는다. `step-limit` 뒤에 보내면 도구 고리가 모델 요청 20번까지 다시 이어진다. [실측:
+> `sherpa.chat.v1` 의 판은 그대로다. [설계] 계약 §7.11 "다시 보내기" 의 표가 `resend` 가 언제 참인지를 차례가
+> 끝난 길과 요청 전의 거절마다 적는다. `step-limit` 뒤에 보내면 도구 고리가 모델 요청 20번까지 다시 이어진다. [실측:
 > `core/tests/chat-turn.test.ts`, `core/tests/chat-tools.test.ts`] 같은 PR 이 빌드한 코어로 채팅의 확인을 보는
 > stdio 시험을 넣었다. 채널 0 의 `confirm` 은 채팅 채널의 번호와 `client` `sherpa-chat` 을 싣고, 허용과 거부가
 > 그대로 모델에 가며, 창이 떠 있는 동안의 `cancel` 은 `withdraw` 를 보낸다. [실측: `core/tests/stdio/chat-tools.test.ts`]
@@ -340,7 +340,7 @@ macOS 시스템 인증서 저장소를 믿는 빌드는 PR #97 로, 글 차례�
   다시 보내기: PR #104 가 그 `turn` 을 더했다. 앱의 "다시" 는 `text` 없는 `turn` 이고, 빈 대화나 모델의 답으로 끝난
   대화에는 `invalid_message`(`nothing_to_retry`)다. 앱은 "다시" 를 `error.retryable` 이 아니라 `done` 과 차례의
   `error` 가 싣는 `resend` 로 보인다. `retryable` 은 같은 요청이 나중에 될 수 있는지이고 `resend` 는 대화가 그
-  `turn` 을 받는지라, `provider_auth` 뒤에도 `resend` 는 참이다. 차례가 끝난 길마다의 `resend` 는 계약 §7.11 "다시
+  `turn` 을 받는지라, `provider_auth` 뒤에도 `resend` 는 참이다. `resend` 가 언제 참인지는 계약 §7.11 "다시
   보내기" 의 표다. `step-limit` 뒤에 보내면 도구 고리를 모델 요청 20번까지 다시 잇는다. [설계; 실측:
   `core/tests/chat-turn.test.ts`, `core/tests/chat-tools.test.ts`; 계약 §7.11 "다시 보내기"])
 - 도구 루프의 단계 한도는 `stopWhen: isStepCount(N)` 으로 둔다. v7 의 `streamText` 기본은 `isStepCount(1)` 이라
