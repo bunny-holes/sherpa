@@ -1,3 +1,12 @@
+---
+uuid: c9cdaf64-6b70-4d88-90f6-42da5e0efb2c
+type: spec
+audience: "캘린더 노트 스키마를 읽거나 확장하는 유지보수자와 에이전트"
+goal: "캘린더 노트 누적 데이터 형식의 버전 규칙과 경계를 정의한다"
+tone: "규범적 영문 계약"
+manner: "형식 규칙과 예시만 적고 워커 프로토콜과 구분한다"
+---
+
 # Calendar note schemas
 
 Calendar notes can be durable, versioned records.  A note schema is not the

@@ -1,8 +1,10 @@
 ---
-id: RFC-0001
-title: Context Archive to Native Fresh Read Migration
-status: active
-owner: maintainer
+uuid: a39b1c3e-ccf7-40a3-9c0c-aba4919b9d76
+type: spec
+audience: "컨텍스트 아카이브에서 Fresh Read 전환 계획을 검토하는 사람"
+goal: "기존 발신·승인·복구 동작을 유지하며 Fresh Read로 이전하는 단계와 게이트를 정의한다"
+tone: "기술 영문 RFC"
+manner: "목적·단계·롤백·게이트 기준을 정리한다"
 ---
 
 # RFC-0001: Context Archive to Native Fresh Read Migration

@@ -1,8 +1,10 @@
 ---
-id: CONTRACT-CONTEXT-ANALYSIS-V1
-title: Context Analysis Request V1
-status: approved
-owner: maintainer
+uuid: a5509f23-760a-4286-a2c4-1e5d8b002142
+type: spec
+audience: "ContextAnalysisService와 온디바이스 분석 워커 경계를 구현·검증하는 사람"
+goal: "컨텍스트 분석 요청 V1의 입력 스키마와 경계 규칙을 고정한다"
+tone: "규범적 영문 계약"
+manner: "생산자·소비자·필드 제약만 적는다"
 ---
 
 # Context Analysis Request V1

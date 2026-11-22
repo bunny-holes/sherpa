@@ -1,8 +1,10 @@
 ---
-id: ADR-0004
-title: Native Fresh Read Context and Minimal Control Ledger
-status: accepted
-owner: maintainer
+uuid: 0e8e0136-af2a-4a68-acb1-24712f5b7d38
+type: adr
+audience: "컨텍스트 수집·보관·최소 제어 원장 경계를 다루는 유지보수자와 에이전트"
+goal: "네이티브 저장소를 진실의 원천으로 두고 장기 본문 아카이브를 금지한 결정과 ADR-0012 예외를 확인하게 한다"
+tone: "규범적 영문 ADR에 한국어 정정을 덧붙인다"
+manner: "결정 본문을 보존하고 바뀐 예외는 정정 인용으로 남긴다"
 ---
 
 # ADR-0004: Native Fresh Read Context and Minimal Control Ledger

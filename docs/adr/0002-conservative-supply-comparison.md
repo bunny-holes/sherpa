@@ -1,8 +1,10 @@
 ---
-id: ADR-0002
-title: Conservative Supply Price Comparison
-status: superseded
-owner: maintainer
+uuid: bce66824-0a16-4712-afc0-8b2a1bc29311
+type: adr
+audience: "제거된 Supply 기능의 보수적 가격 비교 원칙을 참고하는 사람"
+goal: "과거 Supply 기능에서 미확인 비용을 0으로 가정하지 않기로 한 결정 기록을 보존한다"
+tone: "영문 ADR 본문에 한국어 대체 안내를 얹는다"
+manner: "원문을 보존하고 기능 제거 사실을 상단 인용으로 남긴다"
 ---
 
 # ADR-0002: Conservative Supply Price Comparison

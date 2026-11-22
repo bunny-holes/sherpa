@@ -1,8 +1,10 @@
 ---
-id: ADR-0003
-title: Approval-Gated Context Outbound and Hybrid Mail Access
-status: accepted
-owner: maintainer
+uuid: e439bb0d-3f0c-483e-95b9-8b76cac0c3f9
+type: adr
+audience: "메시지·메일 발신 경계와 승인 절차를 변경하거나 검토하는 유지보수자와 에이전트"
+goal: "LLM을 특권 실행 밖에 두고 발신과 메일 접근의 승인 경계를 일관되게 유지한다"
+tone: "규범적 영문 ADR"
+manner: "컨텍스트·결정·결과를 기록하고 세부 와이어 형식은 docs/contracts/에 둔다"
 ---
 
 # ADR-0003: Approval-Gated Context Outbound and Hybrid Mail Access

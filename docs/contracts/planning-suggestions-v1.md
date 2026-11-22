@@ -1,8 +1,10 @@
 ---
-id: CONTRACT-PLANNING-SUGGESTIONS-V1
-title: Planning Suggestions V1
-status: approved
-owner: maintainer
+uuid: 9dbf84f2-fce3-4e69-8cb6-ec8ff470ac6b
+type: spec
+audience: "LLM 분석 워커의 제안 출력과 ContextPlanningSuggestionService 경계를 구현하는 사람"
+goal: "Planning Suggestions V1 출력 형식과 검증 경계를 고정한다"
+tone: "규범적 영문 계약"
+manner: "생산자·소비자·제안 필드 제약만 적는다"
 ---
 
 # Planning Suggestions V1

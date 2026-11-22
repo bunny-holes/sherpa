@@ -1,8 +1,10 @@
 ---
-id: ADR-0001
-title: Rust Control Plane with Language-Native Workers
-status: superseded
-owner: maintainer
+uuid: 69f19247-85e2-4a1e-a6cc-6c6fa838abd4
+type: adr
+audience: "Sherpa 아키텍처 이력을 확인하거나 과거 Rust 제어 평면 결정의 배경을 보는 사람"
+goal: "초기 Rust 제어 평면·언어별 워커 결정과 이후 Swift·Bun 전환으로 대체된 범위를 기록한다"
+tone: "영문 ADR 본문에 한국어 정정·대체 안내를 얹는다"
+manner: "원문을 보존하고 대체 사실은 상단 인용으로 남긴다"
 ---
 
 # ADR-0001: Rust Control Plane with Language-Native Workers

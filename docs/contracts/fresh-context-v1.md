@@ -1,8 +1,10 @@
 ---
-id: CONTRACT-FRESH-CONTEXT-V1
-title: Fresh Context Contract V1
-status: active
-owner: maintainer
+uuid: 2a13e96f-2bac-42ce-ad73-521ef6103b48
+type: spec
+audience: "Fresh Context 수집·페이지 메타데이터·에페메랄 증거·조정 계약을 구현하는 사람"
+goal: "Fresh Context V1의 요청·응답·증거·원장 경계를 고정한다"
+tone: "규범적 영문 계약"
+manner: "스키마와 불변식만 적고 구현 상세는 설계 문서에 둔다"
 ---
 
 # Fresh Context Contract V1

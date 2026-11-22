@@ -1,8 +1,10 @@
 ---
-id: CONTRACT-WORKER-V2
-title: Sherpa Worker Protocol V2
-status: approved
-owner: maintainer
+uuid: 2939399e-7d5f-4094-9518-b803f2dd6c4a
+type: spec
+audience: "Core, Sherpa.app, Swift 헬퍼 사이의 Worker Protocol V2 계약을 구현·검증하는 사람"
+goal: "Worker Protocol V2 전송, 크기 한도, 결과 상태, 정책, 권한 분리를 고정한다"
+tone: "규범적 영문 계약"
+manner: "전송·호환성·민감값·권한 경계 규칙을 정의한다"
 ---
 
 # Sherpa Worker Protocol V2
@@ -94,12 +96,17 @@ Every response exactly echoes the request's application contract, request ID,
 operation ID, and capability. Capability discovery alone returns a
 `capabilities` array; ordinary responses carry no capability report.
 
-The machine-readable wire source of truth is
-`protocols/worker-v2.schema.json`.
-Implementation and fixtures must validate against the same schema. The
-deterministic gate validates every schema against the Draft
-2020-12 meta-schema and validates real serialized request and response values,
-with standard formats enabled; parsing the schema as JSON is not sufficient.
+The wire definitions live in
+[SherpaWorkerProtocol](../../apple/worker-protocol/Sources/SherpaWorkerProtocol/),
+[SherpaPlannerContract](../../apple/eventkit-service/Sources/SherpaPlannerContract/),
+and [core/src/planner/port.ts](../../core/src/planner/port.ts).
+The deterministic gate (`scripts/check-all.sh`) validates serialized request
+and response envelopes on both sides through the Swift package tests in
+`apple/worker-protocol` and `apple/eventkit-service`, plus
+[core/tests/planner-schemas.test.ts](../../core/tests/planner-schemas.test.ts)
+and the stdio tests in `core/tests/stdio/`.
+The historical Draft 2020-12 file `protocols/worker-v2.schema.json` was removed
+when the Rust control plane was retired.
 
 ## Sensitive values
 

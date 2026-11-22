@@ -1,8 +1,10 @@
 ---
-id: REQ-CONTEXT-INTELLIGENCE
-title: Context Intelligence Requirements
-status: approved
-owner: maintainer
+uuid: c241d3f1-c0fb-49fd-a857-b69cb0c94a66
+type: spec
+audience: "iMessage·Mail·KakaoTalk 컨텍스트 수집과 발신 요구사항을 검증하는 사람"
+goal: "Context Intelligence의 기능·안전 요구사항(FR-CX, SR-CX)을 기준으로 삼게 한다"
+tone: "규범적 영문 요구사항"
+manner: "식별자별 요구사항만 적고 검증 근거는 verification-matrix.md에 둔다"
 ---
 
 # Context Intelligence Requirements
