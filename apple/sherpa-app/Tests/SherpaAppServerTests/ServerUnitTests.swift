@@ -467,7 +467,7 @@ private func eventually(_ condition: () -> Bool) async -> Bool {
     #expect(await eventually { held.allSatisfy { $0.value == nil } })
 }
 
-// MARK: the MCP switch (contract §2)
+// MARK: the MCP switch and the agent commands (contract §2)
 
 @Test func startsWithMCPOffWhenTheDefaultsHoldNoValue() throws {
     let suite = "dev.xiyo.sherpa.tests.\(UUID().uuidString)"
@@ -480,4 +480,68 @@ private func eventually(_ condition: () -> Bool) async -> Bool {
     MCPSetting.set(false, in: defaults)
     #expect(!MCPSetting.isEnabled(in: defaults))
     #expect(MCPSetting.key == "mcpEnabled")
+}
+
+@Test func givesEachMeasuredAgentItsRegistrationCommands() {
+    let relay = "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay"
+    #expect(AgentSetup.Agent.allCases == [.claudeCode, .codex])
+    #expect(AgentSetup.steps(for: .claudeCode, relayPath: relay).map(\.command) == [
+        "claude mcp add --scope user sherpa -- /Applications/Sherpa.app/Contents/MacOS/sherpa-relay",
+    ])
+    #expect(AgentSetup.steps(for: .codex, relayPath: relay).map(\.command) == [
+        "codex features enable mcp_2026_07_28",
+        "codex mcp add --env CODEX_MCP_PROTOCOL_VERSION=2026-07-28 sherpa -- /Applications/Sherpa.app/Contents/MacOS/sherpa-relay",
+    ])
+}
+
+@Test func quotesARelayPathOnlyWhenAShellWouldReadItAsMoreThanAWord() {
+    #expect(AgentSetup.shellQuoted("/Applications/Sherpa.app/Contents/MacOS/sherpa-relay")
+        == "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay")
+    #expect(AgentSetup.shellQuoted("/Users/a/My Apps/Sherpa.app") == "'/Users/a/My Apps/Sherpa.app'")
+    #expect(AgentSetup.shellQuoted("/Volumes/Kim's/Sherpa.app") == #"'/Volumes/Kim'\''s/Sherpa.app'"#)
+    #expect(AgentSetup.shellQuoted("") == "''")
+    #expect(AgentSetup.steps(for: .claudeCode, relayPath: "/Users/a/My Apps/Sherpa.app/Contents/MacOS/sherpa-relay")
+        .map(\.command) == ["claude mcp add --scope user sherpa -- '/Users/a/My Apps/Sherpa.app/Contents/MacOS/sherpa-relay'"])
+}
+
+/// What `shell -c 'printf %s <word>'` prints: the one argument a shell makes of `word`.
+private func printedByShell(_ shell: String, _ word: String) -> String? {
+    var pipe: [Int32] = [0, 0]
+    guard Darwin.pipe(&pipe) == 0 else { return nil }
+    var actions: posix_spawn_file_actions_t?
+    posix_spawn_file_actions_init(&actions)
+    defer { posix_spawn_file_actions_destroy(&actions) }
+    posix_spawn_file_actions_adddup2(&actions, pipe[1], STDOUT_FILENO)
+    posix_spawn_file_actions_addclose(&actions, pipe[0])
+    let argv = [shell, "-c", "printf %s " + word].map { strdup($0) } + [nil]
+    let variables: [String] = ["PATH=/usr/bin:/bin", "HOME=/nonexistent"]
+    let environment = variables.map { strdup($0) } + [nil]
+    defer { (argv + environment).forEach { free($0) } }
+    var pid: pid_t = 0
+    let spawned = posix_spawn(&pid, shell, &actions, nil, argv, environment)
+    close(pipe[1])
+    defer { close(pipe[0]) }
+    guard spawned == 0 else { return nil }
+    var output = Data()
+    var buffer = [UInt8](repeating: 0, count: 4_096)
+    while true {
+        let count = read(pipe[0], &buffer, buffer.count)
+        if count > 0 { output.append(contentsOf: buffer[0..<count]) } else if count == 0 || errno != EINTR { break }
+    }
+    var status: Int32 = 0
+    while waitpid(pid, &status, 0) == -1, errno == EINTR {}
+    return status == 0 ? String(decoding: output, as: UTF8.self) : nil
+}
+
+@Test(arguments: ["/bin/sh", "/bin/zsh", "/bin/bash"])
+func quotedPathsReachTheShellAsOneUnchangedWord(_ shell: String) {
+    let paths = [
+        "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay",
+        "/Users/a/My Apps/Sherpa.app/Contents/MacOS/sherpa-relay",
+        "/Volumes/Kim's \"Disk\"/$HOME/`id`/a\\b/!x/*?/~/Sherpa.app",
+        "/Users/a/응용 프로그램/Sherpa.app",
+    ]
+    for path in paths {
+        #expect(printedByShell(shell, AgentSetup.shellQuoted(path)) == path)
+    }
 }

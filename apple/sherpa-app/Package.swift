@@ -35,7 +35,8 @@ let package = Package(
         ),
         .target(name: "SherpaRelayKit", dependencies: ["SherpaAppConnection"]),
         .executableTarget(name: "SherpaRelay", dependencies: ["SherpaRelayKit"]),
-        // Socket server, core supervision and multiplexing. No AppKit, no EventKit.
+        // Socket server, core supervision and multiplexing, the MCP switch's admission and its
+        // stored value, and the agent registration commands the app shows. No AppKit, no EventKit.
         .target(name: "SherpaAppServer", dependencies: ["SherpaAppConnection", workerProtocol]),
         // Binds the server's worker port to the helper's in-process planner handling.
         .target(
