@@ -9,25 +9,6 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 
 # 앱 안 채팅은 코어의 새 경계에서 AI SDK 로 돌고, 코어가 여는 연결은 고른 제공자의 HTTPS 뿐이다
 
-> **정정 (2026-11-22, bunny-holes/sherpa#64, Bun 판).** "코드로 지키기" 2 의 "저장소는 Bun 1.4.5 를 고정하므로"
-> 는 맞지 않다. 1.4.5 는 `core/package.json` 의 `devEngines.packageManager` 에만 있고, Bun 1.4.4 의 `bun install
-> --frozen-lockfile` 은 경고 없이 설치했다. 이 Mac 의 게이트와 `bun run build` 는 `PATH` 의 Bun 1.4.4 로 돌고, 빌드한
-> 코어에도 1.4.4 가 들어간다. 리디렉트 거부는 이제 게이트가 `core/tests/stdio/egress.test.ts` 로 그 Bun 에서 잰다.
-> 1.4.5 에서는 재지 않았다("아직 확인 전"). [실측: `docs/testing/live-evidence.md` 2026-11-22, #64]
->
-> **정정 (2026-11-22, bunny-holes/sherpa#64, 막는 목록과 시험).** `globalThis.fetch` 를 바꿔도 `Bun.fetch`(따로
-> 있는 읽기 전용 바인딩)와 Worker 전역의 `fetch` 에는 닿지 않고, Bun 1.4.4 는 `ws`·`undici`·`node-fetch` 같은
-> 모듈을 설치 없이 푼다. [실측: 같은 기록] 그래서 "코드로 지키기" 3 의 정적 검사는 이것들과 `Bun` 의 다른 네트워크
-> API(`FetchSession`, `dns`, S3·SQL·Redis 클라이언트), `node:dns`, `EventSource`, `require` 도 막는다
-> (`core/vite.config.ts`). 3 의 마지막 항목(문자열 모델 id)은 AI SDK 가 들어오는 단계 4 에 남았다. "시험으로
-> 지키기" 의 stdio 시험은 차례 메시지가 생기기 전이라 MCP 연결 중 코어의 소켓을 `lsof -a -p <pid> -i` 와 `-U` 로
-> 본다. `lsof` 는 소켓이 없는 프로세스에도 끝난 pid 에도 아무것도 내지 않으므로, 시험은 자기 듣는 소켓과 코어의
-> 표준 기술자를 먼저 본다.
->
-> **정정 (2026-11-22, bunny-holes/sherpa#64, 상태).** "구현 단계" 2 가 들어왔다. 전역 `fetch` 거부와 지킨 `fetch` 는
-> `core/src/chat/egress.ts`, 정적 검사는 `core/vite.config.ts` 의 린트 규칙이고, 시험은 `core/tests/chat-egress.test.ts`,
-> `core/tests/egress-lint.test.ts`, `core/tests/stdio/egress.test.ts` 다. 다른 단계는 구현 전이다.
-
 상태: 채택(소유자 결정, 2026-11-22, bunny-holes/sherpa#59). 구현 전이다. 이 결정은
 [ADR-0010](0010-menu-bar-app-and-mcp.md) 결정 2 의 "Bun 은 소켓을 열지 않고 앱과의 표준 입출력 파이프만 읽는다"
 를 고친다. 앱이 코어 하나를 띄우는 구조, 중계, MCP 는 2026-07-28 만 받는

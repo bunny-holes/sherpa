@@ -49,6 +49,7 @@ sherpa — Bun + TypeScript core (one compiled executable, core/)
     |-- imessage/ --------- Messages chat.db reads, Messages send through osascript
     |-- kakaotalk/ -------- KakaoTalk SQLCipher reads, key derivation, setup,
     |                       local-text checkpoint
+    |-- chat/ ------------- egress, the core's only way to the network (ADR-0012)
     `-- apple/ ------------ hands Worker Protocol V2 requests to the helper
             |
             v
@@ -102,13 +103,14 @@ never writes an agent's configuration (contract §2 "MCP 켜기와 연결 안내
 bunny-holes/sherpa#31), and the CLI keeps the helper path above until then.
 
 Today no Sherpa process makes a network connection. The core reads only the
-pipes the app opened for it (contract §7.1), opens no socket, and sends no
-request. Every core command starts with `globalThis.fetch` refusing every call
-(`core/src/chat/egress.ts`), the core's lint rules keep `fetch` outside that
-module and every socket, HTTP, WebSocket, and name-lookup API out of
-`core/src`, and a stdio test checks with `lsof` that the built core holds no
-internet or listening socket while it serves MCP. The app listens only on its
-Unix socket for relays, and the relay connects only to that socket. [ADR-0012](../adr/0012-in-app-chat.md)
+pipes the app opened for it (contract §7.1); its source calls no `fetch` and
+opens no socket. Every core command starts with `globalThis.fetch` refusing
+every call; the runtime's `fetch` stays in `core/src/chat/egress.ts` with no
+caller yet, lint rules keep `fetch` out of every other module and every
+socket, HTTP, WebSocket, and name-lookup API out of `core/src`, and a stdio
+test checks with `lsof` that the built core holds no internet or listening
+socket while it serves MCP. The app listens only on its Unix socket for
+relays, and the relay connects only to that socket. [ADR-0012](../adr/0012-in-app-chat.md)
 (owner decision 2026-11-22, bunny-holes/sherpa#59) amends ADR-0010 decision 2
 for an in-app chat that is not built yet. When it lands, `sherpa app serve` runs
 the chat loop in a new `core/src/chat/` module on the Vercel AI SDK v7. The chat
@@ -144,7 +146,7 @@ those ports. The composition roots choose implementations.
 
 ```text
 core/src/main.ts (composition root of the CLI)
-    -> cli + commands + apple helper proxy; `app serve` -> app/serve
+    -> chat/egress + cli + commands + apple helper proxy; `app serve` -> app/serve
 core/src/app/serve.ts (composition root of `sherpa app serve`)
     -> app + mcp + commands; picks the control-channel planner port
 
@@ -156,6 +158,7 @@ planner/port                      -> no Sherpa module
 commands                          -> journal, mail, imessage, kakaotalk, cli/errors
 core adapters (mail, imessage, kakaotalk) -> cli/errors, process/runner, log
 journal                                   -> cli/errors, log
+chat/egress                               -> cli/errors, log
 
 SherpaNative (helper composition root)
     -> SherpaPlannerApplication + SherpaMutationApplication + adapters
