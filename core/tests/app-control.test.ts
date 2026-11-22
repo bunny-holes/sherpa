@@ -2,8 +2,8 @@ import { describe, expect, test } from "vite-plus/test";
 import { ControlChannel } from "../src/app/control.ts";
 import { FrameViolation } from "../src/app/frame.ts";
 import type { ConfirmationPrompt } from "../src/mcp/confirmation.ts";
-import { plannerOutcome } from "../src/mcp/outcome.ts";
 import { type PlannerPolicy, plannerRequest } from "../src/planner/port.ts";
+import { plannerOutcome } from "../src/tools/outcome.ts";
 import { ManualTimers } from "./support/pipes.ts";
 import { v2Response } from "./support/planner.ts";
 

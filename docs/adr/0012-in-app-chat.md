@@ -22,6 +22,12 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > 덧붙였다. [아키텍처](../architecture/README.md) 의 "long-lived content archive" 금지 규칙에는 이 기록을 예외로
 > 적었다.
 >
+> **정정 (2026-11-22, #66).** 구현 단계 4(bunny-holes/sherpa#66)의 첫 몫이 PR #86 으로 들어갔다. 호출의 수명과 결과
+> 봉투는 MCP 에도 채팅에도 속하지 않는 `core/src/tools/` 로 옮겼고, 코어는 시작 때 전역 `WebSocket` 도 거부한다.
+> 네트워크 규칙은 WebSocket 을 받지 않는데 "코드로 지키기" 1 은 전역 `fetch` 만 바꿨고, 린트는 `core/src` 만 본다.
+> 채팅이 번들할 `@ai-sdk/provider-utils` 5.0.83 은 생성자를 받지 않으면 `globalThis.WebSocket` 으로 연결한다. 고친
+> 곳은 상태 줄, "도구", "코드로 지키기" 1, "구현 단계" 4 다.
+>
 > **정정 (2026-11-22, #64).** 구현 단계 2, 코어 나가는 길(bunny-holes/sherpa#64)이 PR #74 로 들어갔고, 그 작업이
 > 잰 사실을 실었다. Bun 1.4.5 의 `redirect: "error"` 도 1.4.4 처럼 리디렉트를 거부했다. 전역 `fetch` 를 바꿔도
 > `Bun.fetch` 와 `Worker` 의 `fetch` 는 막히지 않고 네트워크 모듈 여럿이 설치 없이 풀리므로, 구현의 정적 검사는
@@ -38,9 +44,10 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > 단계 5(#67)다. 고친 곳은 상태 줄, "앱과 코어 사이 채널", "구현 단계" 1·3·4·5 다.
 
 상태: 채택(소유자 결정, 2026-11-22, bunny-holes/sherpa#59). 구현 단계 2(코어 나가는 길 경계와 정적 검사, #64)는
-PR #74 로, 단계 1 중 #63 의 몫(mux 2, `open` 의 채널 종류, MCP 스위치가 `mcp` 채널만 닫는 것)은 PR #72 로
-들어갔고 나머지 단계는 구현 전이다(정정 2026-11-22, #64: 처음에는 "구현 전이다" 로 적었다. 정정 2026-11-22, #63:
-단계 1 의 몫을 더했다). 이 결정은
+PR #74 로, 단계 1 중 #63 의 몫(mux 2, `open` 의 채널 종류, MCP 스위치가 `mcp` 채널만 닫는 것)은 PR #72 로,
+단계 4(#66) 중 호출 수명 모듈 분리와 전역 `WebSocket` 거부는 PR #86 으로 들어갔고 나머지는 구현 전이다(정정
+2026-11-22, #64: 처음에는 "구현 전이다" 로 적었다. 정정 2026-11-22, #63: 단계 1 의 몫을 더했다. 정정 2026-11-22,
+#66: 단계 4 의 첫 몫을 더했다). 이 결정은
 [ADR-0010](0010-menu-bar-app-and-mcp.md) 결정 2 의 "Bun 은 소켓을 열지 않고 앱과의 표준 입출력 파이프만 읽는다"
 를 고친다. 앱이 코어 하나를 띄우는 구조, 중계, MCP 는 2026-07-28 만 받는
 것([ADR-0011](0011-mcp-2026-07-28-only.md)), 삭제·보내기의 앱 창 확인([앱 연결
@@ -196,9 +203,12 @@ PR #74 로, 단계 1 중 #63 의 몫(mux 2, `open` 의 채널 종류, MCP 스위
 - 레지스트리(`ToolBasis.resolved()`)의 도구마다 AI SDK `tool({ description, inputSchema, execute })` 하나를
   만든다. `execute` 는 MCP 의 `tools/call` 과 같은 `handle(args, { signal, client })` 를 부른다. [설계; 코드:
   `core/src/mcp/tools.ts`]
-- 호출의 수명(시작·끝 로그, 도는 호출 목록 `activeCalls`, 계약 §10.5 의 `SherpaToolOutcomeV1` 결과 봉투)은 지금
-  `core/src/mcp/server.ts` 안에 있다. 구현 때 MCP 에도 채팅에도 속하지 않는 모듈로 옮겨 둘이 함께 쓴다. [코드;
-  설계]
+- 호출의 수명(시작·끝 로그, 도는 호출 목록 `activeCalls`, 던진 처리기를 결과로 바꾸기, 표면의 한도로 맞추기)은
+  `core/src/tools/call.ts` 에, 계약 §10.5 의 `SherpaToolOutcomeV1` 결과 봉투는 `core/src/tools/outcome.ts` 에 있다. 두
+  모듈은 `mcp/` 의 어느 것도 가져오지 않는다. 로그의 모듈 이름, 채널, 한도는 부르는 쪽이 준다. MCP 는 `mcp` 와 1 MiB
+  를 주고, 그 로그 줄과 답은 옮기기 전과 같다. [코드: `core/src/tools/`] 채팅도 같은 수명으로 도구를 부른다. [설계]
+  (정정 2026-11-22, #66: 처음에는 이것이 `core/src/mcp/server.ts` 안에 있고, 구현 때 MCP 에도 채팅에도 속하지 않는
+  모듈로 옮긴다고 적었다.)
 - 모델에는 같은 결과 봉투를 준다. 1 MiB 맞춤(계약 §10.5)은 MCP 의 한도이므로 채팅은 더 작은 한도를 둔다. 값은
   구현 이슈에서 정한다. [설계]
 - 35개 도구의 이름·설명·입력 스키마(`z.toJSONSchema`)는 43,871자이고, `$schema` 키 35개와 `z.int()` 가 넣는
@@ -334,6 +344,13 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
 1. 나가는 길 모듈 하나(`core/src/chat/egress.ts`)가 코어 시작 때 진짜 `fetch` 를 쥐고 `globalThis.fetch` 를 늘
    거부하는 함수로 바꾼다. AI SDK 의 `getOriginalFetch` 는 요청마다 `globalThis.fetch` 를 읽으므로 [문서:
    `@ai-sdk/provider-utils` 5.0.83 소스], `fetch` 설정이 빠진 길(전역 제공자와 Gateway 포함)도 막힌다. [설계]
+   같은 때 `globalThis.WebSocket` 도 모든 연결을 거부하는 생성자로 바꾸고, 진짜 `WebSocket` 은 쥐지 않는다. 두 속성
+   모두 다시 쓰거나 재정의하지 못한다. 같은 패키지의 `connectToWebSocket` 은 생성자를 받지 않으면
+   `globalThis.WebSocket` 으로 연결하고, `@ai-sdk/openai` 4.0.122·`@ai-sdk/google` 4.0.124 의 실시간 전사·번역
+   스트림과 `@ai-sdk/gateway` 4.0.152 의 전사·음성 스트림이 이 길을 쓴다. [문서: `@ai-sdk/provider-utils` 5.0.83
+   `src/websocket.ts`, 각 패키지의 `dist/index.js`] 린트는 `core/src` 만 보므로, 번들한 패키지의 이 길은 시작 때의
+   거부가 막는다. Bun 1.4.5 의 전역 `WebSocket` 은 쓰기와 재정의가 되는 속성이라 빌드한 코어에서도 바뀐다. [실측: #66;
+   회귀는 `core/tests/stdio/egress.test.ts`] (정정 2026-11-22, #66: 처음에는 전역 `fetch` 만 바꿨다.)
 2. 차례마다 그 차례의 제공자에 지킨 `fetch` 를 넘긴다. https 이고 출처가 그 차례의 출처와 같을 때만
    `redirect: "error"` 와 그 차례의 중단 신호를 달아 진짜 `fetch` 로 보낸다. 어기면 요청 전에 거부하고 `error`
    `egress_denied` 로 끝낸다. [설계] `fetch(..., { redirect: "error" })` 는 Bun 1.4.4 와 1.4.5 에서 다른 서버로
@@ -796,7 +813,8 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
    싣기, Bun 1.4.5·hardened runtime 에서 크기와 메모리 다시 재기. 단계 2 가 남긴 문자열 모델 id 검사("코드로
    지키기" 3)와 차례를 보내는 stdio 시험("시험으로 지키기")도 여기서 넣는다(정정 2026-11-22, #64). 계약에는
    `sherpa.chat.v1` 과 같은 판에 키 규칙(차례마다 키를 넘기는 규칙), §9 의 `client` `sherpa-chat`, §12 의 채팅
-   로그 규칙을 싣고 §7.1 의 소켓 문장을 고친다(정정 2026-11-22, #63: 단계 1 에서 옮겼다).
+   로그 규칙을 싣고 §7.1 의 소켓 문장을 고친다(정정 2026-11-22, #63: 단계 1 에서 옮겼다). 호출 수명 모듈 분리와
+   전역 `WebSocket` 거부는 PR #86 이 먼저 넣었다(정정 2026-11-22, #66).
 5. **앱 채팅 화면:** 첫 화면의 두 타일, 동의, 제공자·모델 고르기, 원격 자원 없는 마크다운, 한글 입력, 확인
    창과의 포커스. 계약 §2 의 첫 화면도 이 단계가 싣는다(정정 2026-11-22, #63: 단계 1 에서 옮겼다).
 6. **통합과 실기:** 소유자 유료 실기, 실측 기록, 아키텍처·계약 갱신.

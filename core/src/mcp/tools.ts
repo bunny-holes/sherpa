@@ -2,6 +2,16 @@ import { codes } from "../cli/errors.ts";
 import type { CoreCommands } from "../commands.ts";
 import { log } from "../log.ts";
 import { newOperationID, type PlannerPort, plannerRequest } from "../planner/port.ts";
+import type { ToolCall } from "../tools/call.ts";
+import {
+  commandResult,
+  coreFailure,
+  type EffectKind,
+  outcome,
+  type OutcomeError,
+  plannerOutcome,
+  type ToolOutcome,
+} from "../tools/outcome.ts";
 import {
   CONFIRMATION_TIMEOUT_MS,
   type ConfirmationDecision,
@@ -11,23 +21,7 @@ import {
   PREVIEW_DEADLINE_MS,
 } from "./confirmation.ts";
 import { type CoreEntry, type CoreRun, coreEntries } from "./core-tools.ts";
-import {
-  commandResult,
-  confirmationOutcome,
-  coreFailure,
-  type EffectKind,
-  outcome,
-  plannerOutcome,
-  type ToolOutcome,
-} from "./outcome.ts";
 import type { ConfirmedPlannerEntry, EffectClass, RegistryEntry } from "./registry.ts";
-
-/** What a tool call knows about its MCP request. */
-export interface ToolCall {
-  signal: AbortSignal;
-  /** `clientInfo` of the request's 2026-07-28 `_meta` envelope, self-reported (§9). */
-  client: { name: string; version: string };
-}
 
 /** A registry entry with its handler. `null` means the call was abandoned and is not answered. */
 export interface ResolvedTool {
@@ -98,6 +92,33 @@ function ask(
     return Promise.resolve("timed_out");
   }
   return dependencies.confirmations.confirm(prompt, signal, remainingMs);
+}
+
+const confirmationErrors: Record<
+  Exclude<ConfirmationDecision, "approved" | "withdrawn">,
+  OutcomeError
+> = {
+  declined: { code: "confirmation.declined", retry: "after_user_action" },
+  timed_out: { code: "confirmation.timed_out", retry: "after_user_action" },
+  unavailable: { code: "confirmation.unavailable", retry: "after_backoff" },
+};
+
+/** A refused confirmation: nothing ran (§9). */
+function confirmationOutcome(
+  capability: string,
+  operationID: string,
+  kind: EffectKind,
+  decision: Exclude<ConfirmationDecision, "approved" | "withdrawn">,
+): ToolOutcome {
+  return outcome({
+    status: "failed",
+    capability,
+    operation_id: operationID,
+    effect: { kind, state: "not_started" },
+    evidence: null,
+    error: confirmationErrors[decision],
+    result: null,
+  });
 }
 
 function plannerTool(

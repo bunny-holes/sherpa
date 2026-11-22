@@ -454,10 +454,12 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 
 - 앱은 코어 하나를 `Contents/MacOS/sherpa-core app serve` 로 띄우고 표준 입력·출력·오류를 파이프로 잇는다.
   코어는 소켓을 열지 않고 이 파이프만 읽는다. [소유자, ADR-0010 결정 2] 코어는 어느 명령이든 시작할 때
-  `globalThis.fetch` 를 모든 호출을 거부하는 함수로 바꾼다(`core/src/chat/egress.ts`). 코어 린트 규칙은
-  소켓·HTTP·WebSocket·이름 풀이 API 를 코어 어디서나, `fetch` 를 그 모듈 밖에서 막는다. [계약; ADR-0012 "코드로
-  지키기"] 빌드한 코어는 MCP 연결을 받는 동안 인터넷 소켓도 듣는 Unix 소켓도 쥐지 않는다. [실측:
-  `core/tests/stdio/egress.test.ts`]
+  `globalThis.fetch` 를 모든 호출을 거부하는 함수로, `globalThis.WebSocket` 을 모든 연결을 거부하는 생성자로
+  바꾸고(`core/src/chat/egress.ts`), 둘 다 다시 쓰거나 재정의하지 못하게 한다. 코어 린트 규칙은
+  소켓·HTTP·WebSocket·이름 풀이 API 를 `core/src` 어디서나, `fetch` 를 그 모듈 밖에서 막는다. 린트는 코어가
+  번들하는 패키지를 보지 않으므로, 그 패키지가 전역 `fetch`·`WebSocket` 으로 가는 길은 시작 때의 거부가
+  막는다. [계약; ADR-0012 "코드로 지키기"] 빌드한 코어는 MCP 연결을 받는 동안 인터넷 소켓도 듣는 Unix 소켓도
+  쥐지 않는다. [실측: `core/tests/stdio/egress.test.ts`]
 - 환경은 물려주지 않는다. `HOME`, `TMPDIR`, `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, `LOG_LEVEL` 만 넘긴다.
   [계약]
 - 앱이 띄운 자식은 앱의 전체 디스크 접근 권한으로 판정된다. [실측] 코어가 띄우는 `osascript` 의 Apple Events
@@ -1007,10 +1009,12 @@ result         object | null
   `warn [core:mux:open] refused channel=N kind=<종류> reason=unsupported_kind` 다. [계약]
 - 코어 나가는 길(§7.1, `core/src/chat/egress.ts`)의 줄은 아래와 같다. URL, 요청 헤더와 본문, 키, URL 을 담는 오류
   메시지는 싣지 않는다. [계약; 줄은 `core/src/chat/egress.ts`]
-  - `debug [core:egress:install] success global_fetch=refused`: 어느 명령이든 시작할 때 전역 `fetch` 를 거부로
-    바꾼 뒤.
+  - `debug [core:egress:install] success global_fetch=refused global_websocket=refused`: 어느 명령이든 시작할 때
+    전역 `fetch` 와 `WebSocket` 을 거부로 바꾼 뒤.
   - `warn [core:egress:fetch] refused reason=<사유>`: 나가기 전에 막은 요청과 따르지 않은 리디렉트. 사유는
     `global_fetch`, `invalid_url`, `not_https`, `userinfo`, `other_origin`, `preconnect`, `redirect` 다.
+  - `warn [core:egress:websocket] refused reason=global_websocket`: 전역 `WebSocket` 으로 열려던 연결. 연결은
+    열리지 않는다.
   - `warn [core:egress:base-url] refused reason=<사유>`: 받지 않은 제공자 base URL. 사유는 `invalid_url`,
     `not_https`, `userinfo`, `query`, `fragment` 다.
   - `warn [core:egress:fetch] dropped options=<이름,…>`: 요청에서 뺀 Bun 확장 선택지의 이름.
@@ -1071,7 +1075,7 @@ stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). �
 - 나가는 길(§7.1, `egress.test.ts`): 인사부터 두 MCP 연결, 읽기 호출, 사람을 기다리는 삭제 호출까지 코어에 인터넷
   소켓(`lsof -i`)도 듣는 Unix 소켓(`lsof -U`)도 없다. `lsof` 는 소켓 없는 프로세스와 끝난 pid 에 똑같이 아무것도
   내지 않으므로 시험 프로세스의 듣는 소켓과 코어의 fd 0–2 를 먼저 보는 양성 대조를 둔다. `--version` 도 전역
-  `fetch` 를 거부로 바꾼 줄(§12)을 남긴다. 리디렉트 회귀: 차례 `fetch` 가 넘긴 요청의 307·302 를 Bun 의
+  `fetch` 와 `WebSocket` 을 거부로 바꾼 줄(§12)을 남긴다. 리디렉트 회귀: 차례 `fetch` 가 넘긴 요청의 307·302 를 Bun 의
   `redirect: "error"` 가 따르지 않아 `redirect` 로 거부되고, 리디렉트 대상에는 요청이 가지 않는다. 이 시험만 빌드한
   코어 대신 시험을 돌리는 Bun(선언한 판) 위에서 `core/src/chat/egress.ts` 를 로컬 서버에 돌린다.
 - 실제 시계(`waits.test.ts`): 답 없는 확인은 30초에 `withdraw` 되고 호출은 `confirmation.timed_out` 으로 실패하며

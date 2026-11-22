@@ -106,10 +106,12 @@ Today no Sherpa process makes a network connection. The core reads only the
 pipes the app opened for it (contract §7.1), opens no socket, and has no path
 to `fetch`: the turn fetch in `core/src/chat/egress.ts` holds the runtime's
 `fetch` but has no caller yet. Every core command starts with
-`globalThis.fetch` refusing every call, lint rules keep `fetch` out of every
-other module and every socket, HTTP, WebSocket, and name-lookup API out of
-`core/src`, and a stdio test checks with `lsof` that the built core holds no
-internet or listening socket while it serves MCP. The app listens only on its
+`globalThis.fetch` refusing every call and `globalThis.WebSocket` refusing
+every connection, so a bundled package that falls back to either global
+reaches nothing. Lint rules keep `fetch` out of every other module and every
+socket, HTTP, WebSocket, and name-lookup API out of `core/src`, and a stdio
+test checks with `lsof` that the built core holds no internet or listening
+socket while it serves MCP. The app listens only on its
 Unix socket for relays, and the relay connects only to that socket. [ADR-0012](../adr/0012-in-app-chat.md)
 (owner decision 2026-11-22, bunny-holes/sherpa#59) amends ADR-0010 decision 2
 for an in-app chat that is not built yet. When it lands, `sherpa app serve` runs
@@ -154,11 +156,12 @@ those ports. The composition roots choose implementations.
 core/src/main.ts (composition root of the CLI)
     -> chat/egress + cli + commands + apple helper proxy; `app serve` -> app/serve
 core/src/app/serve.ts (composition root of `sherpa app serve`)
-    -> app + mcp + commands; picks the control-channel planner port
+    -> app + mcp + tools + commands; picks the control-channel planner port
 
 app (frame, mux, control, channel transport) -> mcp/confirmation, planner/port, log
-mcp (registry, tools, outcome)    -> commands, planner/port, cli/errors, journal,
+mcp (registry, tools, outcome)    -> tools, commands, planner/port, cli/errors, journal,
                                      the send validation of imessage and mail, log
+tools (call, outcome)             -> cli/errors, journal, planner/port, log
 planner/helper-process            -> planner/port, apple/helper, log
 planner/port                      -> no Sherpa module
 commands                          -> journal, mail, imessage, kakaotalk, cli/errors

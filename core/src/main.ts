@@ -165,7 +165,7 @@ export async function main(args: readonly string[]): Promise<number> {
 }
 
 if (import.meta.main) {
-  // Every command runs with the global fetch refusing (ADR-0012 "네트워크").
+  // Every command runs with the global fetch and WebSocket refusing (ADR-0012 "네트워크").
   installEgress();
   process.exitCode = await main(process.argv.slice(2));
 }

@@ -3,7 +3,9 @@
  *
  * `installEgress` runs before any command. It keeps the runtime's `fetch` and leaves
  * `globalThis.fetch` refusing every call for the rest of the process, so a library that falls
- * back to the global (the AI SDK reads it on every request) reaches nothing. A chat turn sends
+ * back to the global (the AI SDK reads it on every request) reaches nothing. It leaves
+ * `globalThis.WebSocket` refusing every connection the same way, for a library that falls back
+ * to that global (the AI SDK's WebSocket helper does), and keeps no WebSocket. A chat turn sends
  * through `Egress.turnFetch`: HTTPS to the one origin the person chose, without userinfo, never
  * following a redirect, and stopped by the turn's signal. Anything else is refused before it
  * leaves, with an `EgressDeniedError` and a `[core:egress:…] refused` line.
@@ -27,6 +29,7 @@ export type AllowedOrigin = string & { readonly [allowedOriginBrand]: true };
 /** Why the egress refused: the `reason` of its error and of its log line. */
 export type EgressRefusal =
   | "global_fetch"
+  | "global_websocket"
   | "invalid_url"
   | "not_https"
   | "userinfo"
@@ -48,7 +51,11 @@ export class EgressDeniedError extends SherpaError {
   }
 }
 
-function refuse(action: "fetch" | "base-url", reason: EgressRefusal, cause?: unknown) {
+function refuse(
+  action: "fetch" | "base-url" | "websocket",
+  reason: EgressRefusal,
+  cause?: unknown,
+) {
   log.warn(`[core:egress:${action}] refused reason=${reason}`);
   return new EgressDeniedError(reason, cause);
 }
@@ -173,6 +180,14 @@ function refusingFetch(): Fetch {
   });
 }
 
+/**
+ * What `globalThis.WebSocket` is after `installEgress`: constructing it, a subclass included,
+ * or calling it is refused before any connection opens.
+ */
+function refusedWebSocket(): never {
+  throw refuse("websocket", "global_websocket");
+}
+
 /** What a chat turn sends through (ADR-0012 "코드로 지키기" 2). */
 export interface Egress {
   /**
@@ -183,19 +198,21 @@ export interface Egress {
   turnFetch(origin: AllowedOrigin, signal: AbortSignal): Fetch;
 }
 
+/** A property that can be neither assigned nor redefined. */
+function sealed(value: unknown): PropertyDescriptor {
+  return { value, enumerable: true, writable: false, configurable: false };
+}
+
 /**
- * Takes the runtime's `fetch` from `scope` and leaves `scope.fetch` refusing every call, for
- * good: the property can be neither assigned nor redefined, so a second call throws. The core's
- * entry point calls it once, before any command runs.
+ * Takes the runtime's `fetch` from `scope` and leaves `scope.fetch` refusing every call and
+ * `scope.WebSocket` refusing every connection, for good: neither property can be assigned or
+ * redefined, so a second call throws. The core's entry point calls it once, before any command
+ * runs.
  */
-export function installEgress(scope: { fetch: Fetch } = globalThis): Egress {
+export function installEgress(scope: { fetch: Fetch; WebSocket?: unknown } = globalThis): Egress {
   const real = scope.fetch;
-  Object.defineProperty(scope, "fetch", {
-    value: refusingFetch(),
-    enumerable: true,
-    writable: false,
-    configurable: false,
-  });
-  log.debug("[core:egress:install] success global_fetch=refused");
+  Object.defineProperty(scope, "fetch", sealed(refusingFetch()));
+  Object.defineProperty(scope, "WebSocket", sealed(refusedWebSocket));
+  log.debug("[core:egress:install] success global_fetch=refused global_websocket=refused");
   return { turnFetch: (origin, signal) => turnFetch(real, origin, signal) };
 }

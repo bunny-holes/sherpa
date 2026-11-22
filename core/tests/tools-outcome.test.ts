@@ -2,22 +2,23 @@ import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { SherpaError } from "../src/cli/errors.ts";
 import { JournaledMutationError } from "../src/journal/journal.ts";
+import { callToolResult, RESULT_TEXT_LIMIT } from "../src/mcp/outcome.ts";
+import { plannerRequest } from "../src/planner/port.ts";
 import {
-  callToolResult,
   commandResult,
   coreFailure,
   type Effect,
   type Evidence,
+  fit,
   NARROW_READ_REMEDY,
   outcome,
   type OutcomeError,
   type OutcomeStatus,
   plannerOutcome,
-  RESULT_TEXT_LIMIT,
   summaries,
+  type ToolOutcome,
   toolOutcomeSchema,
-} from "../src/mcp/outcome.ts";
-import { plannerRequest } from "../src/planner/port.ts";
+} from "../src/tools/outcome.ts";
 
 const contract = await Bun.file(
   join(import.meta.dirname, "../../docs/contracts/app-connection-v1.md"),
@@ -37,6 +38,11 @@ const KEYS = [
   "warnings",
   "result",
 ];
+
+/** An outcome as MCP answers it: fitted to 1 MiB, then in its `tools/call` form. */
+function mcpResult(value: ToolOutcome, read: boolean) {
+  return callToolResult(fit(value, read, RESULT_TEXT_LIMIT));
+}
 
 function text(result: ReturnType<typeof callToolResult>): string {
   const [block] = result.content;
@@ -102,7 +108,7 @@ describe("the outcome envelope (§10.5)", () => {
       error,
       result: { a: 1 },
     });
-    const result = callToolResult(value, effect.kind === "none");
+    const result = mcpResult(value, effect.kind === "none");
     expect(result.isError).toBe(status === "failed");
     expect(JSON.parse(text(result))).toEqual(result.structuredContent);
     expect(Object.keys(JSON.parse(text(result)) as object)).toEqual(KEYS);
@@ -177,13 +183,13 @@ describe("fitting into 1 MiB (§10.5)", () => {
   };
 
   test("a text block of exactly 1 MiB is kept, one byte more is cut", () => {
-    const kept = callToolResult(
+    const kept = mcpResult(
       base("succeeded", { kind: "none", state: "not_applicable" }, null, padded(RESULT_TEXT_LIMIT)),
       true,
     );
     expect(Buffer.byteLength(text(kept))).toBe(RESULT_TEXT_LIMIT);
     expect(kept.isError).toBe(false);
-    const cut = callToolResult(
+    const cut = mcpResult(
       base(
         "succeeded",
         { kind: "none", state: "not_applicable" },
@@ -204,7 +210,7 @@ describe("fitting into 1 MiB (§10.5)", () => {
 
   test("an applied change that is too large is partial and keeps its evidence", () => {
     const evidence: Evidence = { kind: "native_readback", state: "matched" };
-    const cut = callToolResult(
+    const cut = mcpResult(
       base(
         "succeeded",
         { kind: "native_mutation", state: "applied" },
@@ -226,7 +232,7 @@ describe("fitting into 1 MiB (§10.5)", () => {
   });
 
   test("an uncertain change stays uncertain", () => {
-    const cut = callToolResult(
+    const cut = mcpResult(
       base(
         "uncertain",
         { kind: "outbound_dispatch", state: "may_have_applied" },
@@ -240,6 +246,19 @@ describe("fitting into 1 MiB (§10.5)", () => {
       error: { code: "protocol.result_too_large" },
     });
     expect(Buffer.byteLength(text(cut))).toBeLessThan(RESULT_TEXT_LIMIT);
+  });
+
+  test("another surface's limit cuts at its own byte", () => {
+    const value = base("succeeded", { kind: "none", state: "not_applicable" }, null, { p: "x" });
+    const bytes = Buffer.byteLength(JSON.stringify(value));
+    expect(fit(value, true, bytes)).toEqual({ outcome: value, text: JSON.stringify(value) });
+    const cut = fit(value, true, bytes - 1);
+    expect(cut.outcome).toMatchObject({
+      status: "failed",
+      error: { code: "protocol.result_too_large", retry: "never", remedy: NARROW_READ_REMEDY },
+      result: null,
+    });
+    expect(cut.text).toBe(JSON.stringify(cut.outcome));
   });
 });
 
