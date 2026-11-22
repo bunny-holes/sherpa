@@ -1,12 +1,19 @@
-import { type ModelMessage, streamText, wrapLanguageModel } from "ai";
+import {
+  type ModelMessage,
+  streamText,
+  type ToolModelMessage,
+  type ToolResultPart,
+  wrapLanguageModel,
+} from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { z } from "zod";
 import { type ChatIdentity, Conversation, TurnRoom } from "../src/chat/conversation.ts";
 import { installEgress } from "../src/chat/egress.ts";
 import { ChatFailure } from "../src/chat/errors.ts";
 import { chatLimits } from "../src/chat/protocol.ts";
 import { AnswerCount, answerLimit, type ModelPart } from "../src/chat/sdk/answer.ts";
-import { type ToolRunner, toolSet } from "../src/chat/sdk/tools.ts";
+import { issueText, type ToolRunner, toolSet } from "../src/chat/sdk/tools.ts";
 import { installWarningLog } from "../src/chat/warnings.ts";
 import { type CapabilityDescriptor, reconcile } from "../src/mcp/registry.ts";
 import { resolveTools } from "../src/mcp/tools.ts";
@@ -14,9 +21,10 @@ import type { ToolOutcome } from "../src/tools/outcome.ts";
 import { plannerDescriptors } from "./support/planner.ts";
 
 // app-connection-v1 §7.11 "대화 한도": the room a turn has before its conversation passes 2 MiB,
-// the count of an answer as it streams against what the AI SDK 7.0.179 keeps of its step, and the
-// middleware that cuts an answer past the limit. The models here are the SDK's mock, which sends
-// no request; the global fetch refuses, as in the core.
+// the count of an answer as it streams against what the AI SDK 7.0.179 keeps of its step, the
+// middleware that cuts an answer past the limit, and the core's words on why a schema refused a
+// call ("도구"), which bound what the SDK keeps of its error. The models here are the SDK's mock,
+// which sends no request; the global fetch refuses, as in the core.
 installEgress();
 installWarningLog();
 
@@ -27,6 +35,10 @@ const IDENTITY: ChatIdentity = {
   model: "m-1",
 };
 const jsonBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+/** A string's bytes as JSON writes it, without its quotes. */
+const textBytes = (text: string) => jsonBytes(text) - 2;
+/** What ends a line the core cut (src/chat/sdk/tools.ts). */
+const CUT = "... (truncated)";
 /** What a step's messages add to the conversation's JSON, each after its comma. */
 const added = (messages: ModelMessage[]) =>
   messages.reduce((sum, message) => sum + jsonBytes(message) + 1, 0);
@@ -262,16 +274,16 @@ describe("an answer's count", () => {
   // The core's 35 tools as `app serve` builds them, whose calls the AI SDK checks before they run.
   const outcome = { status: "succeeded", result: { items: ["e".repeat(100)] } };
   const runner: ToolRunner = { run: async () => outcome as unknown as ToolOutcome };
-  const tools = toolSet(
-    resolveTools(
-      reconcile({
-        kind: "discovered",
-        descriptors: plannerDescriptors() as unknown as CapabilityDescriptor[],
-      }),
-      { planner: {} as never, confirmations: {} as never, commands: {} as never },
-    ),
-    runner,
+  const resolved = resolveTools(
+    reconcile({
+      kind: "discovered",
+      descriptors: plannerDescriptors() as unknown as CapabilityDescriptor[],
+    }),
+    { planner: {} as never, confirmations: {} as never, commands: {} as never },
   );
+  const tools = toolSet(resolved, runner);
+  const schemaOf = (name: string) =>
+    resolved.find((item) => item.entry.name === name)!.entry.inputSchema;
   const WEEK = { from: "2026-11-23T00:00:00+09:00", to: "2026-11-30T00:00:00+09:00" };
   test.each([
     {
@@ -325,39 +337,148 @@ describe("an answer's count", () => {
     },
   );
 
-  test("leaves out the issues of a schema that refuses many, which only the step's end measures", async () => {
-    // The limit §7.11 "대화 한도" names: the SDK's error writes every issue zod found.
-    const unknown = Object.fromEntries(
-      Array.from({ length: 2000 }, (_, index) => [`k${index}`, 0]),
-    );
-    const alarms = {
-      title: "Lunch",
-      start: "2026-11-23T12:00:00+09:00",
-      end: "2026-11-23T13:00:00+09:00",
-      alarms: Array(2000).fill(1),
-    };
-    for (const { tool, input, bytes, keeps } of [
-      {
-        tool: "event_list",
-        input: JSON.stringify({ ...WEEK, ...unknown }),
-        bytes: 18_959,
-        keeps: 106_223,
-      },
-      { tool: "event_create", input: JSON.stringify(alarms), bytes: 4_098, keeps: 409_491 },
-    ]) {
-      const parts: ModelPart[] = [
-        { type: "stream-start", warnings: [] },
-        { type: "tool-input-start", id: "call_1", toolName: tool },
-        { type: "tool-input-delta", id: "call_1", delta: input },
-        { type: "tool-input-end", id: "call_1" },
-        { type: "tool-call", toolCallId: "call_1", toolName: tool, input },
-        finish("tool-calls"),
-      ];
-      expect(Buffer.byteLength(input)).toBe(bytes);
-      const exact = added(await kept(parts, tools));
-      expect(exact).toBe(keeps);
-      expect(counted(parts)).toBeLessThan(exact);
+  /** The AI SDK's frame of the error for a call to `tool` its schema refused, the input as parsed. */
+  const frame = (tool: string, input: unknown) =>
+    `AI_InvalidToolInputError: Invalid input for tool ${tool}: AI_TypeValidationError: Type validation failed: Value: ${JSON.stringify(input)}.\nError message: `;
+  /** The error the model reads for one call the AI SDK refused, and what its step keeps and counts. */
+  async function refused(tool: string, input: string) {
+    const parts: ModelPart[] = [
+      { type: "stream-start", warnings: [] },
+      { type: "tool-input-start", id: "call_1", toolName: tool },
+      { type: "tool-input-delta", id: "call_1", delta: input },
+      { type: "tool-input-end", id: "call_1" },
+      { type: "tool-call", toolCallId: "call_1", toolName: tool, input },
+      finish("tool-calls"),
+    ];
+    const messages = await kept(parts, tools);
+    const result = (messages[1] as ToolModelMessage).content[0] as ToolResultPart;
+    expect(result.output.type).toBe("error-text");
+    const error = (result.output as { value: string }).value;
+    return { error, exact: added(messages), count: counted(parts) };
+  }
+
+  // The two calls whose step kept 106,223 and 409,491 bytes while the AI SDK wrote zod's own
+  // message, every issue as indented JSON (§7.11 "도구").
+  const unknown = {
+    ...WEEK,
+    ...Object.fromEntries(Array.from({ length: 2000 }, (_, index) => [`k${index}`, 0])),
+  };
+  const alarms = {
+    title: "Lunch",
+    start: "2026-11-23T12:00:00+09:00",
+    end: "2026-11-23T13:00:00+09:00",
+    alarms: Array(2000).fill(1),
+  };
+
+  test("bounds why a schema refused 2,000 alarms that are numbers: the first issues, and a count of the rest", async () => {
+    const { error, exact, count } = await refused("event_create", JSON.stringify(alarms));
+    const before = frame("event_create", alarms);
+    expect(error.startsWith(before)).toBe(true);
+    const words = error.slice(before.length);
+    expect(textBytes(words)).toBeLessThanOrEqual(chatLimits.toolIssueBytes);
+    const issue = (index: number) =>
+      `alarms[${index}]: Invalid input: expected object, received number`;
+    const lines = words.split("\n");
+    const shown = lines.slice(0, -1);
+    expect(shown[0]).toBe(issue(0));
+    const rest = Number(/^and (\d+) more issues$/.exec(lines.at(-1)!)?.[1]);
+    expect(shown.length + rest).toBe(2000);
+    // Whole lines in zod's order, the last of them perhaps cut to the room left.
+    for (const [index, line] of shown.entries()) {
+      if (line.endsWith(CUT) && index === shown.length - 1) {
+        expect(issue(index).startsWith(line.slice(0, -CUT.length))).toBe(true);
+      } else {
+        expect(line).toBe(issue(index));
+      }
     }
+    expect(count).toBeGreaterThanOrEqual(exact);
+  });
+
+  test("bounds why a schema refused 2,000 keys it does not know: one issue, cut", async () => {
+    const { error, exact, count } = await refused("event_list", JSON.stringify(unknown));
+    const before = frame("event_list", unknown);
+    expect(error.startsWith(before)).toBe(true);
+    const words = error.slice(before.length);
+    expect(textBytes(words)).toBeLessThanOrEqual(chatLimits.toolIssueBytes);
+    // zod finds one issue, at the input's root, whose message names every key: none is left out.
+    const message = schemaOf("event_list").safeParse(unknown).error!.issues[0]!.message;
+    expect(words.startsWith('Unrecognized keys: "k0", "k1", ')).toBe(true);
+    expect(words.endsWith(CUT)).toBe(true);
+    expect(message.startsWith(words.slice(0, -CUT.length))).toBe(true);
+    expect(words).not.toContain("\n");
+    expect(count).toBeGreaterThanOrEqual(exact);
+  });
+
+  test("keeps the AI SDK's words for input that does not parse, which it writes again as given", async () => {
+    const input = '{"from":"a';
+    const { error, exact, count } = await refused("event_list", input);
+    expect(error).toBe(
+      `AI_InvalidToolInputError: Invalid input for tool event_list: AI_JSONParseError: JSON parsing failed: Text: ${input}.\nError message: SyntaxError: JSON Parse error: Unterminated string`,
+    );
+    expect(count).toBeGreaterThanOrEqual(exact);
+  });
+});
+
+// §7.11 "도구": why a schema refused a call, in the core's words (src/chat/sdk/tools.ts).
+describe("the words on why a schema refused a call", () => {
+  const issue = (message: string, path: PropertyKey[] = []) =>
+    ({ code: "custom", path, message, input: undefined }) as z.core.$ZodIssue;
+
+  test("are a line for each issue, in zod's order and notation, the same each time", () => {
+    const schema = z.strictObject({
+      a: z.number(),
+      "b c": z.array(z.string()),
+      d: z.object({ e: z.boolean() }),
+    });
+    const input = { a: "x", "b c": [1, "y", 2], d: { e: 1 }, f: 0 };
+    const text = issueText(schema.safeParse(input).error!.issues);
+    expect(text.split("\n")).toEqual([
+      "a: Invalid input: expected number, received string",
+      '["b c"][0]: Invalid input: expected string, received number',
+      '["b c"][2]: Invalid input: expected string, received number',
+      "d.e: Invalid input: expected boolean, received number",
+      'Unrecognized key: "f"',
+    ]);
+    expect(issueText(schema.safeParse(input).error!.issues)).toBe(text);
+  });
+
+  test("count the issues left out after those that fit", () => {
+    const issues = z.array(z.number()).safeParse(Array(200).fill("n")).error!.issues;
+    const text = issueText(issues);
+    const lines = text.split("\n");
+    const rest = Number(/^and (\d+) more issues$/.exec(lines.at(-1)!)?.[1]);
+    expect(lines.length - 1 + rest).toBe(200);
+    expect(textBytes(text)).toBeLessThanOrEqual(chatLimits.toolIssueBytes);
+    expect(chatLimits.toolIssueBytes).toBe(2 * 1024);
+  });
+
+  test("cut a line where 2 KiB falls inside a character of four bytes, before that character", () => {
+    // "x: " and 507 emoji are 2,031 bytes; the 508th would pass the room the mark leaves.
+    expect(issueText([issue("😀".repeat(1000), ["x"])])).toBe(`x: ${"😀".repeat(507)}${CUT}`);
+  });
+
+  test("cut the first line that does not fit to the room left beside the count of those after it", () => {
+    const text = issueText([
+      issue("short", ["a"]),
+      issue("b".repeat(5000), ["y"]),
+      issue("short", ["c"]),
+      issue("short", ["d"]),
+    ]);
+    expect(text).toBe(`a: short\ny: ${"b".repeat(2001)}${CUT}\nand 2 more issues`);
+    expect(textBytes(text)).toBe(chatLimits.toolIssueBytes);
+  });
+
+  test("count a line of which not one character fits", () => {
+    expect(issueText([issue("a".repeat(2029)), issue("😀".repeat(10))])).toBe(
+      `${"a".repeat(2029)}\nand 1 more issue`,
+    );
+  });
+
+  test("measure in the bytes JSON writes them in, which a quote doubles and a control character sextuples", () => {
+    const text = issueText([issue('"\u0001'.repeat(1000), ["k"])]);
+    expect(text).toBe(`k: ${'"\u0001'.repeat(253)}"${CUT}`);
+    expect(textBytes(text)).toBeLessThanOrEqual(chatLimits.toolIssueBytes);
+    expect(Buffer.byteLength(text)).toBeLessThan(600);
   });
 });
 

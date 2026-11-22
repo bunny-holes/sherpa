@@ -56,6 +56,12 @@ export const chatLimits = {
    * keeps its outcome without its result.
    */
   toolResultBytes: 64 * 1024,
+  /**
+   * Why a tool's schema refused a call's input, as the core writes it for the model: zod's issues
+   * in their order, a line each, in at most this many bytes as the conversation's JSON writes them
+   * (src/chat/sdk/tools.ts). The AI SDK writes the input before them, and its own frame.
+   */
+  toolIssueBytes: 2 * 1024,
   /** How long the answer's text waits for more before a `delta` takes it, and the most one takes. */
   deltaMs: 50,
   deltaBytes: 4096,

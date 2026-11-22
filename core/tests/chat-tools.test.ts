@@ -660,8 +660,9 @@ describe("a call the AI SDK did not run (§7.11)", () => {
     expect(JSON.parse(results[0]!.content)).toMatchObject({
       error: { code: "chat.not_run", retry: "safe" },
     });
-    expect(results[1]!.content).toMatch(
-      /^AI_InvalidToolInputError: Invalid input for tool event_list: /,
+    // The AI SDK's frame and the input again, then why the schema refused it in the core's words.
+    expect(results[1]!.content).toBe(
+      `AI_InvalidToolInputError: Invalid input for tool event_list: AI_TypeValidationError: Type validation failed: Value: ${JSON.stringify(badly().input)}.\nError message: to: Invalid input: expected string, received undefined`,
     );
   });
 
@@ -1110,7 +1111,8 @@ describe("a cancel while a step's calls run (§7.11)", () => {
 
 // §7.11 "다시 보내기": the rows of the contract's table with a tool in them, each a test that reads
 // `resend` in what ended the turn and sends a turn without text after it, which the core takes
-// exactly when `resend` said so. The rows without are in tests/chat-turn.test.ts.
+// exactly when `resend` said so. The row of `conversation_limit` is with the limit's tests below,
+// and the rows without a tool are in tests/chat-turn.test.ts.
 describe("a turn without text after a turn that called tools", () => {
   /** JSON leaves out a key whose value is undefined. */
   const again = () => ({ ...compatible(), text: undefined });
@@ -1318,53 +1320,12 @@ describe("a turn without text after a turn that called tools", () => {
       expect(JSON.stringify(sent[1]!.body)).toContain("Invalid input for tool event_list");
     },
   );
-
-  test("after a step that passed the conversation's limit is conversation_limit, and the chat takes no later turn", async () => {
-    // The SDK writes the error of a call its schema refuses with every unknown key, which the
-    // answer's count does not foresee: the step's end measures it, keeps the step and sends no
-    // request after it, though every call has its result.
-    const input = {
-      ...WEEK,
-      ...Object.fromEntries(Array.from({ length: 2000 }, (_, index) => [`k${index}`, 0])),
-    };
-    // The answer's count leaves some 20 KB of the 2 MiB; what the step keeps passes it by some 40 KB.
-    const big = "가".repeat(677_600);
-    const { sent, open } = world((_sent, n) =>
-      n === 1 ? sse(chatCalls([{ id: "call_1", name: "event_list", input }], [big])) : failure(400),
-    );
-    const channel = open();
-    channel.write(compatible());
-    const frames = await ending(channel);
-    expect(frames.filter((frame) => frame.type !== "delta")).toEqual([
-      tool(1, "event_list", "started"),
-      tool(1, "event_list", "failed", "chat.invalid_call"),
-      limit,
-    ]);
-    expect(
-      frames
-        .filter((frame) => frame.type === "delta")
-        .map((frame) => frame.text)
-        .join(""),
-    ).toBe(big);
-    expect(sent).toHaveLength(1);
-    expect(
-      logged(
-        "warn [core:chat:turn] failure channel=1 provider=openai-compatible code=conversation_limit status=none steps=1 ms=",
-      ),
-    ).toBe(true);
-    channel.write(again());
-    expect(await channel.next()).toEqual(limit);
-    expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=conversation_limit\n");
-    channel.write(compatible("그리고"));
-    expect(await channel.next()).toEqual(limit);
-    expect(sent).toHaveLength(1);
-  });
 });
 
 // §7.11 "대화 한도": before each call, the core asks whether its result, as large as one may be,
 // still fits beside the answer and the results before it; one that might not does not run, nor
 // does any later one, and the turn ends with the step. An answer cut in a later step leaves the
-// steps before it.
+// steps before it, and a step its end alone finds past the limit stays, with no request after it.
 describe("the conversation's limit within a turn that calls tools", () => {
   /** Text of `bytes` bytes, three to a character. */
   const text = (bytes: number) => "가".repeat(Math.floor(bytes / 3));
@@ -1376,7 +1337,7 @@ describe("the conversation's limit within a turn that calls tools", () => {
   const others = (frames: Record<string, unknown>[]) =>
     frames.filter((frame) => frame.type !== "delta");
 
-  test("a call whose result could pass it does not run, fails with chat.conversation_limit, and ends the turn", async () => {
+  test("a call whose result could pass it does not run, fails with chat.conversation_limit, and ends the turn and the chat", async () => {
     // The answer leaves less room than a result of 64 KiB.
     const big = text(chatLimits.conversationBytes - 40_000);
     const { sent, open, asked } = world((_sent, n) =>
@@ -1401,6 +1362,10 @@ describe("the conversation's limit within a turn that calls tools", () => {
         "warn [core:chat:turn] failure channel=1 provider=openai-compatible code=conversation_limit status=none steps=1 ms=",
       ),
     ).toBe(true);
+    // The end's `resend` is false (§7.11 "다시 보내기"): no turn follows, with text or without.
+    channel.write({ ...compatible(), text: undefined });
+    expect(await channel.next()).toEqual(limit);
+    expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=conversation_limit\n");
     channel.write(compatible("그리고"));
     expect(await channel.next()).toEqual(limit);
     expect(sent).toHaveLength(1);
@@ -1453,6 +1418,74 @@ describe("the conversation's limit within a turn that calls tools", () => {
     expect(
       logged(
         "warn [core:chat:turn] failure channel=1 provider=openai-compatible code=conversation_limit status=none steps=2 ms=",
+      ),
+    ).toBe(true);
+  });
+
+  test("a step past it by its end's measure alone stays with its call's result, and no request follows it", async () => {
+    // The answer's count bounds what a step keeps, so only a count that falls short leaves the
+    // step's end to find the limit passed: a room that counts no answer stands for one here.
+    class Uncounted extends TurnRoom {
+      override answers(): boolean {
+        return !this.passed;
+      }
+    }
+    let filled = 0;
+    // Room for the call's result of 64 KiB, but not for 96 KiB of text beside it.
+    const room = new Uncounted(chatLimits.conversationBytes - 70 * 1024, () => (filled += 1));
+    let requests = 0;
+    const egress = installEgress({
+      fetch: Object.assign(
+        async () => {
+          requests += 1;
+          return requests === 1 ? sse(chatCalls([list()], [text(96 * 1024)])) : failure(400);
+        },
+        { preconnect: () => {} },
+      ),
+    });
+    const { tools, asked } = world(() => failure(400));
+    const events: Record<string, unknown>[] = [];
+    const { firstOutputMs, chunkMs, deltaBytes, failureBodyBytes, steps } = chatLimits;
+    const chatTurn = new ChatTurn({
+      channel: 1,
+      provider: "openai-compatible",
+      fetch: (signal) => egress.turnFetch(allowedOrigin(BASE), signal),
+      send: (event) => events.push(event),
+      ended: new AbortController().signal,
+      limits: { firstOutputMs, chunkMs, deltaMs: 60_000, deltaBytes, failureBodyBytes, steps },
+      tools: async () => tools,
+      callNumber: () => 1,
+    });
+    const kept: { role: string }[][] = [];
+    const end = await chatTurn.run(
+      {
+        target: { provider: "openai-compatible", baseURL: BASE, apiKey: KEY, model: "m-1" },
+        messages: [{ role: "user", content: TEXT }],
+        room,
+      },
+      (messages) => kept.push(messages),
+    );
+    expect(end).toEqual({
+      type: "error",
+      in_reply_to: "turn",
+      code: "conversation_limit",
+      retryable: false,
+      status: null,
+    });
+    expect(requests).toBe(1);
+    expect(events.filter((event) => event.type === "tool")).toEqual([
+      tool(1, "event_list", "started"),
+      tool(1, "event_list", "succeeded", null, "op-1"),
+    ]);
+    expect(asked()).toEqual(["event.list"]);
+    expect(kept.map((messages) => messages.map((message) => message.role))).toEqual([
+      ["assistant", "tool"],
+    ]);
+    expect(room.passed).toBe(true);
+    expect(filled).toBe(1);
+    expect(
+      logged(
+        "warn [core:chat:turn] failure channel=1 provider=openai-compatible code=conversation_limit status=none steps=1 ms=",
       ),
     ).toBe(true);
   });

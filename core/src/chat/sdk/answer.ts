@@ -9,6 +9,7 @@
 import type { LanguageModelMiddleware } from "ai";
 import type { TurnRoom } from "../conversation.ts";
 import { ChatFailure } from "../errors.ts";
+import { chatLimits } from "../protocol.ts";
 
 type WrapStream = NonNullable<LanguageModelMiddleware["wrapStream"]>;
 type StreamResult = Awaited<ReturnType<Parameters<WrapStream>[0]["doStream"]>>;
@@ -24,10 +25,12 @@ const MESSAGES = 64;
 const PART = 64;
 /**
  * The keys of a call's part in the assistant's message and of its result in the tools' message,
- * besides the call's id, name, input and metadata and the result's outcome; and, for a call the
- * AI SDK refuses before it runs, the words of its error: the names of the tools for one the core
- * does not have (ai 7.0.179 no-such-tool-error.ts: 658 bytes for the 35 tools), or a few issues
- * its schema found. A schema that finds many writes more, which only the step's end measures.
+ * besides the call's id, name, input and metadata and the result's outcome; and the AI SDK's own
+ * words in the error of a call it refuses before it runs: the names of the tools for one the core
+ * does not have (ai 7.0.179 no-such-tool-error.ts: 658 bytes for the 35 tools), or the frame of
+ * the error for input that does not parse or that its schema refuses (invalid-tool-input-error.ts,
+ * @ai-sdk/provider 4.0.39 json-parse-error.ts, type-validation-error.ts), Bun's words on the JSON
+ * included.
  */
 const CALL = 2048;
 
@@ -102,8 +105,9 @@ export class AnswerCount {
         // The id and the name are in the call and in its result, and the name in an error.
         const names = 3 * (stringBytes(part.toolCallId) + stringBytes(part.toolName));
         // An error for input that does not parse or that its schema refuses writes the input again
-        // (ai 7.0.179 parse-tool-call.ts, @ai-sdk/provider type-validation-error.ts).
-        const again = stringBytes(part.input);
+        // (ai 7.0.179 parse-tool-call.ts, @ai-sdk/provider type-validation-error.ts), and why the
+        // schema refused it in the core's words, which are at most `toolIssueBytes` (./tools.ts).
+        const again = stringBytes(part.input) + chatLimits.toolIssueBytes;
         return (
           CALL +
           names +
