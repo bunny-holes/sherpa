@@ -119,6 +119,7 @@ describe("§14 valid frames", () => {
     const prompt = {
       tool: "reminder_delete",
       operation_id: "op-2",
+      channel: 1,
       client: { name: "t", version: "0" },
       title: "t",
       lines: [],
@@ -145,7 +146,7 @@ describe("§14 valid frames", () => {
     const cancel = new AbortController();
     const decision = connection.control.confirm(prompt, cancel.signal, 30_000);
     expect(await sink.next((line) => line.startsWith("0\tconfirm\t"))).toBe(
-      '0\tconfirm\t{"id":3,"tool":"reminder_delete","operation_id":"op-2","client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}',
+      '0\tconfirm\t{"id":3,"tool":"reminder_delete","operation_id":"op-2","channel":1,"client":{"name":"t","version":"0"},"title":"t","lines":[],"timeout_ms":30000}',
     );
     cancel.abort();
     expect(await decision).toBe("withdrawn");

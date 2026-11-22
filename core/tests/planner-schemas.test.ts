@@ -291,6 +291,7 @@ async function examplePayloads(
     if (entry.confirmation === "app") continue;
     await tool.handle(examples[entry.name], {
       signal: new AbortController().signal,
+      channel: 1,
       client: { name: "t", version: "0" },
     });
   }

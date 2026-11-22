@@ -21,6 +21,11 @@ export interface ConfirmationLine {
 export interface ConfirmationPrompt {
   tool: string;
   operation_id: string;
+  /**
+   * The channel of the call that asks (§9). The app shows and refuses a request by the kind its
+   * own table gives this channel, never by `client`, which a client reports about itself.
+   */
+  channel: number;
   client: { name: string; version: string };
   title: string;
   lines: ConfirmationLine[];
@@ -66,6 +71,7 @@ export function boundedPrompt(prompt: ConfirmationPrompt): ConfirmationPrompt {
   const bounded: ConfirmationPrompt = {
     tool: prompt.tool,
     operation_id: prompt.operation_id,
+    channel: prompt.channel,
     client: {
       name: clip(prompt.client.name, CLIENT_MAX),
       version: clip(prompt.client.version, CLIENT_MAX),

@@ -137,7 +137,7 @@ function harness(
   ) => {
     const tool = tools.find((item) => item.entry.name === name);
     if (!tool) throw new Error(`no tool ${name}`);
-    const context: ToolCall = { signal, client: { name: "agent", version: "1.0" } };
+    const context: ToolCall = { signal, channel: 4, client: { name: "agent", version: "1.0" } };
     return tool.handle(args, context);
   };
   return { requests, prompts, timeouts, call };
@@ -170,6 +170,8 @@ describe("planner delete tools ask the app first (§9)", () => {
       {
         tool: "event_delete",
         operation_id: "op-1",
+        // The channel of the call, so the app can tell which kind of channel asks (§9).
+        channel: 4,
         client: { name: "agent", version: "1.0" },
         title: "Delete this event?",
         lines: [
@@ -348,6 +350,7 @@ describe("core tools (§10.4)", () => {
       {
         tool: "imessage_send",
         operation_id: "op-1",
+        channel: 4,
         client: { name: "agent", version: "1.0" },
         title: "Send this iMessage?",
         lines: [

@@ -10,9 +10,10 @@ import { NARROW_READ_REMEDY, outcome, type ToolOutcome } from "../src/tools/outc
 
 // ADR-0012 "도구": the lifecycle every surface runs a tool call through, here with MCP's module
 // name and a small limit.
-const SURFACE: CallSurface = { module: "mcp", channel: 3, limit: 1024 };
+const SURFACE: CallSurface = { module: "mcp", limit: 1024 };
 const CALL: ToolCall = {
   signal: new AbortController().signal,
+  channel: 3,
   client: { name: "agent", version: "1.0" },
 };
 
