@@ -52,17 +52,22 @@ manner: "규칙만 적고 근거는 ADR·live-evidence·스크립트 주석으�
   Pin exact versions, Bun in `devEngines.packageManager` of
   `core/package.json` and every npm package without a range, and move to a
   newer release in a change of its own, so that a regression traces to one
-  upgrade. Bun ignores `devEngines`, so the gate refuses a `bun` of another
-  version; it warns about each newer release it can see but never fails on one,
-  because a release published elsewhere must not change a commit's result.
+  upgrade. Bun ignores `devEngines`, so the gate and `scripts/package.sh`
+  refuse a `bun` of another version and a compiled core that carries another
+  runtime. The gate warns about each newer release it can see but never fails
+  on one, because a release published elsewhere must not change a commit's
+  result.
   Name in every live-evidence entry the versions it ran on.
 - Sherpa supports macOS only, and the repository has no CI (owner decision,
   2026-11-20: Windows support and its hook job were removed). The gate is the
-  macOS run of `bash scripts/check-all.sh` — the Bun version check against
-  `core/package.json`, the Swift format check (`swift format lint --strict`
-  with the root `.swift-format`), the core's `vp check`, tests and build, the
-  four Swift packages' build and tests, the plugin, manifest, contract, and
-  document checks, and the release smoke install. Before merging
+  macOS run of `bash scripts/check-all.sh`, in this order: the Bun version
+  check against `core/package.json`, the Swift format check
+  (`swift format lint --strict` with the root `.swift-format`), the four Swift
+  packages' build and tests, the release builds of `sherpa-relay` and the
+  app's test host, which must not read the test variables, the core's
+  `vp check`, tests, build and CLI contract probes, the Developer ID signed
+  `Sherpa.app` bundle, the plugin, manifest, and document checks, and the
+  release smoke install. Before merging
   any pull request, run it after the last change, confirm the whole run exits 0,
   and write that result with the commit it ran on in the pull request body.
   Merge by hand only when that commit is the pull request's head; never use

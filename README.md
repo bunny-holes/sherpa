@@ -21,9 +21,11 @@ No external messaging CLI (`imsg`, `kakaocli`) is used. See
 ## Build and test
 
 One gate covers everything — the Bun version the core declares, the format of
-every Swift source, the core's format, lint, type check and tests, all four
-Swift packages, the `--version` format the Formula's test parses, the agent
-plugin, the documents, and the Homebrew release smoke:
+every Swift source, all four Swift packages and the release builds of the relay
+and the app's test host, the core's format, lint, type check and tests, the
+`--version` format the Formula's test parses, the Developer ID signed
+`Sherpa.app` bundle, the agent plugin, the documents, and the Homebrew release
+smoke:
 
 ```bash
 bash scripts/check-all.sh
@@ -33,10 +35,12 @@ The core uses the Vite+ toolchain with Bun as its package manager and runtime,
 each at an exact version. `devEngines.packageManager` in `core/package.json`
 names the one Bun the core installs, tests and compiles with, and
 `bun build --compile` puts that runtime into `dist/sherpa`. Bun itself does not
-enforce the field, so the gate stops with `bun_version_mismatch` when the first
-`bun` on `PATH` is another version. The gate also warns, without failing, about
-newer releases of Bun, the core's packages, Claude Code and Codex. Move
-`vite-plus` and the `vite` alias of `@voidzero-dev/vite-plus-core` together:
+enforce the field, so the gate and `scripts/package.sh` stop with
+`bun_version_mismatch` when the first `bun` on `PATH` is another version, and
+with `core_runtime_mismatch` when a compiled core carries another runtime. The
+gate also warns, without failing, about newer releases of Bun, the core's
+packages, Claude Code and Codex. Move `vite-plus` and the `vite` alias of
+`@voidzero-dev/vite-plus-core` together:
 `bun info vite-plus@<version> dependencies.vite` prints the alias a release
 expects.
 

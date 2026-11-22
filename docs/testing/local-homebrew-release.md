@@ -28,11 +28,16 @@ Keep these objects distinct:
 1. `bash scripts/package.sh` builds the Bun core and the Swift helper and
    creates a versioned, checksum-pinned release archive,
    `target/dist/sherpa-<version>-aarch64-apple-darwin.tar.gz`, holding
-   `bin/sherpa` and the helper bundle `libexec/SherpaHelper.app`. It signs the
-   bundle with the first Developer ID Application identity in the keychain, or
-   with `SHERPA_SIGNING_IDENTITY`; `--publish` stops without one, and a check
-   run falls back to an ad-hoc signature with a warning (ADR-0009). macOS may
-   ask once to let `codesign` use the key; allow it always.
+   `bin/sherpa` and the helper bundle `libexec/SherpaHelper.app`. It builds
+   only with the Bun that `core/package.json` declares, through the gate's own
+   check (`scripts/lib/bun-pin.sh`): it stops with `bun_version_mismatch`
+   before building when the first `bun` on `PATH` is another version, and with
+   `core_runtime_mismatch` when the built core carries another runtime. It
+   signs the bundle with the first Developer ID Application identity in the
+   keychain, or with `SHERPA_SIGNING_IDENTITY`; `--publish` stops without one,
+   and a check run falls back to an ad-hoc signature with a warning
+   (ADR-0009). macOS may ask once to let `codesign` use the key; allow it
+   always.
 2. It renders two Formulas from one template. They differ only in the `url`
    line:
    - `target/dist/Formula/sherpa.rb` names the archive as the release asset of

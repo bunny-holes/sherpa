@@ -61,9 +61,13 @@ core builds before then used 1.4.4.
   override to 8.3.8000 and `vite-plus` to exactly `1.7.0`. It also rewrote the
   one test that imports `vitest` (`tests/apple-helper.test.ts`) to
   `vite-plus/test` and added `.vitest/` to `core/.gitignore`; this change
-  takes only the versions. With the new pins the lock holds one core, one Vitest
-  and one set of platform binaries, `vp toolchain vite-plus-core` reports
-  8.3.8000, and `bun outdated` lists nothing. The lock is the one Bun 1.4.5
+  takes both. Vite+'s migration rules (`docs/guide/migrate-rules.md` at
+  `v1.7.0`) rewrite ordinary `vitest` and `vitest/*` imports to
+  `vite-plus/test*`, and its Vitest 5 guide says the migration adds `.vitest/`,
+  where Vitest 5 writes attachments, failure screenshots and reports. With the
+  new pins the lock holds one core, one Vitest and one set of platform
+  binaries, `vp toolchain vite-plus-core` reports 8.3.8000, and
+  `bun outdated` lists nothing. The lock is the one Bun 1.4.5
   resolves from scratch for these pins, which against the old lock also moves
   `@babel/runtime` from 7.29.14 to 7.29.15.
 - The other pins only drop ranges: `@types/bun` `latest` becomes `1.4.5` and
@@ -81,7 +85,21 @@ core builds before then used 1.4.4.
   `warn [check:currency:skipped] reason=registry_unreachable … — new releases
   are UNCHECKED` and the gate went on. Against the old lock it printed
   `dependency=vite@npm:@voidzero-dev/vite-plus-core(dev) current=1.4.0
-  latest=8.3.8000`.
+  latest=8.3.8000`. After the main session moved Claude Code to 2.1.330 at
+  04:28:53 UTC, the step printed `info [check:currency:current] tool=claude
+  version=2.1.330`.
+- `scripts/package.sh` runs the gate's check from `scripts/lib/bun-pin.sh`
+  since this change. On the branch rebased onto `main` `18bbbe9`, with a
+  script that answers `--version` with `1.4.4` first on `PATH`, it printed
+  `error [release:package:failure] reason=bun_version_mismatch expected=1.4.5
+  actual=1.4.4 path=…` and exited 1 in 0.4 s, before any build and without
+  creating its `SHERPA_DIST`. The gate's step 0 runs that refusal with a fake
+  that answers `0.0.1`. With the check deleted from `package.sh`, step 0
+  failed with `reason=package_bun_refusal_unexpected`; with the runtime check
+  made to accept any version, with `reason=runtime_check_unexpected
+  result=accepted`. The Developer ID signed `sherpa-core` in the Release
+  `Sherpa.app` of an earlier gate run printed `1.4.5` for
+  `BUN_BE_BUN=1 … --version`, so the gate asks that copy too.
 - Xcode: Apple's developer releases feed lists Xcode 27.2 (27B52) of 2026-10-29
   as the newest release and Xcode 27.3 beta 2 (27C5035i) of 2026-11-16 as a
   beta. The installed Xcode is the newest release.

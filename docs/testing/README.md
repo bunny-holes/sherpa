@@ -17,11 +17,16 @@ Anything not listed here is not proven by the gate.
 - **Toolchain pin** (the gate's first step, before any build): the first `bun`
   on `PATH` is the version `devEngines.packageManager` in `core/package.json`
   declares, or the gate stops with `bun_version_mismatch`; Bun itself ignores
-  that field (bunny-holes/sherpa#71). After the build,
-  `BUN_BE_BUN=1 dist/sherpa --version` must print the same version, so the
-  compiled core carries that runtime. The release notice that runs next proves
-  nothing: it warns about newer Bun, core dependency, Claude Code and Codex
-  releases from the npm registry and `bun outdated`, and never fails the gate.
+  that field (bunny-holes/sherpa#71). `scripts/package.sh` runs the same check
+  from `scripts/lib/bun-pin.sh` before it builds, and the gate proves it: with
+  a fake `bun` of another version first on `PATH`, `package.sh` must stop with
+  the same reason. After each build, `BUN_BE_BUN=1 dist/sherpa --version` must
+  print the declared version, so the compiled core carries that runtime; the
+  gate asks the core inside `Sherpa.app` the same, and a fake core that
+  answers another version must fail with `core_runtime_mismatch`. The release
+  notice that runs next proves nothing: it warns about newer Bun, core
+  dependency, Claude Code and Codex releases from the npm registry and
+  `bun outdated`, and never fails the gate.
 - **Core unit tests** (`core/tests`, vitest on the Bun runtime with
   `bun --bun vitest run`). They use synthetic fixtures only:
   - `mail.test.ts` builds a fixture envelope index and proves the keyset cursor
@@ -74,6 +79,29 @@ Anything not listed here is not proven by the gate.
   `sherpa-fake-core`: one channel per relay; refusing a direct connection, code
   that fails the requirement and a seventeenth session; confirmations; and the
   MCP switch.
+- **App release-build checks** (`check:app-release`, after the package tests):
+  `swift build -c release` builds `sherpa-relay` and `sherpa-app-testhost`.
+  The relay's test variables, which move its socket and its code requirement
+  (contract §2, §13.2), are in the DEBUG executable and not in the release
+  one; a name under 16 bytes fails, because Swift keeps such literals inside
+  instructions where `grep` cannot see them. Given those variables, the DEBUG
+  relay reaches a fake app at another path, while the release relay ignores
+  them, connects to the default socket and ends with 69 or 77. The release
+  test host's `--print-configuration` takes none of the four variables that
+  move the socket, the core and the two requirements, and reports the bundle
+  layout and the production requirements.
+- **App bundle** (`check:app-bundle`, after the core build): `xcodebuild`
+  builds `apple/sherpa-app/Sherpa.xcodeproj` from scratch and signs it with
+  the owner's Developer ID certificate; without the certificate the gate
+  stops. A fake core that does not know `app serve`, passed as `SHERPA_CORE`,
+  must fail the build with `core_not_mux` and leave no signed executable. The
+  Release bundle holds exactly `Sherpa`, `sherpa-core` and `sherpa-relay`; the
+  app and the relay hold none of the test variables; the Info.plist carries
+  the contract's values and the CLI version; the signature verifies strictly
+  and deeply; and each executable has its identifier, the hardened runtime, a
+  designated requirement that names the team, and exactly its entitlements.
+  The bundled relay reports the CLI version, and the bundled core carries the
+  declared Bun.
 - **CLI contract probes** in `scripts/check-all.sh`: the `--version` shape the
   Formula test parses, and that an invalid planner request ends in the named
   error `protocol.invalid_envelope` through the core and the helper.
