@@ -27,8 +27,9 @@ Reminders, Mail, iMessage, 로컬 KakaoTalk 데이터베이스를 읽고, 변경
    공증된 Homebrew cask는 아직 나오지 않았습니다. 그때까지는 이 저장소에서 앱을
    빌드해 내보낸 뒤(`docs/contracts/app-connection-v1.md` §2 "번들 빌드") 그곳으로
    옮깁니다.
-2. Sherpa.app을 열고 메뉴 막대 메뉴나 상태 창 맨 위의 **MCP Server** 스위치를
-   켭니다. 첫 실행에는 꺼져 있고, 꺼져 있는 동안 앱은 모든 에이전트를 돌려보냅니다.
+2. Sherpa.app을 열고 메뉴 막대 메뉴의 **MCP Server**를 켭니다. **Show Sherpa
+   Status…**가 여는 창 맨 위의 스위치로도 켤 수 있습니다. 첫 실행에는 꺼져 있고,
+   꺼져 있는 동안 앱은 모든 에이전트를 돌려보냅니다.
 
 그다음 플러그인을 추가합니다. GitHub 계정에 비공개 `XIYO/plug-hole` 저장소의 접근
 권한이 필요합니다.
@@ -100,6 +101,7 @@ Claude Code에서 `/mcp`를 실행합니다. `plugin:sherpa:sherpa`가 연결되
 |---|---|
 | Claude Code: `plugin:sherpa:sherpa` 실패, MCP 로그 끝에 `ENOENT`와 `posix_spawn`. Codex: `MCP startup failed: No such file or directory (os error 2)`. | Sherpa.app이 `/Applications/Sherpa.app`에 없습니다. 그곳으로 옮깁니다. 플러그인은 다른 곳을 찾지 않습니다. |
 | 서버가 실패했고 MCP 로그에 `app_not_running`이나 `mcp_disabled`가 있습니다. | Sherpa.app을 열고 MCP Server를 켠 뒤 다시 연결합니다. |
+| 세션 도중 도구가 멈췄고 MCP 로그에 `app_closed_session`이 있습니다. | MCP Server가 꺼졌거나 앱이 끝났습니다. 다시 켠 뒤 `/mcp`에서 서버를 다시 연결하거나 Codex 세션을 새로 엽니다. |
 | 실패 직후 Claude Code에 Sherpa 도구가 없습니다. | Claude Code는 최근 15분 안에 실패한 플러그인 서버를 건너뜁니다. `/mcp`에서 `plugin:sherpa:sherpa`의 Reconnect를 고르거나 기다립니다. |
 | Codex: `-32022: Unsupported protocol version: 2025-06-18`. | 기능이 꺼져 있습니다. `codex features enable mcp_2026_07_28`을 실행하고 새 세션을 엽니다. |
 | Codex가 플러그인과 다른 명령을 씁니다. | 내 `config.toml`의 `[mcp_servers.sherpa]`가 같은 이름의 플러그인 서버보다 앞섭니다. 지우거나, 같은 명령과 환경 값으로 둡니다. |

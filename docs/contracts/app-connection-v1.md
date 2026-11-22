@@ -227,7 +227,9 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 - 경로는 `/Applications/Sherpa.app` 하나다. 플러그인은 다른 곳의 앱을 찾지 않고 찾는 실행기도 두지 않는다. 앱이
   그 자리에 없으면 Claude Code 는 `ENOENT … posix_spawn` 으로, Codex 는 `MCP startup failed: No such file or
   directory (os error 2)` 로 서버를 실패로 둔다. Claude Code 는 시작 화면에 알리지 않는다. 실패한 플러그인 stdio
-  서버는 15분 동안 새 세션이 띄우지 않는다(디버그 로그 `Skipping connection (recent failure cached…)`). [실측]
+  서버는 15분 동안 새 세션이 띄우지 않는다(디버그 로그 `Skipping connection (recent failure cached…)`). [실측] `/mcp`
+  에서 Reconnect 하면 기다리지 않고 다시 잇는다. 이 건너뜀은 플러그인이 낸 stdio 서버에만 있다. [문서: Claude Code
+  [Error reference](https://code.claude.com/docs/en/errors), "Skipping connection"]
 - 도구 이름은 Claude Code 에서 `mcp__plugin_sherpa_sherpa__<도구>`, Codex 에서 `mcp__sherpa__<도구>` 다. [문서:
   Claude Code MCP(§10.3); Codex 는 openai/codex 0.171.0 소스] 사람이 같은 중계를 같은 명령으로 직접 등록하면 Claude
   Code 는 플러그인 서버를 중복으로 보고 사용자 범위의 정의 하나만 이어, 도구가 `mcp__sherpa__<도구>` 가 된다.

@@ -1931,8 +1931,10 @@ notarized) instead of `/Applications`, while the `main` build of the app ran.
     directory (os error 2)`.
 - Not measured: the tool names each model sees (they come from Claude Code's
   documentation and Codex's source), a tool call from Claude Code through the
-  plugin (it needs a model call), the app's MCP switch (bunny-holes/sherpa#54,
-  not in the running build), and installing 0.9.0 through `plug-hole`.
+  plugin (it needs a model call), `/mcp` Reconnect clearing the 15-minute skip
+  (documented, for plugin stdio servers only), the app's MCP switch
+  (bunny-holes/sherpa#54, not in the running build), and installing 0.9.0
+  through `plug-hole`.
 
 ## Related
 
