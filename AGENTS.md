@@ -48,7 +48,8 @@ manner: "규칙만 적고 근거는 ADR·live-evidence·스크립트 주석으�
   Code compares only that version.
 - Sherpa supports macOS only, and the repository has no CI (owner decision,
   2026-11-20: Windows support and its hook job were removed). The gate is the
-  macOS run of `bash scripts/check-all.sh` — the core's `vp check`, tests and
+  macOS run of `bash scripts/check-all.sh` — the Swift format check
+  (`swift format lint --strict` with the root `.swift-format`), the core's `vp check`, tests and
   build, the three Swift packages' build and tests, the plugin, manifest,
   contract, and document checks, and the release smoke install. Before merging
   any pull request, run it after the last change, confirm the whole run exits 0,

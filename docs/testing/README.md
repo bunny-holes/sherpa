@@ -37,6 +37,20 @@ Anything not listed here is not proven by the gate.
     Sends run against a fake `osascript`; no test sends a real message.
 - **Core static checks**: `vp check` (format, lint with type-aware rules, type
   check) over `core/`.
+- **Swift format check** (`swift format lint --strict`, the gate's first step):
+  every Swift file Git sees, tracked or untracked and not ignored, is already in
+  the form `swift format --in-place` gives it under the root `.swift-format`:
+  4-space indentation, 120 columns, unindented `#if` bodies, and the default
+  rules except `AlwaysUseLowerCamelCase`, `NoAccessLevelOnExtensionDeclaration`,
+  `NoParensAroundConditions`, `ReplaceForEachWithForLoop` and
+  `UseLetInEveryBoundCaseVariable`, whose fixes change code beyond its format
+  (bunny-holes/sherpa#70). Removing the parentheses that keep a trailing closure
+  in a `guard` condition from reading as the statement's body brings back a
+  compiler warning. swift-format ships with the Xcode toolchain (6.4.4 in
+  Xcode 27.2) and reads the nearest `.swift-format` above each file. The check
+  proves layout only, not behavior. A toolchain whose formatter output differs
+  fails the gate until the sources are formatted again in a `style:` commit
+  listed in `.git-blame-ignore-revs`.
 - **Swift helper tests** (`swift test` for `worker-protocol`,
   `foundation-models-service`, `eventkit-service`): Worker Protocol V2 envelope
   and payload validation, EventKit request decoding including
