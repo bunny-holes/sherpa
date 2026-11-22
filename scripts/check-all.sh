@@ -13,6 +13,31 @@ log() { printf '%s [%s] %s\n' "$1" "$2" "$3" >&2; }
 fail() { log error "$LOG_SCOPE:failure" "$1"; exit 1; }
 
 log info "$LOG_SCOPE:start" "root=${REPO_ROOT##*/}"
+# 0. 도구 판(bunny-holes/sherpa#71). 소유자 결정(2026-11-22)은 도구와 의존성을 늘 최신 안정판으로, 정확한 판으로
+#    고정해 두는 것이다(AGENTS.md). 코어는 core/package.json 의 devEngines.packageManager 가 적은 Bun 하나로
+#    설치·시험·빌드하고, bun build --compile 은 그 런타임을 dist/sherpa 에 넣는다. Bun 은 이 필드를 읽지 않는다.
+#    1.4.5 의 bun install 은 판이 달라도, onFail 이 error 여도 말없이 설치했고, 이 필드를 읽는 것은 Vite+ 의 vp 다
+#    (live-evidence.md 2026-11-22). 그래서 PATH 의 첫 bun 이 선언한 판이 아니면 아무것도 빌드하기 전에 멈춘다.
+readonly CORE_MANIFEST="$REPO_ROOT/core/package.json"
+# 홈 아래 경로는 ~ 로 줄여 적는다. 게이트 출력은 PR 본문에 옮겨진다.
+shown_path() { case "$1" in "$HOME"/*) printf '~/%s' "${1#"$HOME"/}" ;; *) printf '%s' "$1" ;; esac; }
+log info "check:environment:start" "manifest=core/package.json"
+declared_bun="$(python3 -c '
+import json, re, sys
+manager = json.load(open(sys.argv[1])).get("devEngines", {}).get("packageManager")
+version = manager.get("version") if isinstance(manager, dict) and manager.get("name") == "bun" else None
+if not isinstance(version, str) or not re.fullmatch(r"[0-9]+[.][0-9]+[.][0-9]+", version):
+    sys.exit(1)
+print(version)
+' "$CORE_MANIFEST")" || fail "reason=bun_version_undeclared file=core/package.json"
+bun_path="$(command -v bun)" || fail "reason=bun_missing expected=$declared_bun"
+actual_bun="$(bun --version)" || fail "reason=bun_version_unreadable path=$(shown_path "$bun_path")"
+[ "$actual_bun" = "$declared_bun" ] \
+  || fail "reason=bun_version_mismatch expected=$declared_bun actual=$actual_bun path=$(shown_path "$bun_path")"
+xcode_version="$(xcodebuild -version 2>/dev/null | awk 'NR == 1 { v = $2 } NR == 2 { b = $3 } END { print v "/" b }')" \
+  || xcode_version=unknown
+swift_version="$(swift --version 2>&1 | sed -nE 's/.*Swift version ([0-9.]+).*/\1/p')" || swift_version=unknown
+log info "check:environment:success" "bun=$actual_bun xcode=$xcode_version swift=${swift_version:-unknown}"
 
 # 0. Swift 서식(bunny-holes/sherpa#70). 기준은 저장소 루트의 .swift-format 하나다. swift-format 은 파일의 폴더에서
 #    위로 올라가며 가장 가까운 .swift-format 을 읽으므로 이 파일이 저장소의 모든 Swift 파일에 걸린다. Git 이 보는
@@ -185,6 +210,12 @@ cli_version="$(printf '%s' "$raw" | awk '{print $2}')"
 
 [ "$("$SHERPA_APPLE_BIN" --version)" = "sherpa-apple $cli_version" ] \
   || fail "reason=helper_version_mismatch cli=$cli_version"
+
+# 코어가 품은 Bun 런타임도 0 에서 확인한 판이어야 한다(bunny-holes/sherpa#71). BUN_BE_BUN=1 이면 컴파일한 실행
+# 파일이 자기 진입점 대신 bun CLI 로 돈다(Bun 문서 "Act as the Bun CLI").
+core_runtime="$(BUN_BE_BUN=1 "$binary" --version)" || fail "reason=core_runtime_unreadable"
+[ "$core_runtime" = "$declared_bun" ] \
+  || fail "reason=core_runtime_mismatch expected=$declared_bun actual=$core_runtime"
 
 # 실패는 이름 있는 오류 코드로 끝나야 한다. 최상위 catch 가 알 수 없는 실패를 stdout·stderr
 # 0 바이트로 끝내던 것을 이 호출로 재현했다. {} 는 봉투 검사에서 거부되므로 EventKit 과
