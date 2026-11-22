@@ -395,14 +395,26 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   모르는 사유의 `remedy` 는 `restart Sherpa.app, then reconnect` 다. [계약]
 - 다시 붙는 법은 에이전트가 앞선 실패를 기억하든 아니든 맞게 적는다. Claude Code 는 `/mcp` 의 Reconnect, Codex 는 새
   세션이다. 앱의 연결 방법(§2)도 같다. [계약]
-- MCP 가 꺼진 앱에서 중계가 머리말을 읽고 끝나면 Claude Code 2.1.326 대화형은 그 시도 안에서 서버를 옛 규격으로
-  고정해 다시 띄운다. 로그는 다음 순서다. [실측: live-evidence 2026-11-22 "Claude Code against a relay turned away"]
+- MCP 가 꺼진 앱(75)이나 떠 있지 않은 앱(69)에서 중계가 끝나면 Claude Code 2.1.326 대화형은 그 시도 안에서 서버를 옛
+  규격으로 고정해 한 번 다시 띄운다. 다시 띄운 중계는 `initialize`(2025-11-25)를 받고 같은 이유로 끝난다. 플러그인 범위,
+  사용자 범위, `--mcp-config` 동적 서버가 같았다. 로그는 다음 순서다. [실측: live-evidence 2026-11-22 "Claude Code
+  against a relay turned away", "Claude Code and Codex after a relay that ended"]
   - `version negotiation probe closed the stdio server (rmcp-class pre-init hard close); respawning pinned legacy`
   - 중계의 줄을 담은 `Server stderr:`
   - `Connection failed (CONNECTION_CLOSED)`
-- `--mcp-config` 로 준 동적 서버에서는 그 고정이 다음 세션에 남지 않았다. 2초 뒤 세션은 실패 캐시 없이 다시 시도해
-  같은 이유로 실패했고, MCP 를 켠 뒤 세션은 `protocolEra` `modern` 으로 붙었다. [실측: 같은 기록] 사용자 범위와
-  플러그인 범위에서 고정이나 실패 캐시가 다음 세션에 남는지는 재지 않았다(§16). [미확인]
+- 그 고정은 그 시도로 끝난다. 75·69 뒤에 Claude Code 는 7일 생략의 기억(설정 폴더의
+  `state/mcp-discover-verdicts.json`)을 남기지 않았고, 다음 시도는 다시 `server/discover` 부터 물었다. 플러그인 범위는
+  실패를 15분 실패 캐시(`mcp-needs-auth-cache.json`)에 적어 그동안 새 세션이 서버를 띄우지 않는다(§2). 사용자 범위와
+  동적 서버는 적지 않았다. MCP 를 켠 뒤에는 `/mcp reconnect <서버>` 와 새 세션(플러그인 범위는 15분 뒤)이 `protocolEra`
+  `modern` 으로 붙었고, 붙은 연결이 그 서버의 실패 캐시 항목을 지웠다. `/mcp` 에는 `CONNECTION_CLOSED: Connection
+  closed` 만 보이고 remedy 는 MCP 로그에만 있다. [실측: live-evidence 2026-11-22 "Claude Code and Codex after a relay
+  that ended"]
+- 7일 생략의 기억은 `server/discover` 에 3초 안에 답하지 않고 30초 연결 시한까지 끝나지도 않는 서버에만 생겼다. 기억된
+  서버가 켜진 앱에 붙으면 Claude Code 는 probe 없이 `initialize` 를 보내고, 코어의 -32022 를 받자 기억을 지우고 같은
+  연결에서 `server/discover` 로 다시 띄워 붙었다. [실측: 같은 기록]
+- Codex 0.171.0(기능과 env 를 켬)은 `server/discover` 뒤 끝난 중계를 다시 띄우지 않고 `connection closed: discover
+  response` 로 실패로 둔다. remedy 는 Codex 가 보이는 오류에 없고 app-server 의 `INFO` 로그(`MCP server stderr`)에만
+  있다. 새 스레드는 새 중계를 띄워 `server/discover` 부터 물었고, MCP 를 켠 뒤에는 붙었다. [실측: 같은 기록]
 - MCP 내용과 소켓의 절대 경로(사용자 이름이 들어 있다)는 쓰지 않는다. 경로는 `socket=default` 또는
   `socket=override` 로만 적는다. [계약]
 - `LOG_LEVEL` 을 따르고 기본은 warn 이다. [계약]
@@ -1147,12 +1159,14 @@ not json\n                                                                      
 ## 16. 미확인
 
 - 중계가 앱을 띄우는 동작과 로그인 항목(ADR-0010).
-- Claude Code 가 기능 플래그나 7일 생략으로 2025-11-25 `initialize` 로 붙어 거부되는 일, Codex 의 2026 모드가
-  2025-06-18 로 내려가는 조건(ADR-0011 의 위험). 2026-11-22 `--mcp-config` 동적 서버에서는 머리말 단계에서 끝난 중계
-  뒤에도 7일 생략이 일어나지 않았다(§6).
-- 사용자 범위(`claude mcp add --scope user`)와 플러그인 범위의 Claude Code 서버에서, 머리말 단계에서 끝난 중계 뒤의
-  옛 규격 고정이나 실패 캐시가 다음 세션에 남는지(§6). 플러그인 서버의 15분 실패 캐시는 실측했다(§2 "플러그인의 MCP
-  등록", ADR-0011 "아직 확인 전"). 항목이 같은 채로 고정이 남는지는 재지 않았다.
+- Claude Code 가 기능 플래그로 서버를 옛 규격에 두어 2025-11-25 `initialize` 로 붙고 거부되는 일(ADR-0011 의 위험). 7일
+  생략은 2026-11-22 에 답도 종료도 없는 시험 서버에서만 일어났고, 켜진 앱에서는 그 연결 안에서 풀렸다(§6). Codex 가
+  2025-06-18 로 내려가는 조건도 시험 서버로 쟀다(ADR-0011 의 위험). 설치한 `sherpa` 항목으로는 재지 않았다.
+- MCP 가 꺼졌거나 앱이 없을 때 remedy 를 두 에이전트의 화면에 보이는 응답 모양. 지금은 둘 다 연결이 닫혔다고만
+  보인다(§6). 시험 서버로 잰 세 후보는 live-evidence 2026-11-22 "Claude Code and Codex after a relay that ended" 에
+  있다.
+- Codex 가 같은 세션 안에서 실패한 서버를 다시 띄우는 길. app-server 에 `config/mcpServer/reload` 가 있으나 부르지
+  않았다.
 - 이 Mac 의 선 위에서 Claude Code 와 Codex 가 2026-07-28 봉투의 `clientCapabilities` 에 선언하는 elicitation(Claude
   Code 는 문서에, Codex 는 소스에 있다).
 - Claude Code 2.1.326 의 `anthropic/requiresUserInteraction` 지원.

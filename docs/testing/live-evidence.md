@@ -9,6 +9,144 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — Claude Code and Codex after a relay that ended with `mcp_disabled` or `app_not_running`, in plugin and user scope (bunny-holes/sherpa#69)
+
+This Mac, run by the bunny-holes/sherpa#69 worker between 03:23Z and 03:47Z.
+No model was called and no agent setting was edited by hand. Claude Code
+2.1.326 ran interactively in a pty with `--debug=mcp --debug-file` and no
+prompt. Plugin scope used the profile this session runs under, with
+`--plugin-dir` copies of `plugins/sherpa/` whose plugin and server names
+were fresh (`sherpapin11221222<tag>`), so that no cached failure could attach
+to the installed `sherpa`. User scope used a scratch `CLAUDE_CONFIG_DIR`,
+not logged in, with `claude mcp add --scope user`; the interactive session
+still started the servers. Codex 0.171.0 ran `codex app-server` with a
+scratch `CODEX_HOME` and `-c mcp_servers.<name>.command=…` and
+`-c mcp_servers.<name>.env={CODEX_MCP_PROTOCOL_VERSION="2026-07-28"}`
+overrides. Every entry's command was one wrapper script that never changed;
+a mode file beside it chose what the next start ran, and a `tee` in a
+process substitution recorded the incoming lines without holding the
+agent's stdout or stderr.
+
+- Modes. `off`: the debug `sherpa-relay` built from `3ce5e60` against the
+  test host (`sherpa-app-testhost --mcp off`); it exits 75 with the
+  `mcp_disabled` line of contract §6. `off-direct`: the same without the
+  `tee`. `down`: the same relay with a socket path nobody serves; it exits
+  69 `app_not_running`. `stall`: a fake app that accepts and never sends
+  the preface; the relay exits 75 `preface_timeout` after 15 s. `hang`:
+  reads and never answers or exits. `on`: `exec` of
+  `/Applications/Sherpa.app/Contents/MacOS/sherpa-relay`, the app built from
+  `main` `b01470c` with its MCP switch on and not touched; the only tool
+  called was `reminder_authorization_status`. Three candidate answers,
+  written in Bun: `c2` answers the first request with JSON-RPC error -32000
+  whose message is `Sherpa.app has MCP turned off: <remedy>`, then writes the
+  relay's line and exits 75; `c2open` answers every request with that error
+  and exits 75 at stdin EOF; `c3` answers `server/discover` with
+  `supportedVersions: ["2026-07-28"]` and the tools capability, and every
+  other request with that error.
+- Claude Code with `off`, `off-direct` and `down`, plugin and user scope
+  alike: `server/discover` with the 2026-07-28 envelope; the relay exits;
+  `version negotiation probe closed the stdio server (rmcp-class pre-init
+  hard close); respawning pinned legacy`; a second relay receives
+  `initialize` `2025-11-25` and exits the same way; the relay's line as
+  `Server stderr:`; `Connection failed (CONNECTION_CLOSED): Connection
+  closed`. Exit 69 behaves as exit 75, and `off-direct` showed that the
+  `tee` changed nothing. `/mcp` showed `Status: ✘ failed` and
+  `Issue: CONNECTION_CLOSED: Connection closed`. The remedy reached only the
+  debug log and the server's MCP log (`mcp-logs-<server>` in Claude Code's
+  cache folder).
+- The pin ended with that attempt. `off` and `down` added nothing to
+  `state/mcp-discover-verdicts.json` in the configuration folder, the file
+  behind the 7-day skip, in either scope; neither did `stall` in user scope.
+  - Plugin scope: each failure wrote `plugin:<plugin>:<server>` with
+    `{timestamp, id}` to `mcp-needs-auth-cache.json`. Within 15 minutes a
+    new session did not start the server, and `/mcp` showed `Issue:
+    Skipping connection (recent failure cached; retries automatically in 15
+    min, or edit the plugin config to retry now)`. A session 18 minutes after
+    the failure, with the entries unchanged, asked `server/discover` first
+    again; a server still off failed the same way and rewrote its entry.
+  - User scope wrote no failure-cache entry; the next session asked
+    `server/discover` first.
+  - `/mcp reconnect <server>` (the command; the menu item was not chosen):
+    while off, `server/discover` first again, the same failure, and
+    `Couldn't reconnect to <server>` with no reason. After the mode became
+    `on`: `Successfully reconnected to <server>`, and plugin scope deleted
+    the failure-cache entry.
+  - A new session after `on`, in plugin scope after the 15 minutes and in
+    user scope at once: `server/discover`, `tools/list`, `protocolEra`
+    `modern`, `negotiatedProtocolVersion` `2026-07-28`. The connection
+    deleted the server's failure-cache entry; entries of servers the session
+    did not load stayed after they expired.
+  - Besides the cache, Claude Code updated `.claude.json` in the plugin-scope
+    profile (startup and tip counters, `projects`, `pluginUsage`, the
+    cached feature flags).
+- The 7-day skip. Only `hang` added a verdict (`stdio:<hash>` →
+  `{observedAt, modernProtocolVersion}`), after the 3 s probe timed out,
+  `initialize` went to the same process and the 30 s connect timed out.
+  `stall` added none: the probe timed out, the relay ended at 15 s, Claude
+  Code logged `stdio server exited during initialize after the version
+  negotiation probe timed out …; restarting it once without the probe`, and
+  the second start timed out.
+  - Next session with `on`: `remembered as a legacy peer from an earlier
+    connect (…); skipping the probe`, `initialize` `2025-11-25`, the core's
+    -32022, then `the stdio server answered the initialize of a connect built
+    from the remembered legacy verdict with an error (Unsupported protocol
+    version: 2025-11-25); discarding it and restarting the server once with
+    the server/discover probe`, and a `modern` connection. The verdict was
+    deleted, in the user-scope profile and in this session's own profile,
+    whose verdict file ended as `{}`.
+  - Next session with `off`: `initialize`, the relay exits, `stdio server
+    remembered as a legacy peer exited during initialize, with no probe sent;
+    restarting it once, again without the probe`, failure. The verdict was
+    deleted.
+  - `MCP_PROTOCOL_NEGOTIATION=auto`: a server with a verdict was asked
+    `server/discover` first and the verdict stayed; `hang` still added a
+    verdict. `legacy`: `initialize` only, and `on` failed with
+    `Connection failed (-32022): Unsupported protocol version: 2025-11-25`.
+- Codex 0.171.0 with the feature `mcp_2026_07_28` and the env:
+  - `off` and `down`: `server/discover` only, no second start,
+    `runtimeStatus` `failed`, `toolsError` `MCP startup failed: handshaking
+    with MCP server failed: connection closed: discover response: …`. A tool
+    call returned -32603 `failed to get client: …`. `stall`:
+    `server/discover`, then `initialize` `2025-06-18` on the same process,
+    then `connection closed: initialize response`.
+  - The relay's line reached only the app-server log at `INFO`
+    (`codex_rmcp_client::stdio_server_launcher: MCP server stderr
+    (<command>): error [relay:…] …`); at `RUST_LOG=warn` it did not appear.
+  - With every mode switched to `on`, a new `thread/start` in the same
+    app-server started new relays. Each asked `server/discover` first,
+    listed 35 tools, and `reminder_authorization_status` returned
+    `succeeded`.
+  - Feature off: `initialize` `2025-06-18` only. `off`, `down` and
+    `stall` gave `connection closed: initialize response`; `on` gave
+    -32022.
+- Candidates, Claude Code in plugin scope and Codex with the feature on:
+
+  | Answer | Claude Code | Codex | Left behind |
+  | --- | --- | --- | --- |
+  | `c2` | Probe error, `initialize` on the same process, closed: `CONNECTION_CLOSED`. No remedy | `discover and legacy initialize both failed`. No remedy | Failure-cache entry |
+  | `c2open` | Probe error, `initialize` on the same process, error: `Connection failed (-32000): Sherpa.app has MCP turned off: …`; `/mcp` `Issue: -32000: Sherpa.app has MCP turned off: …` | `discover and legacy initialize both failed`. No remedy | Failure-cache entry |
+  | `c3` | `modern` connection; `tools/list` failed four times (retries after 250, 500 and 1000 ms); `/mcp` `Status: ⚠ connected · tools fetch failed`, `Issue: Sherpa.app has MCP turned off: …` | `failed`; `toolsError` and the `mcpServer/startupStatus/updated` error `MCP client for <name> failed to start: MCP startup failed: Mcp error: -32000: Sherpa.app has MCP turned off: …({"reason":"mcp_disabled","remedy":…})`; a tool call -32603 with the same text | Nothing |
+
+  None added a verdict. With the feature off Codex showed the -32000
+  message for all three, because its first request was `initialize`. After
+  `on`, a Claude Code session after the 15 minutes and a new Codex thread
+  connected for all three.
+- Correction to "The plugin's `.mcp.json` registers the app's relay with
+  both agents" below: its exit-69 run recorded a probe timeout and a restart
+  without the probe. That wrapper ran `tee -a <log> | sherpa-relay`, so the
+  wrapper process kept the agent's stdout open after the relay ended, until
+  `tee` next wrote; the 3 s probe deadline passed first. Its MCP logs show
+  `stdio server exited during initialize after the version negotiation probe
+  timed out` 3 s after each start. With the relay started directly or by
+  `exec`, exit 69 ends the probe at once, as above.
+- Not measured: the installed `sherpa` under its own name (fresh names were
+  used on purpose), the feature flag that can keep a server on the earlier
+  protocol, the `/mcp` menu's Reconnect item, the Codex TUI's display and
+  log file, the app-server request `config/mcpServer/reload` (listed by
+  `codex app-server generate-json-schema`, not called), a core slower than
+  the 3 s probe, and any candidate built into the relay or the app; the
+  candidates were stand-ins.
+
 ## 2026-11-22 — Plugin 0.9.0 from `plug-hole` reaches the app in `/Applications` with both agents' own configuration (bunny-holes/sherpa#55)
 
 This Mac, main session, on the owner's go-ahead to change both agents' own
