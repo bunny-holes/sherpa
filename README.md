@@ -21,7 +21,7 @@ No external messaging CLI (`imsg`, `kakaocli`) is used. See
 ## Build and test
 
 One gate covers everything — the core's format, lint, type check and tests,
-all three Swift packages, the `--version` format the plugin's guard parses, the
+all three Swift packages, the `--version` format the Formula's test parses, the
 agent plugin, the documents, and the Homebrew release smoke:
 
 ```bash
@@ -170,11 +170,13 @@ codex plugin marketplace add https://github.com/XIYO/plug-hole.git
 codex plugin add sherpa@plug-hole
 ```
 
-Both halves come from this repository, but they reach a machine by different
-routes, so their versions can drift. `plugins/sherpa/cli-contract.json` records
-the minimum CLI version the skills need, and every skill that calls the CLI runs
-`scripts/require-cli.sh` before its first command — an outdated CLI stops the
-workflow with a clear message instead of failing partway through.
+The plugin registers the MCP server of `Sherpa.app` (`plugins/sherpa/.mcp.json`,
+command `/Applications/Sherpa.app/Contents/MacOS/sherpa-relay`), and its skills
+call that server's tools instead of the CLI. Codex also needs
+`codex features enable mcp_2026_07_28`. The gate checks every tool a skill
+names against the core's tool registry; the
+[plugin README](plugins/sherpa/README.md) covers installation and
+troubleshooting.
 
 Private ReminderKit is an optional, unsupported Apple implementation detail.
 It is linked behind the `reminder-kit request` adapter and remains disabled for

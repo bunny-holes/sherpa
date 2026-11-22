@@ -1,10 +1,10 @@
 ---
 uuid: 01a0f252-d266-7310-aa81-ee3531585026
 type: guide
-audience: "Mac users installing the Sherpa agent plugin and its CLI for Claude Code or Codex"
-goal: "Install the CLI and one plugin entry point, run a first request, and know what data stays local"
+audience: "Mac users installing the Sherpa agent plugin for Claude Code or Codex"
+goal: "Install Sherpa.app and one plugin entry point, connect the agent to the app's MCP server, run a first request, and know what data stays local"
 tone: "Plain user-facing English. States requirements before steps"
-manner: "Outcome first, then install, prerequisites, first use, verification, data boundary, limits"
+manner: "Outcome first, then install, prerequisites, first use, verification, troubleshooting, data boundary, limits"
 ---
 
 # Sherpa
@@ -12,20 +12,27 @@ manner: "Outcome first, then install, prerequisites, first use, verification, da
 [한국어](README.ko.md)
 
 Sherpa turns planning intent into bounded, evidence-checked work on your own
-Mac. It reads Calendar, Reminders, Mail, iMessage, and KakaoTalk through the
-native `sherpa` CLI, proposes changes, and mutates only after you confirm the
-exact content. Nothing leaves the machine except what you explicitly send.
+Mac. Its skills call the MCP server of Sherpa.app, which reads Calendar,
+Reminders, Mail, iMessage, and the local KakaoTalk database, proposes changes,
+and mutates only after you confirm the exact content. Nothing leaves the
+machine except what you explicitly send.
 
 ## Install
 
-The plugin bundles skills and a SessionStart hook. Install the CLI first.
+The plugin bundles the skills and registers one MCP server, `sherpa`, whose
+command is `/Applications/Sherpa.app/Contents/MacOS/sherpa-relay`. Install
+Sherpa.app first:
 
-```bash
-brew install xiyo/tap/sherpa
-sherpa --version
-```
+1. Put `Sherpa.app` in `/Applications`. The plugin looks nowhere else. Its
+   notarized Homebrew cask is not published yet; until it is, build and export
+   the app from this repository (`docs/contracts/app-connection-v1.md`, §2
+   "번들 빌드") and move it there.
+2. Open Sherpa.app and turn on its **MCP Server** switch, in the menu bar menu
+   or at the top of the status window. It is off at the first launch, and while
+   it is off the app turns every agent away.
 
-Your GitHub account needs access to the private `XIYO/plug-hole` repository.
+Then add the plugin. Your GitHub account needs access to the private
+`XIYO/plug-hole` repository.
 
 ```bash
 claude plugin marketplace add https://github.com/XIYO/plug-hole.git
@@ -35,20 +42,29 @@ claude plugin install sherpa@plug-hole
 ```bash
 codex plugin marketplace add https://github.com/XIYO/plug-hole.git
 codex plugin add sherpa@plug-hole
+codex features enable mcp_2026_07_28
 ```
 
-`plug-hole` fetches the plugin from `plugins/sherpa/` in this repository. The
-CLI remains a separate Homebrew install.
+Sherpa.app speaks MCP revision 2026-07-28 only. Claude Code negotiates it by
+default. Codex opens that revision only with the feature `mcp_2026_07_28` on;
+the plugin's server entry already carries the environment value Codex also
+needs (`CODEX_MCP_PROTOCOL_VERSION=2026-07-28`). Codex then warns at session
+start that an under-development feature is enabled.
 
-A new session loads the skills. Skills load from a snapshot taken at session
-start, so an open session keeps the version it already loaded.
+`plug-hole` fetches the plugin from `plugins/sherpa/` in this repository. A
+new session loads the skills and starts the server; an open session keeps what
+it already loaded. With the plugin installed, you do not need the
+`claude mcp add` or `codex mcp add` commands that the Sherpa status window
+shows; those register the same relay without the plugin.
 
 ## Prerequisites
 
 - macOS 14 or newer, Apple silicon
-- Calendar and Reminders permission, granted on first read
-- Full Disk Access for the host application, for Mail, iMessage and local KakaoTalk reads
-- `sherpa kakaotalk setup` run once before the first local KakaoTalk read
+- Sherpa.app in `/Applications` with its MCP Server switch on
+- Calendar and Reminders access for Sherpa.app, from its menu bar menu
+- Full Disk Access for Sherpa.app, for Mail, iMessage and local KakaoTalk reads
+- `sqlcipher` from Homebrew and `sherpa kakaotalk setup` run once in a
+  terminal with Full Disk Access, before the first local KakaoTalk read
 
 ## First use
 
@@ -63,38 +79,35 @@ Five skills carry the work:
 
 | Skill | What it owns |
 |---|---|
-| `sherpa` | Entry point. Routes intent and runs the evidence loop. |
+| `sherpa` | Entry point. Routes intent and runs the evidence loop over the tool outcomes. |
 | `planner` | Calendar and Reminders through validated proposals and readback. |
 | `context` | Bounded Mail, iMessage, and KakaoTalk reads; commitments and candidates. |
 | `kakaotalk-local-search` | Local KakaoTalk text — keyword search, one-room history, dated archive. |
 | `agent-messenger` | Server-backed KakaoTalk, Discord, iMessage, Instagram via the upstream CLI. |
 
+The agent sees the tools as `mcp__plugin_sherpa_sherpa__<tool>` in Claude Code
+and `mcp__sherpa__<tool>` in Codex, for example `event_list`. Deletes and
+sends wait up to 30 seconds while Sherpa.app shows the exact target and asks
+you to allow it.
+
 ## Verify
 
-```bash
-sherpa --version
-claude plugin list
-```
+In Claude Code, run `/mcp`: `plugin:sherpa:sherpa` must be connected. In
+Codex, `codex mcp list` must show `sherpa` as enabled. `claude plugin list`
+and `codex plugin list --marketplace plug-hole` show the plugin itself.
 
-For Codex, use `codex plugin list --marketplace plug-hole`.
-The list must show Sherpa as installed and enabled. A new session runs the
-bundled CLI guard on macOS. It stays silent when the CLI is ready; it names
-`mismatch` with both versions or `missing` when the CLI is absent. Each skill
-runs the same guard before its first CLI command.
+## Troubleshooting
 
-On anything other than macOS the guard answers `unsupported`
-(`"reason":"macos_only"`) without looking for a CLI or suggesting an install.
-
-## Version contract
-
-The plugin and the CLI live in this repository, but they reach your machine by
-different routes — the skills through `plugin install`, the CLI through
-Homebrew. Nothing keeps those two installs in step, so their versions can drift
-apart. `cli-contract.json`
-holds the one constraint that matters: the minimum CLI version these skills
-need, within the same MAJOR. Every skill that calls the CLI runs
-`scripts/require-cli.sh` before its first command, so an outdated CLI stops the
-workflow with a clear message instead of failing partway through.
+| What you see | Cause and fix |
+|---|---|
+| Claude Code: `plugin:sherpa:sherpa` failed; its MCP log ends with `ENOENT` and `posix_spawn`. Codex: `MCP startup failed: No such file or directory (os error 2)`. | Sherpa.app is not at `/Applications/Sherpa.app`. Move it there; the plugin does not search other places. |
+| The server failed and its MCP log names `app_not_running` or `mcp_disabled`. | Open Sherpa.app and turn on MCP Server, then reconnect. |
+| Claude Code starts with no Sherpa tools right after a failure. | Claude Code skips a plugin server that failed in the last 15 minutes. Choose Reconnect for `plugin:sherpa:sherpa` in `/mcp`, or wait. |
+| Codex: `-32022: Unsupported protocol version: 2025-06-18`. | The feature is off. Run `codex features enable mcp_2026_07_28` and start a new session. |
+| Codex uses a different command than the plugin. | A `[mcp_servers.sherpa]` entry in your own `config.toml` takes precedence over the plugin's server of the same name. Remove it, or keep it with the same command and environment value. |
+| Claude Code shows the tools as `mcp__sherpa__<tool>`. | You also added the relay yourself with `claude mcp add` and the same command. Claude Code connects that entry once instead of the plugin's; the skills accept both names. |
+| `kakaotalk.setup_required` or `kakaotalk.user_id_not_found`. | Run `sherpa kakaotalk setup` once in a terminal that has Full Disk Access. It is not an MCP tool. |
+| `eventkit.access_unavailable`, or a Full Disk Access remedy. | Grant the access to Sherpa.app from its menu bar menu, not to the terminal or the agent app. |
 
 ## Data boundary
 
@@ -105,22 +118,23 @@ checkpoint stays separate from the Agent Messenger checkpoint and is committed
 only after analysis.
 
 Outbound messages and mail are drafted first and sent only after you approve
-the exact destination and content. Calendar and Reminders mutate only past the
-same confirmation boundary. Sherpa returns opaque references, never provider
-identifiers.
+the exact destination and content, and then once more in the Sherpa.app
+window. Calendar and Reminders mutate only past the same confirmation
+boundary. Sherpa returns opaque references, never provider identifiers.
 
 ## Limitations
 
-- macOS only; Windows and Linux are not supported or tested. If Claude Code
-  runs the SessionStart hook on another OS, the hook stays silent and a skill
-  that is invoked stops at the guard's `unsupported` answer.
+- macOS only; Windows and Linux are not supported or tested.
+- The plugin reaches Sherpa.app only at `/Applications/Sherpa.app`.
 - `sherpa` is not a complete archive of any service.
-- The CLI is not bundled. Upgrading the plugin does not upgrade the CLI.
+- The plugin does not install or update Sherpa.app. Update both together:
+  a skill that names a tool the app does not serve stops and reports it.
 
 ## Development
 
-The plugin lives at `plugins/sherpa/`; the CLI is the Swift package under
-`apple/eventkit-service`. Both ship from this repository.
+The plugin lives at `plugins/sherpa/`, the app and relay at
+`apple/sherpa-app/`, and the core that serves the tools at `core/`. All ship
+from this repository.
 
 ```bash
 bash scripts/check-all.sh

@@ -48,10 +48,10 @@ Sherpa operation after the CLI is installed.
 - `FR-DP-005`: The CLI does not register, update, or remove agent plugins on
   any host. `XIYO/plug-hole` is the only marketplace for this repository's
   `plugins/sherpa/` package, and skills are installed with each host's own
-  plugin command. The archive and the
-  marketplace are separate delivery routes, so the plugin declares the minimum
-  CLI version its skills require and each skill verifies it before its first
-  command rather than requiring an exact CLI/plugin version pair.
+  plugin command. The plugin registers the MCP server of `Sherpa.app` and its
+  skills call that server's tools, not the CLI, so no CLI version is paired
+  with the plugin; the gate checks every tool a skill names against the core's
+  tool registry.
 - `FR-DP-006`: Homebrew owns installed program files and worker environments.
   Upgrade and uninstall do not silently purge Sherpa's owner data, browser
   profile, Apple data, or host plugin registrations.

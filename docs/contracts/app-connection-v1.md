@@ -46,10 +46,9 @@ sherpa-relay ──Unix 소켓──▶ Sherpa.app ──stdin/stdout 프레임�
 
 이 계약이 정하는 것: 번들 배치와 서명 식별자, 소켓과 단일 인스턴스, 양방향 서명 확인, 앱이 중계에 먼저 보내는
 머리말, 중계의 동작과 종료 코드, 앱과 코어 사이 프레임(MCP 다중화, 작업 요청, 확인 요청), MCP 도구 규칙,
-경계의 로그, 각 쪽의 시험 층.
+경계의 로그, 각 쪽의 시험 층, 플러그인의 MCP 등록.
 
-정하지 않는 것: 메뉴와 창의 생김새, 공증·cask·formula 이전(3단계), 플러그인이 MCP 설정을 등록하는 방식(3단계),
-로그인 항목과 중계가 앱을 띄우는 동작(ADR-0010 의 미확인), 헬퍼 번들을 걷어 낸 뒤 `sherpa` 명령이 EventKit 에
+정하지 않는 것: 메뉴와 창의 생김새, 공증·cask·formula 이전(3단계), 로그인 항목과 중계가 앱을 띄우는 동작(ADR-0010 의 미확인), 헬퍼 번들을 걷어 낸 뒤 `sherpa` 명령이 EventKit 에
 닿는 길(§11).
 
 판: 프레임은 `mux: 1`, 머리말은 `sherpa_app: 1`, 도구 결과는 `sherpa.mcp.tool-outcome.v1` 이다. 호환되지 않는
@@ -132,8 +131,8 @@ xcodebuild -exportArchive -archivePath apple/sherpa-app/.build/Sherpa.xcarchive 
   -exportOptionsPlist apple/sherpa-app/ExportOptions.plist -exportPath apple/sherpa-app/.build/export
 ```
 - 에이전트의 MCP 설정은 설치된 앱 안 중계의 절대 경로를 가리키고 인자를 주지 않는다. 서버 이름은 `sherpa` 다.
-  [계약; 같은 모양의 설정으로 두 에이전트가 시험 빌드 중계에 붙은 것은 실측] 플러그인이 이 설정을 등록하는
-  방식은 3단계에서 정한다.
+  [계약; 같은 모양의 설정으로 두 에이전트가 시험 빌드 중계에 붙은 것은 실측] 플러그인은 이 설정을 아래
+  "플러그인의 MCP 등록" 으로 등록한다.
 
 ```json
 {"mcpServers": {"sherpa": {"command": "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay", "args": []}}}
@@ -207,7 +206,38 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 | Codex | `codex features enable mcp_2026_07_28`, 이어 `codex mcp add --env CODEX_MCP_PROTOCOL_VERSION=2026-07-28 sherpa -- <중계 경로>` | 실측(같은 기록): 0.171.0 의 `codex mcp add --help`, `codex features enable --help`. 빈 임시 `CODEX_HOME` 의 `config.toml` 에 `[mcp_servers.sherpa]` 의 `command`, `[mcp_servers.sherpa.env]` 의 `CODEX_MCP_PROTOCOL_VERSION = "2026-07-28"`, `[features]` 의 `mcp_2026_07_28 = true` 를 썼다. 기능과 env 의 근거는 ADR-0011 |
 
 - 플러그인(`sherpa@plug-hole`)의 등록은 연결 방법 팝오버에 "플러그인을 쓰면 서버를 등록해 준다" 한 줄만 둔다. 그 방식은
-  bunny-holes/sherpa#55 가 정한다. [계약]
+  아래 "플러그인의 MCP 등록" 이다(bunny-holes/sherpa#55). [계약]
+
+### 플러그인의 MCP 등록
+
+- 플러그인 `sherpa@plug-hole`(`plugins/sherpa/`)은 루트의 `.mcp.json` 하나로 서버 `sherpa` 를 등록한다. 두
+  에이전트가 같은 파일을 읽는다. Claude Code 는 플러그인 루트의 `.mcp.json` 을 기본으로 읽고, Codex 는
+  `.codex-plugin/plugin.json` 의 `"mcpServers": "./.mcp.json"` 으로 읽는다. Claude 매니페스트는 `mcpServers` 를
+  적지 않는다. [문서: Claude Code [Add components to a plugin](https://code.claude.com/docs/en/plugins/components), "MCP
+  servers"; OpenAI [Package your plugin](https://developers.openai.com/codex/plugins/build); 실측: live-evidence
+  2026-11-22 "The plugin's `.mcp.json`"]
+
+```json
+{"mcpServers": {"sherpa": {"command": "/Applications/Sherpa.app/Contents/MacOS/sherpa-relay", "args": [],
+  "env": {"CODEX_MCP_PROTOCOL_VERSION": "2026-07-28"}}}}
+```
+
+- env 는 Codex 몫이다(ADR-0011). Claude Code 에서는 이 값이 있어도 협상이 2026-07-28 그대로였다. 릴리스 중계는
+  환경 변수를 읽지 않는다(위 "릴리스 빌드는"). [실측]
+- 경로는 `/Applications/Sherpa.app` 하나다. 플러그인은 다른 곳의 앱을 찾지 않고 찾는 실행기도 두지 않는다. 앱이
+  그 자리에 없으면 Claude Code 는 `ENOENT … posix_spawn` 으로, Codex 는 `MCP startup failed: No such file or
+  directory (os error 2)` 로 서버를 실패로 둔다. Claude Code 는 시작 화면에 알리지 않는다. 실패한 플러그인 stdio
+  서버는 15분 동안 새 세션이 띄우지 않는다(디버그 로그 `Skipping connection (recent failure cached…)`). [실측]
+- 도구 이름은 Claude Code 에서 `mcp__plugin_sherpa_sherpa__<도구>`, Codex 에서 `mcp__sherpa__<도구>` 다. [문서:
+  Claude Code MCP(§10.3); Codex 는 openai/codex 0.171.0 소스] 사람이 같은 중계를 같은 명령으로 직접 등록하면 Claude
+  Code 는 플러그인 서버를 중복으로 보고 사용자 범위의 정의 하나만 이어, 도구가 `mcp__sherpa__<도구>` 가 된다.
+  [문서: Claude Code MCP, "Scope hierarchy and precedence"] Codex 는 사용자 설정의 `[mcp_servers.sherpa]` 가 같은
+  이름의 플러그인 서버보다 앞선다. [문서: openai/codex 0.171.0 소스] 스킬은 두 앞머리를 다 적는다. [계약]
+- 스킬은 Sherpa CLI 를 부르지 않는다. 사람이 전체 디스크 접근이 있는 터미널에서 한 번 돌리는 `sherpa kakaotalk
+  setup` 만 안내한다(§10.2 가 MCP 에서 뺐다). 그래서 플러그인에는 CLI 버전 가드와 SessionStart 훅이 없다. 게이트는
+  스킬이 적은 도구 이름을 코어의 도구 등록부(`core/src/mcp/registry.ts`, `core/src/mcp/core-tools.ts`)와 맞춰 보고
+  (`plugins/sherpa/scripts/checks/verify_tools.py`), `.mcp.json` 이 위 모양인지 본다(`plugins/sherpa/scripts/check.sh`).
+  [계약]
 
 ## 3. 소켓
 

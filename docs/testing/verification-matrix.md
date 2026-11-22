@@ -187,7 +187,7 @@ test.
 
 | `FR-DP-004` | Version read back from the built binary; archive SHA-256 pinned in the Formula | Packager rejects a `--version` output that is not `sherpa X.Y.Z` | D ready |
 
-| `FR-DP-005` | No agent-host installer exists; skills ship from this repository's marketplace | `plugins/sherpa/cli-contract.json` minimum version, enforced by `scripts/require-cli.sh` before a skill's first command | D ready; L owner-operated |
+| `FR-DP-005` | No agent-host installer exists; skills ship from the `plug-hole` marketplace and register Sherpa.app's MCP server | `plugins/sherpa/scripts/check.sh`: `.mcp.json` matches contract §2, and every tool a skill names is in the core's tool registry (`verify_tools.py`) | D ready; L owner-operated |
 
 | `FR-DP-006` | Homebrew owns the installed binary; Sherpa owner state lives outside the keg | Upgrade and uninstall leave owner state untouched | D pending; L observe only |
 

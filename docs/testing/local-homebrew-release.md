@@ -58,8 +58,8 @@ core prints for `--version` and in its help banner. The helper's `main.swift`
 (the version of `Sherpa.app`) carry the same value; the packager refuses a helper
 whose version differs, and the gate refuses an app bundle whose version differs.
 `scripts/package.sh` reads it back from the built binary and refuses to package
-anything whose output does not match `sherpa X.Y.Z`, because the plugin's
-version guard parses exactly that shape.
+anything whose output does not match `sherpa X.Y.Z`, because the Formula's
+test parses exactly that shape.
 
 ### The gate never touches the release artifacts
 
@@ -78,7 +78,6 @@ uploaded the archive; a Formula from any other run pins a different checksum.
 
 1. Increment the version in `core/src/version.ts`, `core/package.json`, the
    helper's `main.swift`, and both `Info.plist` files.
-   The repository gate checks it against the plugin's `cli-contract.json`.
 2. Run the whole gate on macOS and confirm it exits 0:
 
    ```bash
@@ -150,9 +149,10 @@ is complete only when a regression begins at the already-applied prior
 database; fresh initialization alone is insufficient evidence.
 
 Homebrew upgrades the CLI only. The agent skills reach a machine through each
-host's plugin command and are not touched by a Formula. If a release raises the
-CLI version the skills need, raise `minimumVersion` in the plugin's
-`cli-contract.json` in the same change, as its `note` describes.
+host's plugin command and are not touched by a Formula. They call the MCP tools
+of Sherpa.app, not the CLI, so a CLI release needs no plugin change; a change
+that renames or removes a tool updates the skills in the same change, and the
+gate checks the names.
 
 ## Development installs
 

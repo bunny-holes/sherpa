@@ -238,10 +238,16 @@ A changed or missing fingerprint makes the candidate stale instead of closing a
 revision or performing a mutation.
 
 
-Agent skills are not an application port. They install from this repository's
-plugin marketplace with each host's own command, and the CLI neither registers
-nor inspects them. `plugins/sherpa/cli-contract.json` records the minimum CLI
-version those skills need, and each skill verifies it before its first command.
+Agent skills are not an application port. They install from the `XIYO/plug-hole`
+marketplace with each host's own command, and the CLI neither registers nor
+inspects them. The plugin registers the app's MCP server: its root `.mcp.json`
+names the server `sherpa` with the installed relay
+`/Applications/Sherpa.app/Contents/MacOS/sherpa-relay`, which Claude Code reads
+by default and Codex through its manifest's `mcpServers`. The skills call that
+server's tools and run no CLI command except the one-time
+`sherpa kakaotalk setup` they ask the person to run, so the plugin carries no
+CLI version guard; the gate checks every tool a skill names against the core's
+tool registry (contract §2 "플러그인의 MCP 등록").
 
 ## Trust and availability
 
@@ -311,7 +317,7 @@ core at `bin/sherpa` and the Swift helper bundle at `libexec/SherpaHelper.app`, 
 else; a prebuilt archive prevents compilation on the user's Mac. The Formula
 declares one runtime dependency, `sqlcipher`, whose library the core loads to
 read the KakaoTalk database. Agent skills are not
-part of that archive — they install from this repository's plugin marketplace,
+part of that archive — they install from the `XIYO/plug-hole` marketplace,
 and the Formula never registers them.
 
 Homebrew's Formula catalog is distinct from the release archive it references.

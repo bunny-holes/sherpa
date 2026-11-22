@@ -32,6 +32,13 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > `check-windows.ps1`)는 지웠고, 아래 `## 미검증` 의 Windows 항목은 더 이상 닫을 대상이 아니다.
 > 다른 OS 에서 훅이 침묵하고 가드가 `unsupported` 를 답하는 동작은 남기고 macOS 게이트가
 > 가짜 `uname` 으로 검사한다.
+>
+> **정정 (2026-11-22).** 플러그인 0.9.0 은 Sherpa.app 의 MCP 서버를 등록하고 스킬이 그 도구를
+> 부른다(bunny-holes/sherpa#55). 스킬이 CLI 를 부르지 않으므로 아래 Consequences 의 버전 가드
+> (`cli-contract.json`, `scripts/require-cli.sh`, SessionStart 훅)는 지웠고, 바로 위 정정의 훅
+> 침묵과 `unsupported` 동작도 함께 사라졌다. CLI 는 사람이 터미널에서 한 번 돌리는
+> `sherpa kakaotalk setup` 에만 남는다. 설치 ID `sherpa@plug-hole` 과 카탈로그 경계는 그대로다.
+> 등록 방식은 [앱 연결 계약](../contracts/app-connection-v1.md) §2 "플러그인의 MCP 등록" 에 있다.
 
 ## Context
 
