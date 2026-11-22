@@ -7,6 +7,14 @@ owner: maintainer
 
 # ADR-0004: Native Fresh Read Context and Minimal Control Ledger
 
+> **정정 (2026-11-22, ADR-0012).** Decision 의 "Communication bodies and attachment content are not written to a
+> long-lived Sherpa archive" 에 예외가 하나 생겼다(소유자 결정 2026-11-22, bunny-holes/sherpa#59). 앱 안 채팅이
+> 들어오면 `Sherpa.app` 은 대화마다 기록을 이 Mac 에만 남기고, 도구 결과가 실어 온 메시지·메일 본문도 그 기록에
+> 든다. 기록은 data protection keychain 의 키로 암호화하고 Time Machine 백업에서 빼며, 사람이 지우거나 마지막
+> 차례 뒤 사람이 고른 보관 기한(기본 30일, 길어야 90일)이 지나면 지운다. 코어는 대화를 디스크에 쓰지 않는다.
+> 설계는 [ADR-0012](0012-in-app-chat.md) 의 "대화 기록" 이다. 이 기록 밖에서는 본문을 오래 남기지 않는다는
+> 결정이 그대로다. 채팅은 아직 구현 전이므로 지금은 그런 기록이 없다.
+
 ## Context
 
 Sherpa currently performs bounded native reads, then copies normalized message

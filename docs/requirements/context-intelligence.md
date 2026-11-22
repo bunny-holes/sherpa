@@ -38,7 +38,11 @@ mutation.
   linkage; never place the source URL or native identifiers in public output.
 - `FR-CX-004`: Read communication evidence from the native source for each
   review. Do not add message or mail bodies to a long-lived Sherpa content
-  archive. During migration, the existing archive is a read-only compatibility
+  archive. The one exception, once the in-app chat lands, is its history (owner
+  decision 2026-11-22, [ADR-0012](../adr/0012-in-app-chat.md)), which
+  `Sherpa.app` keeps encrypted on this Mac, with the message and mail text its
+  tool results carried, until the person deletes it or the retention they chose
+  runs out. During migration, the existing archive is a read-only compatibility
   source until every consumer has a fresh-read replacement; deleting it is a
   separate owner-approved operation.
 - `FR-CX-005`: Keep exact normalized content only for the active read session or
