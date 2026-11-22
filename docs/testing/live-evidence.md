@@ -9,6 +9,97 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-22 — The Mux 2 bundle in `/Applications`: both agents attach and read, MCP goes off under three relays, and both reattach (bunny-holes/sherpa#63)
+
+This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52 with Swift 6.4.2, Bun 1.4.5),
+run by the bunny-holes/sherpa#63 worker between 06:16Z and 06:33Z on `main`
+`cc82033`, with Claude Code 2.1.330 and Codex 0.171.0. Both agents used the
+installed `sherpa@plug-hole`: 0.9.0 in this session's Claude Code profile and
+`0.9.2+codex.20261122052321` in this session's `CODEX_HOME`. One model call
+was made, the `claude -p` below; no Codex turn was started. Replacing the app
+and turning MCP off also cut this Mac's other sherpa connections, which the
+owner knew beforehand.
+
+- Build: `apple/sherpa-app/.build/xcode` was removed first (there was no
+  earlier archive or export), then the commands of app-connection-v1 §2 ran:
+  `bun run build` in `core/`, `xcodebuild archive`, and `-exportArchive`
+  with `ExportOptions.plist`. Embed Core logged
+  `status=embedded version=0.8.5 bun=1.4.5`. The exported `Sherpa.app`
+  passed `codesign --verify --deep --strict` (Developer ID, not notarized:
+  `spctl` rejected it as `Unnotarized Developer ID`) and read 0.8.5.
+  `BUN_BE_BUN=1 Contents/MacOS/sherpa-core --version` printed `1.4.5`, and
+  `sherpa-relay --version` printed `sherpa-relay 0.8.5`.
+- Install: the installed 0.8.5 bundle, a Mux 1 build, was copied aside with
+  `ditto` and the copy verified. `kill -TERM` went to the running app, whose
+  signal source calls `NSApp.terminate` (the menu's Quit path); the app and
+  its core were gone within a second. `ditto` put the export in place, and
+  `open --env LOG_LEVEL=info /Applications/Sherpa.app` started it, because
+  the hello, channel and switch lines are `info` and the app writes nothing
+  below `warn` by default. `/usr/bin/log stream --level info` ran from
+  before the replacement. A later `log show --info` over the same minutes
+  returned 3 of the 11 hello, open and switch lines that the stream received.
+  The MCP switch stayed on.
+- The unified log read `[core:mux:hello] start version=0.8.5 mux=2` and
+  `[app:core:hello] status=ready … mux=2`. Each of the eight relays of this
+  entry then got `[app:session:open] channel=N kind=mcp …` and
+  `[core:mux:session-open] channel=N kind=mcp sessions=M`.
+- Claude Code: `claude mcp list` showed `plugin:sherpa:sherpa` with the
+  relay's absolute path and `✔ Connected`. One `claude -p --model haiku`
+  (`claude-haiku-5-5`) with `--strict-mcp-config --mcp-config` (the §2
+  JSON), `--allowedTools mcp__sherpa__reminder_authorization_status`,
+  `--no-session-persistence` and a debug file connected `modern` on
+  `2026-07-28` and called the tool once: `success` in 3 turns, about
+  0.006 USD, no permission denials, and a reply naming Reminders
+  `full_access`.
+- Codex: neither this session's `CODEX_HOME` nor `~/.codex` had
+  `mcp_2026_07_28` in `config.toml`, and `codex features list` read `false`
+  in both, so every `codex app-server` run added
+  `-c features.mcp_2026_07_28=true` and no file changed. A Bun JSON-RPC
+  client sent `initialize`, `thread/start` (ephemeral),
+  `mcpServerStatus/list` and `mcpServer/tool/call`. The installed server
+  `sherpa` was `connected` (`serverInfo` sherpa 0.8.5, 35 tools), and
+  `reminder_authorization_status` returned `succeeded` with
+  `authorization` `full_access`.
+- The status window listed Calendar, Reminders, Full Disk Access and both
+  Automation rows as Allowed: the grants held for the new build.
+- MCP turned off under three relays: a Claude Code interactive session in a
+  pty (`--debug=mcp --debug-file`, nothing typed), a Codex app-server thread
+  polling `mcpServerStatus/list` every second, and a relay that Bun started
+  itself and sent `server/discover`. The window, opened with `open` on the
+  running app, read `On · 3 connected`, and `orca computer` clicked its
+  `MCP server` toggle in the background. The click reported
+  `unverified (accessibility action unasserted)`; the toggle then read 0.
+  - `[app:mcp:switch] enabled=false sessions_closed=3 confirmations_withdrawn=0`,
+    then `[core:mux:session-close] channel=N by=app` for the three channels
+    within 3 ms.
+  - The Bun relay exited 75 within 2 ms of the switch line, after
+    `error [relay:session:copy] reason=app_closed_session remedy="if you turned MCP off in Sherpa.app, turn it on first; then reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)"`.
+  - Codex logged the same line at INFO
+    (`codex_rmcp_client::stdio_server_launcher: MCP server stderr (<relay>): …`)
+    and showed the server `failed` at its next poll, with `toolsError` empty
+    and the 35 tools still listed. The thread stayed `failed` until it
+    ended, after MCP was back on.
+  - Claude Code reaped its relay and recorded nothing: no line in the debug
+    file or in the server's MCP log, no close line, and nothing on screen.
+    `/mcp` listed `✘ plugin:sherpa:sherpa`, and its page read
+    `Status: ✘ failed` and `Plugin: sherpa`, with no `Issue` or `Log` row.
+  - Neither agent records a relay's exit status, so the codes of their two
+    relays were not read.
+- MCP turned on again with the same toggle:
+  `[app:mcp:switch] enabled=true sessions_closed=0 confirmations_withdrawn=0`.
+  Reconnect on the Claude Code server page printed
+  `Reconnected to plugin:sherpa:sherpa.`, and the new relay opened channel 7
+  (`kind=mcp`, connected in 34 ms on `2026-07-28`). A new Codex app-server
+  session connected with 35 tools, and its call returned `succeeded`.
+- End state: the sessions and the Bun programs ended. The app got
+  `kill -TERM` once more (`[app:core:exit] … exit=0`) and a plain
+  `open /Applications/Sherpa.app`. It wrote no `info` line after that, the
+  switch read on, and a relay's `server/discover` got
+  `supportedVersions: ["2026-07-28"]`.
+- Not measured: the menu's switch, a user-scope Claude Code server, a tool
+  call from the interactive session after Reconnect, the notarized bundle, and
+  Codex's `config/mcpServer/reload`.
+
 ## 2026-11-22 — The Embed Core phase reads the Bun pin under Xcode's script sandbox and refuses a core with another runtime (bunny-holes/sherpa#63)
 
 This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52 with Swift 6.4.2, Bun 1.4.5),

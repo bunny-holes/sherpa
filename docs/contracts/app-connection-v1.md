@@ -411,6 +411,11 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   모르는 사유의 `remedy` 는 `restart Sherpa.app, then reconnect` 다. [계약]
 - 다시 붙는 법은 에이전트가 앞선 실패를 기억하든 아니든 맞게 적는다. Claude Code 는 `/mcp` 의 Reconnect, Codex 는 새
   세션이다. 앱의 연결 방법(§2)도 같다. [계약]
+- 연결된 중계가 켜진 채 끈 MCP 로 끝나면 Codex 0.171.0 은 위 줄을 로그(INFO)에 남기고 서버를 `failed` 로 두며, 같은
+  스레드에서는 다시 띄우지 않는다. 새 세션은 붙는다. Claude Code 2.1.330 은 플러그인 서버를 `✘ failed` 로 두고 스스로
+  다시 붙지 않으며, `/mcp` 의 Reconnect 로 붙는다. 그 서버 페이지에는 `Issue`·`Log` 가 없고, 디버그 로그와 서버의
+  MCP 로그에도 중계의 줄과 닫힘이 남지 않는다. 그래서 Claude Code 에서는 이 remedy 가 사람에게 보이지 않는다.
+  [실측: live-evidence 2026-11-22 "The Mux 2 bundle"]
 - MCP 가 꺼진 앱(75)이나 떠 있지 않은 앱(69)에서 중계가 끝나면 Claude Code 2.1.326 과 2.1.330 대화형은 그 시도 안에서
   서버를 옛 규격으로 고정해 한 번 다시 띄운다. 다시 띄운 중계는 `initialize`(2025-11-25)를 받고 같은 이유로 끝난다.
   플러그인 범위, 사용자 범위, `--mcp-config` 동적 서버가 같았다(2.1.330 은 앞의 두 범위만 쟀다). 로그는 다음 순서다.
@@ -988,6 +993,11 @@ result         object | null
   오류의 줄을 category `core` 로 옮긴다(한 줄은 4 KiB 에서 자른다). 읽을 때는
   `/usr/bin/log show --predicate 'subsystem == "dev.xiyo.sherpa"'` 를 쓴다. [계약] MCP 클라이언트는 서버 표준
   오류를 잡거나 버릴 수 있고, 그것을 오류로 여기지 않아야 한다. [문서: MCP 2026-07-28 stdio]
+- info 줄(인사, 채널 열기와 닫기, 스위치)은 기본 warn 에서 쓰이지 않는다. 실기에서 보려면 띄우기 전에
+  `/usr/bin/log stream --level info --predicate 'subsystem == "dev.xiyo.sherpa"'` 를 걸고 앱을
+  `open --env LOG_LEVEL=info /Applications/Sherpa.app` 으로 띄운다. 2026-11-22 뒤늦게 부른 `log show --info` 는
+  같은 구간에서 stream 이 받은 인사·열기·스위치 줄 11개 중 3개만 돌려줬다. [실측: live-evidence 2026-11-22 "The Mux 2
+  bundle"]
 - MCP 스위치(§2)는 바뀔 때 `info [app:mcp:switch] enabled=<true|false> sessions_closed=N confirmations_withdrawn=M`
   을 남긴다. `sessions_closed` 는 닫은 `mcp` 채널 수다. 꺼진 동안 온 중계는
   `warn [app:session:open] status=unavailable reason=mcp_disabled pid=N`, 끈 뒤 온 확인 요청은
@@ -1144,10 +1154,15 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
   같은 날 `main` `8de36c6` 을 처음부터 빌드해 내보낸 앱으로 Claude Code 의 읽기 호출(`claude -p`)과 Codex 의
   읽기 호출·기본 설정의 거부를 다시 쟀다. [실측: live-evidence 2026-11-22 "Claude Code calls a tool"] 공증한 번들과
   앱을 끈 상태의 69, 코어 `kill -9` 는 남았다.
-- Mux 2 번들(2판, bunny-holes/sherpa#63): 2판의 앱과 코어를 담은 번들을 `/Applications` 에 두고, Claude Code 와
-  Codex 가 붙어 `tools/list` 와 읽기 호출을 하는지, 켜진 채 MCP 를 끄면 두 중계가 75 `app_closed_session` 으로 끝나고
-  다시 켜면 다시 붙는지, 통합 로그의 채널 열기 줄이 `kind=mcp` 인지. 2026-11-22 까지의 실기는 모두 Mux 1 번들로
-  쟀다. 남았다.
+- Mux 2 번들(2판, bunny-holes/sherpa#63): 2026-11-22 `main` `cc82033` 을 처음부터 빌드해 내보낸 앱(Developer ID,
+  공증 전)을 `/Applications` 에 두고 쟀다. 인사는 `mux=2` 였고 채널 열기 줄은 모두 `kind=mcp` 였다. Claude Code
+  2.1.330 은 플러그인 서버로 `Connected` 였고 `claude -p` 로 읽기 호출을 했다. Codex 0.171.0 은 설정 파일에 기능이
+  없어 실행마다 `-c` 로 켠 채 35개 도구를 보고 읽기 호출을 했다. 켜진 채 창의 스위치로 끄자 세 연결(Claude Code
+  대화형, Codex 스레드, Bun 이 띄운 중계)이 닫혔고(`sessions_closed=3`), Bun 이 띄운 중계는 75 와
+  `app_closed_session` 줄로 끝났다. Codex 는 그 줄을 남기고 서버를 `failed` 로 두었고, Claude Code 는 줄 없이
+  `✘ failed` 만 보였다(§6). 다시 켜자 Claude Code 는 `/mcp` 의 Reconnect 로, Codex 는 새 세션으로 붙었다. [실측:
+  live-evidence 2026-11-22 "The Mux 2 bundle"] 두 에이전트가 띄운 중계의 종료 코드는 에이전트가 남기지 않아 읽지
+  못했다. 그 앞의 실기는 모두 Mux 1 번들로 쟀다.
 - 삭제와 보내기: 확인 창이 맨 앞에 뜨는지, 허용·거부·30초 초과, 호출이 Codex 기본 60초 안에 끝나는지. 삭제의
   창·허용·거부·30초는 2026-11-21 내보낸 앱으로 쟀다(§9). 보내기와 Codex 를 거친 호출은 남았다.
 - Codex 가 띄운 중계가 `~/Library/Application Support/Sherpa/run/app.sock` 에 붙는지. 2026-11-22 Codex 0.171.0
@@ -1163,7 +1178,7 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
   켠 뒤 새 세션은 붙었다(§6). [실측: live-evidence 2026-11-22 "Claude Code against a relay turned away"] 남은 것은
   다음과 같다.
   - 연결 방법을 "?" 팝오버로 옮긴 뒤의 창: 높이, 도움말 단추, 팝오버, 툴팁.
-  - 메뉴의 켜기·끄기, 켜진 채 끌 때 연결된 Claude Code·Codex 가 보이는 것.
+  - 메뉴의 켜기·끄기. 창의 스위치로 켜진 채 끌 때 연결된 두 에이전트가 보이는 것은 위 "Mux 2 번들" 에서 쟀다.
   - 사용자 범위로 등록한 Claude Code 가 꺼진 동안 실패한 뒤, 켜고 `/mcp` 의 Reconnect 로 붙는지.
   - 복사한 명령을 그대로 넣어 붙는지.
   - `/Applications/Sherpa.app` 보다 긴 설치 경로에서 명령과 경로가 잘리지 않고, 선택해 복사한 값과 복사 단추의 값이
@@ -1265,7 +1280,7 @@ not json\n                                                                      
 - MCP 가 꺼졌거나 앱이 없을 때 remedy 를 두 에이전트의 화면에 보이는 응답 모양. 지금은 둘 다 연결이 닫혔다고만
   보인다(§6). 시험 서버로 잰 세 후보는 live-evidence 2026-11-22 "Claude Code and Codex after a relay that ended" 에,
   Claude Code 2.1.330 의 서버 페이지·Reconnect·모델 알림으로 다시 잰 것은 "Claude Code 2.1.330 after a relay that ended"
-  에 있다.
+  에 있다. 켜진 채 끈 뒤에는 Claude Code 가 그 줄조차 남기지 않는다(§6).
 - Codex 가 같은 세션 안에서 실패한 서버를 다시 띄우는 길. app-server 에 `config/mcpServer/reload` 가 있으나 부르지
   않았다.
 - 이 Mac 의 선 위에서 Claude Code 와 Codex 가 2026-07-28 봉투의 `clientCapabilities` 에 선언하는 elicitation(Claude
@@ -1273,16 +1288,17 @@ not json\n                                                                      
 - Claude Code 2.1.326 의 `anthropic/requiresUserInteraction` 지원.
 - Codex 의 모델 기본 도구 출력 예산 값.
 - 앱이 띄운 코어의 `osascript` 보내기가 앱의 Apple Events 권한으로 판정되는지.
-- 연결된 뒤 중계가 끝났을 때 Codex 가 서버를 다시 띄우는지, 그리고 이 Mac 에서 Claude Code 가 문서대로 동작하는지. 연결
-  전(머리말 단계)에 끝난 경우는 2026-11-22 에 쟀다(§6).
+- 연결된 뒤 중계가 끝났을 때 이 Mac 의 Claude Code 가 문서대로 동작하는지. 2026-11-22 켜진 채 끈 실기에서 Codex 는 같은
+  스레드에서 서버를 다시 띄우지 않았고, Claude Code 도 스스로 다시 붙지 않았다(§6). 연결 전(머리말 단계)에 끝난 경우도
+  같은 날 쟀다(§6).
 - Developer ID 로 양방향 서명이 통과하는 경로. 인증서가 소유자 키체인에만 있어 게이트는 거부 쪽과 시험 요건만
   돈다.
 - DEBUG 앱·빌드한 코어·중계의 통합 시험(§13.3). 게이트에 없다.
 - 내보낸 앱의 메뉴 막대 아이콘이 보이는지와 미리보기 앱에서 보이지 않은 원인, 메뉴의 Quit, 오래 켜 둔 앱과 코어의
   메모리. 2026-11-21 의 #29 실기에서 재지 않았다.
 - 도구별 결과 스키마. Swift 와 ObjC 응답의 null 키 차이가 정리된 뒤 정한다.
-- MCP 스위치와 상태 창의 실기(§13.4): "?" 팝오버로 바꾼 창, 메뉴의 켜고 끄기, 끌 때 에이전트가 보이는 것, 복사한
-  명령, 긴 설치 경로에서 #52 가 고쳐졌는지. 게이트는 서버의 동작과 명령 글만 보고, 창의 배치는 보지 않는다.
+- MCP 스위치와 상태 창의 실기(§13.4): "?" 팝오버로 바꾼 창, 메뉴의 켜고 끄기, 복사한 명령, 긴 설치 경로에서 #52 가
+  고쳐졌는지. 게이트는 서버의 동작과 명령 글만 보고, 창의 배치는 보지 않는다.
 
 닫힌 것: 2026-11-21 #29 실기는 내보낸 앱에서 삭제 확인 창의 내용·허용·거부·30초와 1초 무장, 상태 창의 권한
 표시를 쟀다(§9). 같은 실기에서 상태 창이 중계 경로를 "…" 로 자른 결함은 bunny-holes/sherpa#52 다. 2026-11-22 Codex
@@ -1298,7 +1314,9 @@ not json\n                                                                      
 한 번 불렀다. Codex 는 `-c` 덮어쓰기 없이 기능 `mcp_2026_07_28` 만 켠 채 35개 도구로 이어 도구를 불렀다(§2
 "플러그인의 MCP 등록"). 같은 날 시험 호스트와 새 이름의 서버로, 꺼진 앱(75)과 앱 없음(69) 뒤에 Claude Code 의 옛 규격
 고정이 플러그인·사용자 범위 모두 그 시도로 끝나 7일 기억을 남기지 않는 것과, Codex 가 새 스레드에서 다시 붙는 것을
-쟀다(§6). Claude Code 2.1.330 에서도 같았다.
+쟀다(§6). Claude Code 2.1.330 에서도 같았다. 같은 날 `cc82033` 을 처음부터 빌드한 Mux 2 번들을 `/Applications` 에 두고
+두 에이전트의 연결과 읽기 호출, 켜진 채 끈 세 연결의 끝, 다시 켠 뒤의 재연결, 통합 로그의 `mux=2`·`kind=mcp` 를
+쟀다(§13.4).
 
 ## Related
 
