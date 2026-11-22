@@ -151,12 +151,60 @@ describe("sessions", () => {
   });
 });
 
+describe("Mux 2 (§7.3, §7.5)", () => {
+  test("the core says Mux 2, and an app hello of Mux 1 ends it with version_unsupported and 65", async () => {
+    const app = launch();
+    apps.push(app);
+    expect((await app.handshake(["planner"], 1)).body).toMatchObject({ mux: 2 });
+    expect(await app.exited).toBe(65);
+    expect(app.log.at(-1)).toEqual({
+      channel: 0,
+      type: "fatal",
+      body: { code: "mux.version_unsupported" },
+    });
+    expect(app.requested()).toEqual([]);
+    expect(app.stderr.join("")).toContain(
+      "[core:mux:hello] failure reason=version_unsupported app_mux=1",
+    );
+  });
+
+  test("an open without a body, as Mux 1 wrote it, ends the core with frame_invalid and 65", async () => {
+    const app = await ready();
+    app.frame(1, "open");
+    expect(await app.exited).toBe(65);
+    expect(app.log.at(-1)).toEqual({
+      channel: 0,
+      type: "fatal",
+      body: { code: "mux.frame_invalid" },
+    });
+  });
+
+  test("an open of the chat kind is closed, and the same core serves the next relay channel", async () => {
+    const app = await ready();
+    app.frame(1, "open", { kind: "chat" });
+    expect(await app.next((frame) => frame.channel === 1)).toEqual({
+      channel: 1,
+      type: "close",
+      body: { reason: "unsupported_kind" },
+    });
+    // A message that crossed the close is dropped, not answered.
+    app.frame(1, "data", { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
+    expect((await app.open(2)).supportedVersions).toEqual([MCP_REVISION]);
+    expect(await app.absent((frame) => frame.channel === 1, 300)).toBe(true);
+    app.closeInput();
+    expect(await app.exited).toBe(0);
+    expect(app.stderr.join("")).toContain(
+      "[core:mux:open] refused channel=1 kind=chat reason=unsupported_kind",
+    );
+  });
+});
+
 describe("protocol revision 2026-07-28 only (§10.1, ADR-0011)", () => {
   test.each(["2025-11-25", "2025-06-18"])(
     "initialize %s is refused with -32022 and the channel still opens on 2026-07-28",
     async (version) => {
       const app = await ready();
-      app.frame(1, "open");
+      app.frame(1, "open", { kind: "mcp" });
       expect(
         await app.requestBare(1, "initialize", {
           protocolVersion: version,

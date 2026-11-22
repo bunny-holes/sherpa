@@ -87,8 +87,8 @@ function start() {
   /** The app hello without workers (core tools only) and channel 1 open. */
   const opened = async () => {
     await next((frame) => frame.type === "hello");
-    input.push('0\thello\t{"mux":1,"version":"0.9.0","workers":[]}\n');
-    input.push("1\topen\n");
+    input.push('0\thello\t{"mux":2,"version":"0.9.0","workers":[]}\n');
+    input.push('1\topen\t{"kind":"mcp"}\n');
   };
   /** Then `server/discover` on channel 1: 2026-07-28 has no `initialize`. */
   const ready = async () => {

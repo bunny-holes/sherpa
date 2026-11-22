@@ -12,7 +12,9 @@ import { plannerRequest } from "../src/planner/port.ts";
 import { CollectingSink, PushInput, tick } from "./support/pipes.ts";
 
 // app-connection-v1 §14. The app's hello is the second vector line.
-const APP_HELLO = '0\thello\t{"mux":1,"version":"0.9.0","workers":["planner"]}\n';
+const APP_HELLO = '0\thello\t{"mux":2,"version":"0.9.0","workers":["planner"]}\n';
+/** The app's `open` of a relay channel (§7.3). */
+const open = (channel: number) => `${channel}\topen\t{"kind":"mcp"}\n`;
 const encoder = new TextEncoder();
 
 function read(text: string | Uint8Array): Frame[] {
@@ -43,8 +45,10 @@ function connect() {
     output: sink,
     handlers: {
       ready: () => {},
-      open: (channel) => {
-        channels.push(channel);
+      open: {
+        mcp: (channel) => {
+          channels.push(channel);
+        },
       },
     },
   });
@@ -57,7 +61,7 @@ describe("§14 valid frames", () => {
       [
         APP_HELLO,
         '0\tresponse\t{"id":2,"report":{"error":"sherpa.internal_failure","status":"failed"}}\n',
-        "1\topen\n",
+        open(1),
         '1\tdata\t{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n',
         '0\tconfirmation\t{"id":3,"decision":"declined"}\n',
         "1\tclose\n",
@@ -65,9 +69,9 @@ describe("§14 valid frames", () => {
     );
     const text = (body: Uint8Array | null) => (body ? new TextDecoder().decode(body) : null);
     expect(frames.map((frame) => [frame.channel, frame.type, text(frame.body)])).toEqual([
-      [0, "hello", '{"mux":1,"version":"0.9.0","workers":["planner"]}'],
+      [0, "hello", '{"mux":2,"version":"0.9.0","workers":["planner"]}'],
       [0, "response", '{"id":2,"report":{"error":"sherpa.internal_failure","status":"failed"}}'],
-      [1, "open", null],
+      [1, "open", '{"kind":"mcp"}'],
       [1, "data", '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'],
       [0, "confirmation", '{"id":3,"decision":"declined"}'],
       [1, "close", null],
@@ -78,7 +82,7 @@ describe("§14 valid frames", () => {
     const { input, sink, exit } = connect();
     input.end();
     expect(await exit).toBe(0);
-    expect(sink.lines).toEqual(['0\thello\t{"mux":1,"version":"0.9.0"}']);
+    expect(sink.lines).toEqual(['0\thello\t{"mux":2,"version":"0.9.0"}']);
   });
 
   test("the capabilities request is the vector's bytes", async () => {
@@ -110,7 +114,7 @@ describe("§14 valid frames", () => {
   test("the confirm, withdraw, close and fatal bodies are the vector's bytes", async () => {
     const { input, sink, channels, connection } = connect();
     input.push(APP_HELLO);
-    input.push("1\topen\n2\topen\n");
+    input.push(open(1) + open(2));
     await tick();
     const prompt = {
       tool: "reminder_delete",
@@ -169,13 +173,13 @@ describe("§14 violations end the core with fatal and 65", () => {
     ["a leading zero", "01\tdata\t{}\n", "mux.frame_invalid"],
     ["an upper-case type", "1\tDATA\t{}\n", "mux.frame_invalid"],
     ["no tab", "1 data {}\n", "mux.frame_invalid"],
-    ["data without a body", "1\topen\n1\tdata\n", "mux.frame_invalid"],
-    ["an empty body", "1\topen\n1\tdata\t\n", "mux.frame_invalid"],
-    ["open on the control channel", "0\topen\n", "mux.unexpected_frame"],
-    ["hello on an MCP channel", '1\thello\t{"mux":1}\n', "mux.unexpected_frame"],
-    ["channel 2^53", "9007199254740992\topen\n", "mux.frame_invalid"],
-    ["a second open of a live channel", "1\topen\n1\topen\n", "mux.unexpected_frame"],
-    ["open before hello", "1\topen\n", "mux.unexpected_frame", true],
+    ["data without a body", `${open(1)}1\tdata\n`, "mux.frame_invalid"],
+    ["an empty body", `${open(1)}1\tdata\t\n`, "mux.frame_invalid"],
+    ["open on the control channel", '0\topen\t{"kind":"mcp"}\n', "mux.unexpected_frame"],
+    ["hello on a channel above 0", '1\thello\t{"mux":2}\n', "mux.unexpected_frame"],
+    ["channel 2^53", '9007199254740992\topen\t{"kind":"mcp"}\n', "mux.frame_invalid"],
+    ["a second open of a live channel", open(1) + open(1), "mux.unexpected_frame"],
+    ["open before hello", open(1), "mux.unexpected_frame", true],
     [
       "a line over 8,454,144 bytes",
       `1\tdata\t${"x".repeat(frameLimits.line + 1)}`,
@@ -183,16 +187,28 @@ describe("§14 violations end the core with fatal and 65", () => {
     ],
     ["data on the control channel", '0\tdata\t{"jsonrpc":"2.0"}\n', "mux.unexpected_frame"],
     ["a second hello", APP_HELLO, "mux.unexpected_frame"],
-    ["open of a closed number", "1\topen\n1\tclose\n1\topen\n", "mux.unexpected_frame"],
-    ["open with a body", "1\topen\t{}\n", "mux.frame_invalid"],
-    ["a close body of another shape", '1\topen\n1\tclose\t{"why":"x"}\n', "mux.frame_invalid"],
+    ["open of a closed number", `${open(1)}1\tclose\n${open(1)}`, "mux.unexpected_frame"],
+    [
+      "open of the number of a refused kind",
+      `1\topen\t{"kind":"chat"}\n${open(1)}`,
+      "mux.unexpected_frame",
+    ],
+    ["an open without a body, as Mux 1 wrote it", "1\topen\n", "mux.frame_invalid"],
+    ["an open body that is not JSON", "1\topen\tmcp\n", "mux.frame_invalid"],
+    ["an open without a kind", "1\topen\t{}\n", "mux.frame_invalid"],
+    ["an open kind that is not a string", '1\topen\t{"kind":1}\n', "mux.frame_invalid"],
+    ["an open kind that is not a word", '1\topen\t{"kind":"MCP"}\n', "mux.frame_invalid"],
+    ["an empty open kind", '1\topen\t{"kind":""}\n', "mux.frame_invalid"],
+    ["an open kind over 16 bytes", `1\topen\t{"kind":"${"a".repeat(17)}"}\n`, "mux.frame_invalid"],
+    ["an open body with another key", '1\topen\t{"kind":"mcp","x":1}\n', "mux.frame_invalid"],
+    ["a close body of another shape", `${open(1)}1\tclose\t{"why":"x"}\n`, "mux.frame_invalid"],
     ["a response that is not JSON", "0\tresponse\tnope\n", "mux.frame_invalid"],
     [
       "a confirmation of another shape",
       '0\tconfirmation\t{"id":1,"decision":"maybe"}\n',
       "mux.frame_invalid",
     ],
-    ["an unknown type", "1\topen\n1\tping\n", "mux.unexpected_frame"],
+    ["an unknown type", `${open(1)}1\tping\n`, "mux.unexpected_frame"],
   ];
   test.each(cases)("%s", async (_name, frames, code, first) => {
     const { input, sink, exit } = connect();
@@ -202,16 +218,20 @@ describe("§14 violations end the core with fatal and 65", () => {
     expect(sink.lines.at(-1)).toBe(`0\tfatal\t{"code":"${code}"}`);
   });
 
-  test("an app hello with another mux version is unsupported", async () => {
+  // Mux 1 is not served beside Mux 2: the app and the core ship in one bundle (§7.5).
+  test.each([1, 3])("an app hello of mux %i is unsupported", async (mux) => {
     const { input, sink, exit } = connect();
-    input.push('0\thello\t{"mux":2,"version":"9.0.0","workers":[]}\n');
+    input.push(`0\thello\t{"mux":${mux},"version":"0.9.0","workers":["planner"]}\n`);
     expect(await exit).toBe(65);
-    expect(sink.lines.at(-1)).toBe('0\tfatal\t{"code":"mux.version_unsupported"}');
+    expect(sink.lines).toEqual([
+      '0\thello\t{"mux":2,"version":"0.9.0"}',
+      '0\tfatal\t{"code":"mux.version_unsupported"}',
+    ]);
   });
 
   test("an app hello of another shape is invalid", async () => {
     const { input, sink, exit } = connect();
-    input.push('0\thello\t{"mux":1,"version":"0.9.0"}\n');
+    input.push('0\thello\t{"mux":2,"version":"0.9.0"}\n');
     expect(await exit).toBe(65);
     expect(sink.lines.at(-1)).toBe('0\tfatal\t{"code":"mux.frame_invalid"}');
   });
@@ -227,10 +247,33 @@ describe("§14 frames that are not violations", () => {
     expect(sink.lines).toHaveLength(1);
   });
 
+  test.each(["chat", "constructor"])(
+    "an open of the kind %s, which the core does not serve, closes that channel only",
+    async (kind) => {
+      const { input, sink, channels, exit } = connect();
+      input.push(APP_HELLO);
+      input.push(`1\topen\t{"kind":"${kind}"}\n`);
+      expect(await sink.next((line) => line.startsWith("1\t"))).toBe(
+        '1\tclose\t{"reason":"unsupported_kind"}',
+      );
+      // Frames that crossed the close are dropped, and the next channel opens.
+      input.push('1\tdata\t{"jsonrpc":"2.0","method":"x"}\n1\tclose\n');
+      input.push(open(2));
+      await tick();
+      expect(channels.map((channel) => [channel.id, channel.kind])).toEqual([[2, "mcp"]]);
+      input.end();
+      expect(await exit).toBe(0);
+      expect(sink.lines).toEqual([
+        '0\thello\t{"mux":2,"version":"0.9.0"}',
+        '1\tclose\t{"reason":"unsupported_kind"}',
+      ]);
+    },
+  );
+
   test("data that is not JSON gets -32700 on its channel and the connection stays", async () => {
     const { input, sink, channels, exit } = connect();
     input.push(APP_HELLO);
-    input.push("1\topen\n");
+    input.push(open(1));
     await tick();
     const received: unknown[] = [];
     const transport = new MuxChannelTransport(channels[0]!);
@@ -262,6 +305,7 @@ describe("limits by frame type", () => {
     ["response", frameLimits.response],
     ["confirm", frameLimits.confirm],
     ["close", frameLimits.other],
+    ["open", frameLimits.other],
     ["hello", frameLimits.other],
     ["confirmation", frameLimits.other],
   ];

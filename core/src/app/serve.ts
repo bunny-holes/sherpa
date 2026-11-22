@@ -112,7 +112,7 @@ export interface ServeOptions {
   discoveryWaitMs?: number;
 }
 
-/** Runs one app connection, one MCP connection per channel, until EOF (0) or a violation (65). */
+/** Runs one app connection, one MCP connection per `mcp` channel, until EOF (0) or a violation (65). */
 export async function serveConnection(options: ServeOptions): Promise<number> {
   let connection: AppConnection;
   const planner: PlannerPort = {
@@ -137,24 +137,27 @@ export async function serveConnection(options: ServeOptions): Promise<number> {
         if (hello.workers.includes("planner")) basis.discover(planner);
         else basis.fail("planner_worker_missing");
       },
-      open: (channel: MuxChannel) => {
-        const transport = new MuxChannelTransport(channel);
-        serveStdio(
-          async () =>
-            createSherpaServer(await basis.resolved(), {
-              version: SHERPA_VERSION,
-              channel: channel.id,
-              session: transport.signal,
-            }),
-          {
-            transport,
-            // Protocol revision 2026-07-28 only (ADR-0011, §10.1): a 2025-era `initialize` or
-            // envelope-less request gets -32022 naming 2026-07-28, and the connection stays open.
-            legacy: "reject",
-            onerror: (error) =>
-              log.warn(`[core:mcp:session] error channel=${channel.id} error_type=${error.name}`),
-          },
-        );
+      open: {
+        // One relay connection (§7.6).
+        mcp: (channel: MuxChannel) => {
+          const transport = new MuxChannelTransport(channel);
+          serveStdio(
+            async () =>
+              createSherpaServer(await basis.resolved(), {
+                version: SHERPA_VERSION,
+                channel: channel.id,
+                session: transport.signal,
+              }),
+            {
+              transport,
+              // Protocol revision 2026-07-28 only (ADR-0011, §10.1): a 2025-era `initialize` or
+              // envelope-less request gets -32022 naming 2026-07-28, and the connection stays open.
+              legacy: "reject",
+              onerror: (error) =>
+                log.warn(`[core:mcp:session] error channel=${channel.id} error_type=${error.name}`),
+            },
+          );
+        },
       },
     },
   });

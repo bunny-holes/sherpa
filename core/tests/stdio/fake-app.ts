@@ -55,11 +55,11 @@ export class FakeApp {
     return new FakeApp(child);
   }
 
-  /** Waits for the core hello and answers it. */
-  async handshake(workers: string[] = ["planner"]): Promise<CoreFrame> {
+  /** Waits for the core hello and answers it with `mux` (Mux 2 unless a test says otherwise, §7.5). */
+  async handshake(workers: string[] = ["planner"], mux = 2): Promise<CoreFrame> {
     const hello = await this.next((frame) => frame.channel === 0 && frame.type === "hello");
     const version = (hello.body as { version: string }).version;
-    this.write(`0\thello\t${JSON.stringify({ mux: 1, version, workers })}\n`);
+    this.write(`0\thello\t${JSON.stringify({ mux, version, workers })}\n`);
     return hello;
   }
 
@@ -107,12 +107,12 @@ export class FakeApp {
     );
   }
 
-  /** Opens a channel and asks `server/discover` (2026-07-28 has no `initialize`). */
+  /** Opens a relay (`mcp`) channel and asks `server/discover` (2026-07-28 has no `initialize`). */
   async open(
     channel: number,
     client: AgentInfo = { name: "fake-agent", version: "1.0.0" },
   ): Promise<Record<string, unknown>> {
-    this.frame(channel, "open");
+    this.frame(channel, "open", { kind: "mcp" });
     return this.discover(channel, client);
   }
 
