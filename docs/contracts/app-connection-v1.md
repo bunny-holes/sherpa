@@ -1221,7 +1221,7 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 | 까닭 | 거절하는 것 |
 | --- | --- |
 | `base64` | 코어가 적는 base64 가 아닌 값. 풀어 다시 적은 것이 같지 않으면 거절하므로, 채움이 없는 값, 줄바꿈이 든 값, 끝의 남는 비트가 0 이 아닌 값, URL-safe 글자(`-`·`_`)를 쓴 값도 이것이다 |
-| `not_json` | 풀어 낸 바이트가 온전한 UTF-8 이 아니거나 JSON 이 아니다. 빈 값도 이것이다 |
+| `not_json` | 풀어 낸 바이트가 온전한 UTF-8 이 아니거나 JSON 이 아니다. 빈 값과 UTF-8 BOM 이 앞에 붙은 값도 이것이다 |
 | `envelope` | S 가 "대화 상태" 의 봉투가 아니다. 다른 `format`, 모르는 키나 빠진 키, 모르는 제공자, 앞의 세 제공자의 `base_url`, `base_url` 없는 OpenAI 호환, 채팅이 두는 꼴이 아닌 `base_url`(끝의 `/` 등), `turn` 의 한도를 넘는 `model`·`base_url`, 소문자 16진수 64자가 아닌 `fingerprint`, 없거나 불리언이 아닌 `full`, 비지 않은 `pending`, 빈 `messages` |
 | `messages` | 메시지 하나가 AI SDK 7.0.179 의 `modelMessageSchema` 를 지나지 못한다 |
 | `system` | system 메시지가 있다. 지시문은 대화에 없고 코어가 차례마다 넣는다 |

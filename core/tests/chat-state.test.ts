@@ -677,6 +677,11 @@ describe("a state given back on a new channel", () => {
     ["base64 in the URL-safe alphabet", "Ij8_PyI=", "base64"],
     ["the base64 of no JSON", Buffer.from("not json").toString("base64"), "not_json"],
     [
+      "a UTF-8 BOM before an otherwise valid envelope",
+      Buffer.from(`\uFEFF${JSON.stringify(compatibleState([hi]))}`).toString("base64"),
+      "not_json",
+    ],
+    [
       "the base64 of bytes that are not UTF-8",
       Buffer.from([0x7b, 0xff, 0x7d]).toString("base64"),
       "not_json",

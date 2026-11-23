@@ -62,7 +62,8 @@ export function encodeState({ identity, fingerprint, full, messages }: ChatState
 /** Why a `resume`'s state is none the core wrote: no base64 as it writes it, no JSON, no envelope. */
 export type StateRefusal = "base64" | "not_json" | "envelope";
 
-const decoder = new TextDecoder("utf-8", { fatal: true });
+// Preserve a leading BOM so JSON.parse rejects bytes the core never emits.
+const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 /**
  * Reads a `resume`'s state: base64 as the core writes it, which gives the same text when encoded
