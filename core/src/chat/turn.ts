@@ -21,6 +21,7 @@ import { TurnCalls } from "./calls.ts";
 import type { Fetch } from "./egress.ts";
 import { ChatFailure } from "./errors.ts";
 import { loadChat } from "./load.ts";
+import type { PendingChange } from "./pending.ts";
 import { type ChatEvent, type DoneReason, errorEvent, type TurnAnswer } from "./protocol.ts";
 import type { TurnCall, TurnOutcome } from "./sdk/turn.ts";
 import { StateTooLarge } from "./state.ts";
@@ -194,11 +195,13 @@ export interface TurnChat {
   said: boolean;
   /** Keeps the messages of a step that finished. */
   keep(messages: ModelMessage[]): void;
+  /** Records the change whose command will run after the pending state is written. */
+  commit(change: PendingChange): void;
   /**
    * The conversation's `state` as it stands: whether it says the chat is full, and what writes it
    * once what comes before it is out; or `null` when it would not fit one `data` (§7.4).
    */
-  state(fingerprint: string): { full: boolean; write(): void } | null;
+  state(fingerprint: string): { full: boolean; write(): Promise<boolean> } | null;
 }
 
 /**
@@ -259,17 +262,18 @@ export class ChatTurn {
       let toldFull = false;
       let stateFailed = false;
       const state = () => {
+        if (stateFailed) return null;
         const made = chat.state(fingerprint);
         if (made === null) {
           stateFailed = true;
           return null;
         }
         if (made.full) toldFull = true;
-        return () => {
+        return async () => {
           // The channel closed: nothing more goes out.
-          if (this.context.ended.aborted) return;
+          if (this.context.ended.aborted) return false;
           deltas.flush();
-          made.write();
+          return made.write();
         };
       };
       const calls = new TurnCalls({
@@ -277,6 +281,16 @@ export class ChatTurn {
         tools,
         room: call.room,
         number: this.context.callNumber,
+        commit: async (change) => {
+          if (stateFailed) throw new StateTooLarge();
+          chat.commit(change);
+          const write = state();
+          if (write === null) throw new StateTooLarge();
+          if (!(await write())) {
+            stateFailed = true;
+            throw new Error("Could not write pending chat state");
+          }
+        },
         send: (event) => {
           // The channel closed: nothing more goes out.
           if (this.context.ended.aborted) return;
@@ -287,7 +301,7 @@ export class ChatTurn {
       this.calls = calls;
       // The person's text is in the conversation before the first request (ADR-0012 "상태를
       // 넘기는 때"); a turn without text left it as it was.
-      const first = chat.said ? state() : () => {};
+      const first = chat.said ? state() : undefined;
       if (first === null) {
         outcome = {
           type: "failed",
@@ -296,7 +310,7 @@ export class ChatTurn {
           steps: 0,
         };
       } else {
-        first();
+        void first?.();
         outcome = await sdk.turn.streamTurn(
           {
             ...call,
@@ -310,8 +324,10 @@ export class ChatTurn {
             output: requests.output,
             text: (text) => deltas.add(text),
             step: (messages) => {
+              if (stateFailed) return null;
               chat.keep(messages);
-              return state();
+              const write = state();
+              return write === null ? null : () => void write();
             },
           },
         );
@@ -328,7 +344,7 @@ export class ChatTurn {
               steps: outcome.steps,
             };
           } else {
-            last();
+            void last();
           }
         }
       }

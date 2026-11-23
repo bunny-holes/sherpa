@@ -480,6 +480,49 @@ const WRITTEN = (await Bun.file(
   new URL("fixtures/chat-state/v1.json", import.meta.url),
 ).json()) as Record<string, Record<string, unknown>>;
 
+test("a recovery note distinguishes final journal states from unknown effects", async () => {
+  const pending = [
+    { tool: "event_create", operation_id: "op-completed" },
+    { tool: "event_update", operation_id: "op-failed" },
+    { tool: "reminder_create", operation_id: "op-partial" },
+    { tool: "reminder_update", operation_id: "op-started" },
+    { tool: "mail_send", operation_id: "op-missing" },
+    { tool: "kakaotalk_checkpoint", operation_id: null },
+  ];
+  const read = vi.fn(
+    () =>
+      new Map([
+        ["op-completed", "completed"],
+        ["op-failed", "failed"],
+        ["op-partial", "partial"],
+        ["op-started", "started"],
+      ] as const),
+  );
+  const { open, sent } = chats(() => sse(chat(["OK"])), { readMutationStatuses: read });
+  const channel = open();
+  channel.write(
+    resume(sealed(compatibleState([{ role: "user", content: "Before" }], { pending }))),
+  );
+  expect(await channel.next()).toEqual({ type: "resumed", resend: false });
+  expect(read).not.toHaveBeenCalled();
+  channel.write(again());
+  expect(await channel.next()).toEqual(error("invalid_message", false, null, false));
+  expect(read).not.toHaveBeenCalled();
+
+  channel.write(compatible());
+  await ending(channel);
+  expect(read).toHaveBeenCalledExactlyOnceWith(
+    pending.flatMap((value) => value.operation_id ?? []),
+  );
+  const messages = sent[0]!.body.messages as { role: string; content: string }[];
+  expect(messages.at(-1)!.content).toContain(
+    "event_create op-completed applied; event_update op-failed not applied; " +
+      "reminder_create op-partial applied incompletely; reminder_update op-started may have been applied; " +
+      "mail_send op-missing may have been applied; kakaotalk_checkpoint may have been applied.",
+  );
+  expect(opened(channel.states[0]!).pending).toEqual([]);
+});
+
 describe("a state given back on a new channel", () => {
   const providers: {
     name: string;
@@ -710,7 +753,18 @@ describe("a state given back on a new channel", () => {
       "envelope",
     ],
     ["a full that is no boolean", sealed(compatibleState([user], { full: "false" })), "envelope"],
-    ["an operation in flight", sealed(compatibleState([user], { pending: [{}] })), "envelope"],
+    [
+      "a malformed pending operation",
+      sealed(compatibleState([user], { pending: [{}] })),
+      "envelope",
+    ],
+    [
+      "a pending operation identifier containing line breaks",
+      sealed(
+        compatibleState([user], { pending: [{ tool: "event_create", operation_id: "op\nbad" }] }),
+      ),
+      "envelope",
+    ],
     [
       "a provider it does not know",
       sealed(compatibleState([user], { provider: "mistral" })),

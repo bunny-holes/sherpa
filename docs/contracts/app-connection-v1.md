@@ -696,8 +696,8 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
 판의 코어는 모델 목록과 글 차례(`turn`·`cancel` 과 `delta`·`tool`·`done`)를 받고, 차례의 모델은 코어의 도구를
 부른다("도구"). `text` 없는 `turn` 은 대화를 그대로 다시 보낸다("다시 보내기"). 코어는 대화가 바뀌거나 채팅이 찰 때 그
 상태를 `state` 로 앱에 넘기고("대화 상태"), 앱은 저장한 상태를 새 채널의 `resume` 으로 돌려주어 그 채팅을
-잇는다("이어 쓰기"). 진행 중인 변경(`pending`)과 그 기록부 줄은 구현 단계 4(bunny-holes/sherpa#66)의 다음 작업이 이
-절에 더한다. 메시지를 더하는 것이라 이 문서의 판은 그대로다. [계약]
+잇는다("이어 쓰기"). 앱에 결과가 남기 전에 대화가 닫힌 변경은 `pending` 으로 이어 받아 기록부에서 상태를 읽는다.
+[계약]
 
 - `data` 하나에 `sherpa.chat.v1` 메시지 하나를 싣는다. 메시지는 UTF-8 JSON 객체이고 `type` 으로 가른다. 앱과
   코어는 한 번들로 나가고 인사에서 버전이 같아야 하므로(§7.5) 메시지마다 판을 싣지 않는다. 호환되지 않는 변경은
@@ -1107,8 +1107,8 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   `core/tests/chat-turn.test.ts`, `core/tests/chat-tools.test.ts`]
 - 코어는 `turn` 을 이 차례로 보고 처음 걸린 것으로 요청 없이 답한다. 모양이 틀림(`invalid_message`), 도는
   차례나 보고 있는 `resume`(`busy`), 나가는 길이 막은 `base_url`(`egress_denied`), 이 채팅의 것이
-  아님(`invalid_message`, 이어 쓴 채팅에서는 `chat_state_mismatch`), 한도를 넘었던 채팅(`conversation_limit`), 다시
-  보낼 것이 없는 `text` 없는 `turn`(`invalid_message`), 2 MiB 를 넘는 대화(`conversation_limit`)다. 한도를 넘었던
+  아님(`invalid_message`, 이어 쓴 채팅에서는 `chat_state_mismatch`), 한도를 넘었던 채팅(`conversation_limit`), 미결 변경이나
+  다시 보낼 것이 없는 `text` 없는 `turn`(`invalid_message`), 2 MiB 를 넘는 대화(`conversation_limit`)다. 한도를 넘었던
   채팅을 다시 보낼 것이 있는지보다 먼저 보므로, 그 채팅은 `text` 가 있든 없든 어떤 `turn` 에도 `conversation_limit`
   로 답한다. [계약; 실측: 두 시험]
 - [설계] 같은 글을 실은 새 `turn` 은 대화에 그 글을 두 번 남긴다. 그래서 앱의 "다시" 는 `text` 없는 `turn` 이다.
@@ -1180,8 +1180,8 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 
 #### 대화 상태
 
-- 코어는 채팅의 대화가 바뀔 때마다 그 전체를 `{"type":"state","state":"<S 의 base64>"}` 로 앱에 넘긴다. 바뀌는 때는
-  둘이다. 글을 실은 `turn` 이 사람의 글을 대화에 더한 뒤 첫 모델 요청을 보내기 전과, 대화가 끝난 단계 하나를 남긴 뒤다.
+- 코어는 채팅의 대화가 바뀔 때마다 그 전체를 `{"type":"state","state":"<S 의 base64>"}` 로 앱에 넘긴다. 사람의 글을
+  더한 뒤 첫 모델 요청 전, 끝난 단계 하나를 남긴 뒤, 변경 호출이 커밋할 때다.
   채팅이 찰 때도 한 번 넘긴다("대화 한도"). 그 밖에, 남기지 않는 단계(오류·끊김·거절로 끝난 것, "글 차례"), `text` 없는
   `turn` 의 시작, 요청 전에 거절한 `turn` 은 `state` 를 쓰지 않는다. [계약; ADR-0012 "상태를 넘기는 때"; 실측:
   `core/tests/chat-state.test.ts`]
@@ -1198,7 +1198,9 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   - `fingerprint`: 지시문과 도구 정의의 지문("이어 쓰기"). 소문자 16진수 64자다.
   - `full`: 채팅이 찼는지의 불리언("대화 한도"). 코어는 늘 싣는다. 참이면 그 상태로 이어 쓴 채팅도 차례를 받지
     않는다("이어 쓰기").
-  - `pending`: 진행 중인 변경. 이 판의 코어는 늘 빈 배열을 적고, 구현 단계 4 의 다음 작업이 채운다.
+  - `pending`: 결과가 단계에 남지 않은 변경을 호출 차례대로 담은 배열. 항목은 `{tool, operation_id}` 다. `tool` 은
+    소문자로 시작하는 도구 이름(소문자, 숫자, 밑줄, 최대 128자), `operation_id` 는 영문자·숫자·`_.:-` 1–128자다.
+    작업 ID 가 없는 KakaoTalk 체크포인트에는 `null` 을 쓴다. 도구의 입력과 결과는 넣지 않는다.
   - `messages`: 대화. AI SDK 7.0.179 의 모델 메시지(`ModelMessage`)를 SDK 가 남긴 그대로 적는다. 제공자가 다음
     요청에서 되돌려 받는 값(Anthropic thinking 의 서명, OpenAI reasoning 항목의 암호문, Google `thought` 의 서명
     등)이 그 part 의 `providerOptions` 에 있다. 이진 값은 base64 문자열이다. [문서: `ai` 7.0.179
@@ -1208,6 +1210,9 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 - 키는 S 에 없다. 키는 차례마다 `turn` 에 실려 오고 대화에 들어가지 않는다. S 에는 사람의 글, 모델의 답, reasoning,
   도구 결과가 있으므로 앱은 그것을 대화 기록으로만 다룬다(ADR-0012 "대화 기록"). [계약; 실측:
   `core/tests/chat-state.test.ts`, `core/tests/stdio/egress.test.ts`]
+- 커밋할 때 코어는 변경을 `pending` 에 추가하고, 그 `state` 쓰기를 기다린 뒤에만 작업 요청이나 코어 명령을 시작한다.
+  읽기 호출은 그 목록에 없다. 코어가 단계를 남기면 그 단계의 미결을 비운다. 상태 쓰기가 실패하면 그 변경은 시작하지
+  않는다. [계약; 실측: `core/tests/chat-tools.test.ts`, `core/tests/stdio/chat-tools.test.ts`]
 - 앱은 채팅마다 마지막으로 받은 `state` 하나를 해석하지 않고 저장하며, 받을 때마다 앞의 것을 바꾼다. 앱은 받은
   `state` 를 저장한 뒤에 그 뒤에 읽은 프레임을 처리하고, 특히 그 뒤의 채널 0 `request`(§8)를 그보다 먼저 처리하지
   않는다. 차례의 호출이 청한 작업 요청은 그 앞 단계의 `state` 뒤에 나가므로, 앱은 늘 그 앞 단계까지의 대화를 저장한
@@ -1239,7 +1244,7 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
 | --- | --- |
 | `base64` | 코어가 적는 base64 가 아닌 값. 풀어 다시 적은 것이 같지 않으면 거절하므로, 채움이 없는 값, 줄바꿈이 든 값, 끝의 남는 비트가 0 이 아닌 값, URL-safe 글자(`-`·`_`)를 쓴 값도 이것이다 |
 | `not_json` | 풀어 낸 바이트가 온전한 UTF-8 이 아니거나 JSON 이 아니다. 빈 값과 UTF-8 BOM 이 앞에 붙은 값도 이것이다 |
-| `envelope` | S 가 "대화 상태" 의 봉투가 아니다. 다른 `format`, 모르는 키나 빠진 키, 모르는 제공자, 앞의 세 제공자의 `base_url`, `base_url` 없는 OpenAI 호환, 채팅이 두는 꼴이 아닌 `base_url`(끝의 `/` 등), `turn` 의 한도를 넘는 `model`·`base_url`, 소문자 16진수 64자가 아닌 `fingerprint`, 없거나 불리언이 아닌 `full`, 비지 않은 `pending`, 빈 `messages` |
+| `envelope` | S 가 "대화 상태" 의 봉투가 아니다. 다른 `format`, 모르는 키나 빠진 키, 모르는 제공자, 앞의 세 제공자의 `base_url`, `base_url` 없는 OpenAI 호환, 채팅이 두는 꼴이 아닌 `base_url`(끝의 `/` 등), `turn` 의 한도를 넘는 `model`·`base_url`, 소문자 16진수 64자가 아닌 `fingerprint`, 없거나 불리언이 아닌 `full`, 모양이 틀린 `pending`, 빈 `messages` |
 | `messages` | 메시지 하나가 AI SDK 7.0.179 의 `modelMessageSchema` 를 지나지 못한다 |
 | `system` | system 메시지가 있다. 지시문은 대화에 없고 코어가 차례마다 넣는다 |
 | `file_data` | 파일 part(`image`·`file`·`reasoning-file`)의 데이터가 base64 글자(표준이나 URL-safe)만의 문자열이 아니거나, `content` 꼴의 도구 결과가 있다 |
@@ -1263,8 +1268,13 @@ models](https://developers.openai.com/api/reference/resources/models/methods/lis
   제공자의 대화는 그대로 둔다. 뺀 것은 다시 넣지 않는다. [계약; ADR-0012 "이어 쓰기" 의 표; 실측: 같은 시험]
 - 이어 쓴 채팅은 그 상태의 제공자·base URL·모델로 정해진다. 다른 것을 실은 `turn` 은 요청 없이
   `chat_state_mismatch` 다("글 차례"). 키는 상태에 없으므로 무엇이든 된다. [계약; 실측: 같은 시험]
-- `resumed` 의 `resend` 는 `done` 의 것과 같다("다시 보내기"). 상태의 `full` 이 거짓이고 대화가 사람의 글이나 도구
-  결과로 끝나며 2 MiB 안이면 참이다. [계약; 실측: 같은 시험]
+- `resumed` 의 `resend` 는 `done` 의 것과 같다("다시 보내기"). 상태의 `full` 이 거짓이고 미결이 없으며, 대화가
+  사람의 글이나 도구 결과로 끝나고 2 MiB 안이면 참이다. [계약; 실측: 같은 시험]
+- 미결이 있는 대화가 첫 글 차례를 받으면 코어는 작업 ID 로 기록부를 읽기 전용 조회한다. 시각 줄 뒤, 사람의 글 앞에
+  도구 이름·작업 ID·상태와 확인 없이 다시 실행하지 말라는 괄호 줄 하나를 넣고, 새 글과 함께 저장하며 `pending` 을
+  비운다. `completed` 는 `applied`, `failed` 는 `not applied`, `partial` 은 `applied incompletely` 다. 나머지 상태,
+  행이나 ID 가 없음, 읽기 실패는 모두 `may have been applied` 다. 글 없이 다시 보내면 `invalid_message` 다.
+  [계약; 실측: `core/tests/stdio/chat-tools.test.ts`]
 - `full` 이 참인 상태로 이어 쓴 채팅은 찬 채팅이다. `resumed` 의 `resend` 가 거짓이고, 뒤의 `turn` 은 `text` 가 있든
   없든 요청 없이 `conversation_limit` 이며, 코어는 새 `state` 를 쓰지 않는다("대화 한도"). [계약; 실측: 같은 시험]
 - 이어 쓰기는 대화의 크기로 거절하지 않는다. `full` 이 거짓이라도 2 MiB 를 넘는 대화는 `resumed` 의 `resend` 가
@@ -1829,12 +1839,14 @@ result         object | null
     `error` 로 끝난 차례. 코어의 결함은 `error [core:chat:turn] failure … code=internal error_type=<오류 이름> steps=<단계
     수> ms=<걸린 시간>` 이다.
   - `info [core:chat:turn] abandoned channel=N provider=<제공자> ms=<걸린 시간>`: 채널이 닫혀 멈춘 차례.
-  - `warn [core:chat:turn] refused channel=N reason=<busy|egress_denied|other_chat|state_mismatch|nothing_to_retry|conversation_limit>`:
+  - `warn [core:chat:turn] refused channel=N reason=<busy|egress_denied|other_chat|state_mismatch|nothing_to_retry|pending_changes|conversation_limit>`:
     요청 전에 거절한 차례. `other_chat` 은 이 채팅의 것이 아닌 `turn`, `nothing_to_retry` 는 다시 보낼 것이 없는
     `text` 없는 `turn` 이고("다시 보내기"), 둘은 `invalid_message` 로 답한다. `state_mismatch` 는 이어 쓴 채팅의 것이
     아닌 `turn` 이고 `chat_state_mismatch` 로 답한다("이어 쓰기"). 채팅을 채운 `conversation_limit` 의 거절은 그 앞에
     `debug [core:chat:state] sent … full=true …` 를 남긴다.
-  - `debug [core:chat:state] sent channel=N bytes=<본문 바이트 수> messages=<메시지 수> full=<true|false> pending=0`: 쓴
+    `pending_changes` 는 미결 변경이 남아 글 없이 다시 보낼 수 없음을 뜻한다.
+  - `warn [core:chat:pending] read_failure channel=N count=<작업 ID 수> error_type=<오류 이름>`: 미결 작업 기록의 읽기 실패.
+  - `debug [core:chat:state] sent channel=N bytes=<본문 바이트 수> messages=<메시지 수> full=<true|false> pending=<미결 수>`: 쓴
     `state`(§7.11 "대화 상태"). 바이트는 `data` 의 본문 `{"type":"state","state":"…"}` 의 것이다. `full=true` 는 채팅이
     찬 것을 알리는 `state` 다("대화 한도").
   - `error [core:chat:state] failure channel=N bytes=<본문 바이트 수> reason=too_large`: `data` 에 들지 않아 쓰지 않은
@@ -2312,6 +2324,8 @@ not json\n                                                                      
 - 앱이 닫은 채팅 채널에 엇갈려 온 `state`(§7.3)와, 그 사이 같은 기록을 새 채널로 다시 연 앱이 겹치면 그 `state` 는
   버려지고 이어 쓴 대화는 그 단계를 잃는다. 그 단계가 앱에 청한 변경은 기록부에 남는다. 좁은 경합이고, 앱 쪽
   시험은 bunny-holes/sherpa#67 이 더한다.
+- 코어가 직접 실행하는 도구의 커밋은 `state` 가 파이프에 쓰일 때까지 기다린다. 앱이 그 상태를 디스크에 썼다는 확인은
+  없다. 앱이 먼저 종료되면 기록의 `pending` 에서 빠질 수 있다. 코어의 자체 기록부가 있는 명령은 작업을 그곳에 남긴다.
 - 채팅 채널의 모델 목록(§7.11): 네 제공자의 실제 목록 응답이 문서의 모양과 같은지, Anthropic 의 `/v1/models` 가
   `anthropic-version: 2026-10-21` 을 받는지, Google 이 `pageSize=1000` 을 받는지. 목록은 유료 호출이 아니지만
   소유자의 키가 있어야 하므로 소유자 실기(bunny-holes/sherpa#68)에서 잰다. 시스템 프록시 뒤의 https 출처에 빌드한

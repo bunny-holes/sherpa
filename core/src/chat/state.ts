@@ -8,20 +8,20 @@
 import type { ModelMessage } from "ai";
 import { z } from "zod";
 import type { ChatIdentity } from "./conversation.ts";
+import { pendingChange, type PendingChange } from "./pending.ts";
 import { baseURL, modelId } from "./protocol.ts";
 import { FIXED_BASE_URLS, FIXED_PROVIDERS, requestBase } from "./providers.ts";
 
 /** The name of this state's format, which a state names first. */
 export const STATE_FORMAT = "sherpa.chat.state.v1";
 
-// What fixes the chat follows a turn's rules, and its base URL is kept as the chat keeps it; the
-// operations in flight (`pending`) come in the next work (ADR-0012 "이어 쓰기").
+// What fixes the chat follows a turn's rules, and its base URL is kept as the chat keeps it.
 const kept = {
   format: z.literal(STATE_FORMAT),
   model: modelId,
   fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
   full: z.boolean(),
-  pending: z.tuple([]),
+  pending: z.array(pendingChange),
   messages: z.array(z.unknown()).min(1),
 };
 
@@ -40,11 +40,12 @@ export interface ChatState<Messages = readonly ModelMessage[]> {
   fingerprint: string;
   /** The chat takes no later turn (§7.11 "대화 한도"). */
   full: boolean;
+  pending: readonly PendingChange[];
   messages: Messages;
 }
 
 /** The base64 of a chat's state, which a `state` carries. */
-export function encodeState({ identity, fingerprint, full, messages }: ChatState): string {
+export function encodeState({ identity, fingerprint, full, pending, messages }: ChatState): string {
   const { provider, baseURL: base, model } = identity;
   const json = JSON.stringify({
     format: STATE_FORMAT,
@@ -53,7 +54,7 @@ export function encodeState({ identity, fingerprint, full, messages }: ChatState
     model,
     fingerprint,
     full,
-    pending: [],
+    pending,
     messages,
   });
   return Buffer.from(json).toString("base64");
@@ -82,12 +83,14 @@ export function decodeState(
   }
   const parsed = envelope.safeParse(json);
   if (!parsed.success) return { refusal: "envelope" };
-  const { provider, model, fingerprint, full, messages } = parsed.data;
+  const { provider, model, fingerprint, full, pending, messages } = parsed.data;
   const base =
     parsed.data.provider === "openai-compatible"
       ? parsed.data.base_url
       : requestBase(FIXED_BASE_URLS[parsed.data.provider])!;
-  return { state: { identity: { provider, baseURL: base, model }, fingerprint, full, messages } };
+  return {
+    state: { identity: { provider, baseURL: base, model }, fingerprint, full, pending, messages },
+  };
 }
 
 /**

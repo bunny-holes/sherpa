@@ -265,6 +265,11 @@ Anything not listed here is not proven by the gate.
     line when the check fails in the core; and the fingerprint, the SHA-256 in
     hex of the instructions and the tools' digests, which changes with a tool's
     description, its schema and the tools' order, and only with them.
+  - Pending changes (`chat-tools.test.ts`, `chat-state.test.ts`, and the stdio
+    `chat-tools.test.ts`): the state write finishes before a mutation is sent,
+    a local checkpoint uses a null operation ID, and a saved step clears its
+    pending entries. A closed channel can resume with resend disabled and
+    read the SQLite outcome by its exact ID on the first new text turn.
   - `mcp-tools.test.ts` proves when each call becomes irreversible: a
     planner change reports `committed` in the same tick it sends its request,
     an allowed delete or send right before its request or command, a core
