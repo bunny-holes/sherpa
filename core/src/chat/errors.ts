@@ -18,6 +18,8 @@ export type ChatErrorCode =
   | "provider_rejected"
   | "provider_invalid_response"
   | "conversation_limit"
+  | "chat_state_invalid"
+  | "chat_state_mismatch"
   | "internal";
 
 const RETRYABLE: ReadonlySet<ChatErrorCode> = new Set<ChatErrorCode>([

@@ -189,8 +189,9 @@ function world(
     ...WHOLE,
     ...options.chat,
   });
-  const open = (id = 1) => {
-    const channel = new FakeChannel(id);
+  /** A channel; `states` puts the `state` messages among the others. */
+  const open = (id = 1, states = false) => {
+    const channel = new FakeChannel(id, { states });
     sessions.serve(channel);
     return channel;
   };
@@ -281,6 +282,26 @@ async function ending(channel: FakeChannel): Promise<Record<string, unknown>[]> 
     if (message.type === "done" || message.type === "error") return messages;
   }
 }
+
+/**
+ * A turn's messages as the order the app reads them in: a `state` as the roles of the messages it
+ * holds, a `tool` as its status, anything else as its type.
+ */
+const order = (messages: Record<string, unknown>[]) =>
+  messages.map((message) => {
+    if (message.type === "tool") return message.status;
+    if (message.type !== "state") return message.type;
+    const state = Buffer.from(message.state as string, "base64").toString();
+    return (JSON.parse(state) as { messages: { role: string }[] }).messages.map(
+      (kept) => kept.role,
+    );
+  });
+
+/** Whether each state the channel wrote says the chat is full. */
+const fulls = (channel: FakeChannel) =>
+  channel.states.map(
+    (state) => (JSON.parse(Buffer.from(state, "base64").toString()) as { full: boolean }).full,
+  );
 
 /** The outcomes an OpenAI-compatible request gives the model, each with its call's id. */
 function outcomes(sent: Sent): Record<string, unknown>[] {
@@ -507,6 +528,37 @@ describe("a turn whose model calls a tool", () => {
     expect(results.map((message) => message.tool_call_id)).toEqual(["call_1", "call_2"]);
   });
 
+  test("the conversation's state goes once the text is in it and after each step, after the step's text and tool messages", async () => {
+    const { open } = world((_sent, n) =>
+      sse(n === 1 ? chatCalls([list()], ["Let me ", "look."]) : chat(["Done"])),
+    );
+    const channel = open(1, true);
+    channel.write(compatible());
+    expect(order(await ending(channel))).toEqual([
+      ["user"],
+      "delta",
+      "started",
+      "succeeded",
+      ["user", "assistant", "tool"],
+      "delta",
+      ["user", "assistant", "tool", "assistant"],
+      "done",
+    ]);
+  });
+
+  test("a channel that takes a chat back from its state numbers its calls from 1", async () => {
+    const { open } = world(calling(list()));
+    const first = open(1);
+    first.write(compatible());
+    await ending(first);
+    const second = open(2);
+    second.write({ type: "resume", state: first.states.at(-1) });
+    expect(await second.next()).toEqual({ type: "resumed", resend: false });
+    second.write(compatible("또 정리해줘"));
+    const calls = (await ending(second)).filter((message) => message.type === "tool");
+    expect(calls.map((message) => message.call_id)).toEqual([1, 1]);
+  });
+
   test("each channel numbers its calls from 1, and its later turns count on", async () => {
     const { open } = world(calling(list()));
     const first = open(1);
@@ -604,6 +656,22 @@ describe("a call the AI SDK did not run (§7.11)", () => {
       tool(1, "event_list", "started"),
       tool(1, "event_list", "failed", "chat.not_run"),
       done("length", 11, 3, true),
+    ]);
+  });
+
+  test("a call the AI SDK did not run reaches the app before the state that holds its result", async () => {
+    const { open } = world((_sent, n) =>
+      sse(n === 1 ? chatCalls([list()], ["Let me ", "look."], "length") : chat(["Done"])),
+    );
+    const channel = open(1, true);
+    channel.write(compatible());
+    expect(order(await ending(channel))).toEqual([
+      ["user"],
+      "delta",
+      "started",
+      "failed",
+      ["user", "assistant", "tool"],
+      "done",
     ]);
   });
 
@@ -853,7 +921,11 @@ describe("a prompt the core built wrong", () => {
         ],
         room: new TurnRoom(0, () => {}),
       },
-      (messages) => kept.push(messages),
+      {
+        said: false,
+        keep: (messages) => void kept.push(messages),
+        state: () => ({ full: false, write: () => {} }),
+      },
     );
     expect(end).toEqual({
       type: "error",
@@ -1354,6 +1426,8 @@ describe("the conversation's limit within a turn that calls tools", () => {
     expect(deltas(frames)).toBe(big);
     expect(asked()).toEqual([]);
     expect(sent).toHaveLength(1);
+    // The state of the step that kept the refused call says the chat is full: no other follows.
+    expect(fulls(channel)).toEqual([false, true]);
     expect(lines).toContain(
       "warn [core:chat:tool-call] refused channel=1 tool=event_list reason=conversation_limit\n",
     );
@@ -1369,6 +1443,7 @@ describe("the conversation's limit within a turn that calls tools", () => {
     channel.write(compatible("그리고"));
     expect(await channel.next()).toEqual(limit);
     expect(sent).toHaveLength(1);
+    expect(channel.states).toHaveLength(2);
   });
 
   test("a call's result counts: the call after it in the step does not run", async () => {
@@ -1422,7 +1497,7 @@ describe("the conversation's limit within a turn that calls tools", () => {
     ).toBe(true);
   });
 
-  test("a step past it by its end's measure alone stays with its call's result, and no request follows it", async () => {
+  test("a step past it by its end's measure alone stays with its call's result, its state says the chat is full, and no request follows it", async () => {
     // The answer's count bounds what a step keeps, so only a count that falls short leaves the
     // step's end to find the limit passed: a room that counts no answer stands for one here.
     class Uncounted extends TurnRoom {
@@ -1457,13 +1532,23 @@ describe("the conversation's limit within a turn that calls tools", () => {
       callNumber: () => 1,
     });
     const kept: { role: string }[][] = [];
+    // Whether each state the turn wrote says the chat is full, as the session's say it when they
+    // are made.
+    const states: boolean[] = [];
     const end = await chatTurn.run(
       {
         target: { provider: "openai-compatible", baseURL: BASE, apiKey: KEY, model: "m-1" },
         messages: [{ role: "user", content: TEXT }],
         room,
       },
-      (messages) => kept.push(messages),
+      {
+        said: false,
+        keep: (messages) => void kept.push(messages),
+        state: () => {
+          const full = room.passed;
+          return { full, write: () => void states.push(full) };
+        },
+      },
     );
     expect(end).toEqual({
       type: "error",
@@ -1483,6 +1568,8 @@ describe("the conversation's limit within a turn that calls tools", () => {
     ]);
     expect(room.passed).toBe(true);
     expect(filled).toBe(1);
+    // The step's state is the one that says so: no other follows it.
+    expect(states).toEqual([true]);
     expect(
       logged(
         "warn [core:chat:turn] failure channel=1 provider=openai-compatible code=conversation_limit status=none steps=1 ms=",

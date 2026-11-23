@@ -6,7 +6,15 @@ import { chatLimits } from "../src/chat/protocol.ts";
 import { type ChatOptions, ChatSessions } from "../src/chat/session.ts";
 import { installWarningLog } from "../src/chat/warnings.ts";
 import { FakeChannel, openStream, type ServerEvent, sse } from "./support/chat.ts";
-import { anthropic, chat, chunk, failure, google, openai } from "./support/provider-events.ts";
+import {
+  anthropic,
+  anthropicThinking,
+  chat,
+  chunk,
+  failure,
+  google,
+  openai,
+} from "./support/provider-events.ts";
 
 // app-connection-v1 §7.11 and ADR-0012 "스트리밍", "중단", "재시도": a turn through the AI SDK
 // 7.0.179 and the four providers, against a runtime fetch that answers with hand-written
@@ -28,6 +36,12 @@ interface Sent {
   body: Record<string, unknown> | null;
   signal: AbortSignal | null | undefined;
 }
+
+/** Whether each state the channel wrote says the chat is full. */
+const fulls = (channel: FakeChannel) =>
+  channel.states.map(
+    (state) => (JSON.parse(Buffer.from(state, "base64").toString()) as { full: boolean }).full,
+  );
 
 /** Most tests read a whole answer as one `delta`: it goes when the turn ends, under 4 KiB. */
 const WHOLE: ChatOptions = { turn: { deltaMs: 60_000 } };
@@ -363,47 +377,17 @@ describe("the conversation", () => {
     ]);
   });
 
-  test("reasoning stays in the conversation, with its signature, and never reaches the app", async () => {
-    const thinking: ServerEvent[] = [
-      {
-        event: "content_block_start",
-        data: {
-          type: "content_block_start",
-          index: 0,
-          content_block: { type: "thinking", thinking: "" },
-        },
-      },
-      {
-        event: "content_block_delta",
-        data: {
-          type: "content_block_delta",
-          index: 0,
-          delta: { type: "thinking_delta", thinking: "Let me see" },
-        },
-      },
-      {
-        event: "content_block_delta",
-        data: {
-          type: "content_block_delta",
-          index: 0,
-          delta: { type: "signature_delta", signature: "sig-1" },
-        },
-      },
-      { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
-    ];
-    const events = anthropic(["Hi"]).map((event) => {
-      const data = event.data as { index?: number };
-      return data.index === 0 ? { ...event, data: { ...data, index: 1 } } : event;
-    });
+  test("reasoning stays in the conversation, with its signature, and reaches the app only in the state", async () => {
     const { sent, open } = turns((_sent, n) =>
-      sse(n === 1 ? [events[0]!, ...thinking, ...events.slice(1)] : anthropic(["Bye"])),
+      sse(n === 1 ? anthropicThinking(["Hi"]) : anthropic(["Bye"])),
     );
     const channel = open();
     channel.write(turn("anthropic", "claude-sonnet-5-5"));
     expect(await channel.untilEnd()).toEqual([{ type: "delta", text: "Hi" }, done()]);
     channel.write(turn("anthropic", "claude-sonnet-5-5", { text: second }));
     await channel.untilEnd();
-    expect(JSON.stringify(channel.sent)).not.toContain("Let me see");
+    expect(channel.bodies.join()).not.toContain("Let me see");
+    expect(Buffer.from(channel.states[1]!, "base64").toString()).toContain("Let me see");
     expect((sent[1]!.body!.messages as unknown[])[1]).toEqual({
       role: "assistant",
       content: [
@@ -535,8 +519,11 @@ describe("the conversation", () => {
     ).toBeLessThanOrEqual(chatLimits.deltaBytes);
     channel.write(compatible({ text: "a".repeat(chatLimits.textBytes) }));
     expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
+    // The refusal that filled the chat said so in a state before it (§7.11 "대화 한도").
+    expect(fulls(channel)).toEqual([false, false, true]);
     channel.write(compatible({ text: "4" }));
     expect(await channel.next()).toEqual(error("conversation_limit", false, null, false));
+    expect(channel.states).toHaveLength(3);
     expect(sent).toHaveLength(1);
     expect(lines).toContain("warn [core:chat:turn] refused channel=1 reason=conversation_limit\n");
     expect(chatLimits.conversationBytes).toBe(2 * 1024 * 1024);
@@ -573,6 +560,8 @@ describe("an answer that would pass the conversation's limit", () => {
           .join(""),
       ).toBe(first);
       expect(sent).toHaveLength(1);
+      // The state before the error says the chat is full (§7.11 "대화 한도").
+      expect(fulls(channel)).toEqual([false, true]);
       expect(
         logged(
           `warn [core:chat:turn] failure channel=1 provider=${name} code=conversation_limit status=none steps=1 ms=`,
@@ -583,6 +572,7 @@ describe("an answer that would pass the conversation's limit", () => {
       channel.write({ ...message, text: undefined });
       expect(await channel.next()).toEqual(limit);
       expect(sent).toHaveLength(1);
+      expect(channel.states).toHaveLength(2);
       expect(lines).toContain(
         "warn [core:chat:turn] refused channel=1 reason=conversation_limit\n",
       );
@@ -738,14 +728,19 @@ describe("a turn without text", () => {
 
   // A cancel that meets the end of the answer: the turn ends as the core saw it first, and
   // `resend` says which. The whole answer is in the stream at once, so the core reads its end in
-  // the microtasks after the test ends the stream, and the text goes out with the `done`.
+  // the microtasks after the test ends the stream. The text goes out before the step's `state`,
+  // which comes before the turn reads the end of its stream: a cancel the app sends once it has
+  // the text still stops the turn, and the step stays.
   test.each([
     {
       moment: "in the task that ends the answer's stream",
       frames: [done("aborted", null, null, true)],
     },
     { moment: "a microtask after it", frames: [done("aborted", null, null, true)] },
-    { moment: "once the answer's text reached the app", frames: [done("stop", 11, 3, false)] },
+    {
+      moment: "once the answer's text reached the app",
+      frames: [done("aborted", null, null, false)],
+    },
     {
       moment: "a millisecond after it",
       frames: [{ type: "delta", text: "Hello" }, done("stop", 11, 3, false)],

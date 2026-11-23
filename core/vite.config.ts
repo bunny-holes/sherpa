@@ -37,19 +37,19 @@ const bunNetwork = [
 const webSockets = ["WebSocket", "EventSource"];
 
 // The AI SDK (ADR-0012 "코드로 지키기" 3, "메모리와 크기"). Its values load under src/chat/sdk/,
-// which only src/chat/load.ts imports, with import() when the first turn starts; a chat module
-// elsewhere takes only its types. Of src/chat/sdk/, only turn.ts imports the functions that take a
+// which only src/chat/load.ts imports, with import() when the first turn starts or a resume is
+// checked; a chat module elsewhere takes only its types. Of src/chat/sdk/, only turn.ts imports the functions that take a
 // model, so only its types need to keep a model id given as a string away from them, and no
 // module imports the AI Gateway. A rule that picks names does not read import() (oxlint 1.94.0),
 // and none of these tells a static import of src/chat/sdk/ in load.ts from import(); the default
 // provider that src/chat/egress.ts installs refuses a model id given as a string at run time.
 const AI_SDK = ["ai", "ai/*", "@ai-sdk/*"];
 const SDK_TYPES =
-  "Outside src/chat/sdk/ a chat module imports only the AI SDK's types; src/chat/load.ts loads the rest when the first turn starts (ADR-0012).";
+  "Outside src/chat/sdk/ a chat module imports only the AI SDK's types; src/chat/load.ts loads the rest when the first turn starts or a resume is checked (ADR-0012).";
 /** A relative path into a folder named sdk: src/chat/sdk/ from anywhere under src/. */
 const SDK_FOLDER = "^\\.{1,2}/(?:.*/)?sdk(?:/|$)";
 const SDK_LOAD =
-  "Only src/chat/load.ts imports src/chat/sdk/, with import() when the first turn starts (ADR-0012).";
+  "Only src/chat/load.ts imports src/chat/sdk/, with import() when the first turn starts or a resume is checked (ADR-0012).";
 const NO_GATEWAY = {
   group: ["@ai-sdk/gateway", "@ai-sdk/mcp", "@ai-sdk/otel"].flatMap((name) => [name, `${name}/*`]),
   message: "No AI Gateway, AI SDK MCP client or OpenTelemetry anywhere (ADR-0012).",
@@ -58,8 +58,17 @@ const AI_ROOT = {
   group: ["ai/*"],
   message: "The core imports ai only from its root, never ai/internal or ai/test.",
 };
-/** What a module under src/chat/sdk/ other than turn.ts imports from ai besides its types. */
-const SDK_VALUES = ["jsonSchema", "tool"];
+/**
+ * What a module under src/chat/sdk/ other than turn.ts imports from ai besides its types: the
+ * tools' schemas, and what a chat's state needs (src/chat/sdk/state.ts).
+ */
+const SDK_VALUES = [
+  "jsonSchema",
+  "tool",
+  "fingerprintTools",
+  "modelMessageSchema",
+  "pruneMessages",
+];
 /** What src/chat/sdk/turn.ts never imports from ai: the AI Gateway and the telemetry registry. */
 const NEVER_FROM_AI = ["createGateway", "gateway", "registerTelemetry"];
 
@@ -152,7 +161,7 @@ export default defineConfig({
         },
       },
       {
-        // Loads src/chat/sdk/ when the first turn starts.
+        // Loads src/chat/sdk/ when the first turn starts or a resume is checked.
         files: ["src/chat/load.ts"],
         rules: {
           "no-restricted-imports": restrictedImports({

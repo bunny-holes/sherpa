@@ -1,9 +1,10 @@
 /**
  * The messages of a chat channel, `sherpa.chat.v1` (app-connection-v1 §7.11, ADR-0012 "앱과 코어
  * 사이 채널"): one JSON object per `data` frame each way, told apart by `type`. This edition
- * reads `list_models`, `turn` and `cancel` and writes `models`, `delta`, `tool`, `done` and
- * `error`. A `turn` without `text` sends the conversation again, and what answers a `turn` says
- * whether one would start (`resend`).
+ * reads `list_models`, `resume`, `turn` and `cancel` and writes `models`, `resumed`, `delta`,
+ * `tool`, `state`, `done` and `error`. A `turn` without `text` sends the conversation again, and
+ * what answers a `turn` or a `resume` says whether one would start (`resend`). A `state` carries
+ * the conversation's state, which a `resume` gives back to a new channel (src/chat/state.ts).
  */
 import { z } from "zod";
 import { type ChatErrorCode, retryable } from "./errors.ts";
@@ -27,6 +28,11 @@ export const chatLimits = {
   listMs: 30_000,
   /** The person's text in one `turn`. */
   textBytes: 64 * 1024,
+  /**
+   * A `data` body (§7.4). The core writes none larger: a conversation's `state` that would pass
+   * it is not written, and the turn ends (§7.11 "대화 상태").
+   */
+  dataBytes: 4 * 1024 * 1024,
   /**
    * The conversation of one chat as the JSON of its model messages, the next turn's text
    * included. A turn that would start past it is not sent, one that would pass it ends where it
@@ -74,11 +80,11 @@ const apiKey = z
   .min(1)
   .max(chatLimits.apiKeyBytes)
   .regex(/^[!-~]+$/);
-const baseURL = z
+export const baseURL = z
   .string()
   .regex(/^\P{Cc}+$/u)
   .refine((value) => Buffer.byteLength(value) <= chatLimits.baseURLBytes);
-const modelId = z
+export const modelId = z
   .string()
   .regex(/^\P{Cc}+$/u)
   .refine((value) => Buffer.byteLength(value) <= chatLimits.modelIdBytes);
@@ -129,8 +135,12 @@ export type TurnRequest = z.infer<typeof turn>;
 
 const cancel = z.strictObject({ type: z.literal("cancel") });
 
+// The state a `state` gave, in its base64, which the core reads once the message is read
+// (§7.11 "이어 쓰기").
+const resume = z.strictObject({ type: z.literal("resume"), state: z.string() });
+
 /** The app messages an `error` can answer, by their `type`; a `cancel` only when it is malformed. */
-export type AnsweredMessage = "list_models" | "turn" | "cancel";
+export type AnsweredMessage = "list_models" | "resume" | "turn" | "cancel";
 
 /** Why a turn ended with `done` (§7.11). */
 export type DoneReason = "stop" | "length" | "content-filter" | "step-limit" | "aborted" | "other";
@@ -172,6 +182,10 @@ export type TurnAnswer =
 export type ChatEvent =
   | { type: "models"; models: string[]; truncated: boolean }
   | { type: "delta"; text: string }
+  /** The conversation's state, the base64 of its JSON (§7.11 "대화 상태"). */
+  | { type: "state"; state: string }
+  /** The `resume` was taken, and whether a `turn` without text sent right after it would start. */
+  | { type: "resumed"; resend: boolean }
   | {
       type: "tool";
       /** The call's number on this channel, from 1: its `started` and its end share it. */
@@ -203,6 +217,7 @@ export type MessageRefusal = "not_json" | "unknown_type" | "schema";
 
 export type AppMessage =
   | { type: "list_models"; request: ListModelsRequest }
+  | { type: "resume"; state: string }
   | { type: "turn"; request: TurnRequest }
   | { type: "cancel" }
   | { type: "refused"; inReplyTo: AnsweredMessage | null; reason: MessageRefusal };
@@ -235,6 +250,10 @@ export function readMessage(body: Uint8Array): AppMessage {
     case "turn": {
       const request = turn.safeParse(value);
       return request.success ? { type, request: request.data } : schema(type);
+    }
+    case "resume": {
+      const message = resume.safeParse(value);
+      return message.success ? { type, state: message.data.state } : schema(type);
     }
     case "cancel":
       return cancel.safeParse(value).success ? { type } : schema(type);

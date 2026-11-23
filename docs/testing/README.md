@@ -95,8 +95,8 @@ Anything not listed here is not proven by the gate.
     4,096 without), with its warning and `length`; `delta`s gathered for
     50 ms and cut at 4 KiB between code points; the conversation, which drops
     a step that failed, broke off or was refused and keeps reasoning with its
-    signature without sending it to the app; the code of an answer that
-    closes early on each provider; the time line before the person's text,
+    signature, which reaches the app only in a `state`; the code of an answer
+    that closes early on each provider; the time line before the person's text,
     from an injected clock and time zone read again each turn, one string for
     an OpenAI-compatible server; another chat's `turn`, `busy`, `cancel` and
     a close; the retries (three failures sent three times, ending with the
@@ -113,10 +113,11 @@ Anything not listed here is not proven by the gate.
     fake clock, which each output starts anew; Bun's idle-timeout
     `TimeoutError` before the headers, in the body and after output, each
     sent once and ending with `timeout`; the 2 MiB conversation limit (a turn
-    whose text would pass it refused without a request; an answer that would
-    pass it cut on each provider after what fits and sent once, with no
-    `delta` when its first piece already passes; every later turn refused,
-    with text or without); a turn
+    whose text would pass it refused without a request, after one `state` that
+    says the chat is full; an answer that would pass it cut on each provider
+    after what fits and sent once, with a `state` that says so before the end,
+    and no `delta` when its first piece already passes; every later turn
+    refused, with text or without, and no `state` after it); a turn
     without text, which sends the conversation again, with a test for each row
     of the contract's table without a tool, each reading `resend` in what
     answered a turn, a refusal included, and sending a turn without text right
@@ -127,7 +128,8 @@ Anything not listed here is not proven by the gate.
     after an answer with nothing in it, `content-filter`, `aborted` and an
     error of a turn that started, the person's text sent once with its one
     time line; refused after an answer of reasoning alone; a `cancel` that
-    meets the answer's end at four moments; another key after
+    meets the answer's end at four moments (the third, after the step's `state`,
+    ends `aborted` and keeps the step, so `resend` is false); another key after
     `provider_auth`; `busy` and a malformed turn while one runs with
     `resend` false; a malformed turn, another chat and a refused `base_url`
     after an end with `resend` true and after one with it false, each
@@ -147,7 +149,10 @@ Anything not listed here is not proven by the gate.
     it; the 64 KiB fit (a read `failed`, a change that happened `partial`);
     `chat.invalid_call` for a malformed call and for a tool the core does not
     have (name `null`, `unknown` in the log); call numbers counted from 1 in
-    each channel; a change answered after 11 minutes; a declined confirmation,
+    each channel, a resumed one too; the order of `state`s, after the person's
+    text and after each step's text and `tool` events, the two `tool` events of
+    a call the AI SDK did not run before the `state` that holds its result; a
+    change answered after 11 minutes; a declined confirmation,
     one past 30 s, and its `channel` and `client`; a `cancel` while calls run
     (it withdraws the waiting window, cuts planner reads, waits for a change
     already asked for, lets the core's own sends and reads run out, and
@@ -178,20 +183,24 @@ Anything not listed here is not proven by the gate.
     whose `tool` and `delta` come in different orders); the limit within a
     turn (a call whose result could pass it does not run, fails with
     `chat.conversation_limit` and a warn line, and ends the turn
-    `conversation_limit` with `resend` false, after which the chat takes no
+    `conversation_limit` with `resend` false, its step's `state` the one that
+    says the chat is full, after which the chat takes no
     turn, with text or without, the table's row of `conversation_limit`; the
     results of the calls before it count, so the step's next call does not
     run; an answer cut in a later step leaves the step before with its call's
     result; a step that only its end's measure finds past the limit, in a room
-    that counts no answer, stays with its call's result and no request follows
-    it); Anthropic's top-level `cache_control` and tools without a mark; and
-    no arguments, results or made-up tool names in a log line. A test fails
+    that counts no answer, stays with its call's result, its `state` alone says
+    the chat is full, and no request follows it); Anthropic's top-level
+    `cache_control` and tools without a mark; and no arguments, results or
+    made-up tool names in a log line. A test fails
     on any AI SDK warning it does not expect.
   - `chat-limit.test.ts` (contract §7.11 "대화 한도") proves the room of a
     turn: it adds a step's messages to the byte the turn's start measures,
     passes once at the first byte past 2 MiB, fills the chat and stays past,
     and admits a call while the largest result fits beside the answer and the
-    results before it. On the AI SDK's mock model it proves that an answer's
+    results before it. A turn whose text would pass the limit fills the chat
+    once, without its text, and a chat given back full takes no turn and fills
+    no more. On the AI SDK's mock model it proves that an answer's
     count is no less than the JSON the SDK 7.0.179 keeps of the step (text
     with characters JSON escapes and an emoji cut between its halves,
     reasoning whose signature comes last, metadata that changes as it
@@ -219,6 +228,43 @@ Anything not listed here is not proven by the gate.
     `ChatFailure` `conversation_limit` and cancels the response, at once
     when the first part already passes, which the SDK sends once even with
     `maxRetries: 2` and ends as an `error` step.
+  - `chat-state.test.ts` (contract §7.11 "대화 상태", "이어 쓰기") proves the
+    conversation's `state` and its `resume`: a `state` once the person's text is
+    in the conversation, before the request, and after each step the chat keeps,
+    after the step's text, with `done` after the last one; none for a step that
+    failed, at the start of a turn without text, or for a turn refused before
+    its request; the envelope's keys in their order, an OpenAI-compatible base
+    URL in the form the chat keeps and none for the other three providers, and
+    no key; the core's `data` limit equal to the contract's 4 MiB, and on a core
+    with that limit lowered, a start `state` that would pass it ending the turn
+    `internal` before any request and a step's ending it at that step, the
+    `state` before it fitting to its last byte, after which the chat takes no
+    turn, and a `state` that says the chat is full and would not fit ending
+    `internal` the turn whose start or answer filled it, the state before it
+    left the app's; a full chat's `state`, once: before the `error` of a turn
+    whose answer was cut, after the text before it and holding the person's text
+    alone, and before the `error` of a turn whose text would pass the limit,
+    without that text, but none when the chat refuses again or its app holds no
+    state of it; a chat given back with it, whose `resumed` says `resend` false
+    and which refuses a turn with text or without, with no request; each
+    provider's conversation taken back on another channel, whose next
+    request is the one the first channel sends, with what the provider takes
+    back (Anthropic's thinking signature, OpenAI's encrypted reasoning, Google's
+    thought signature, OpenAI-compatible reasoning), and a state an earlier core
+    wrote (`tests/fixtures/chat-state/v1.json`, its fingerprint replaced with
+    the current one) read the same; a `resume` after a model list, one that is
+    not the channel's first, `busy` and a close while one is checked, and a
+    malformed one; `chat_state_invalid` for each reason of the contract's table,
+    after which the chat starts empty; base64 file data; `chat_state_mismatch`
+    for another provider, base URL or model, and a turn with another key taken;
+    the `resend` of `resumed` matching the turn without text after it (a
+    conversation that ends with the model's answer, the person's text or a tool
+    result, or is over 2 MiB), and the `full` of the `state` after it;
+    Anthropic's conversation sent without its reasoning once the instructions or
+    tools changed, and the other providers' with theirs; `internal` and an error
+    line when the check fails in the core; and the fingerprint, the SHA-256 in
+    hex of the instructions and the tools' digests, which changes with a tool's
+    description, its schema and the tools' order, and only with them.
   - `mcp-tools.test.ts` proves when each call becomes irreversible: a
     planner change reports `committed` in the same tick it sends its request,
     an allowed delete or send right before its request or command, a core
@@ -275,7 +321,13 @@ Anything not listed here is not proven by the gate.
     is a connection to that server, and ends with `done`; the second carries
     the first answer, the server sees one model list and two turns, and the
     time line carries the time zone the Mac is set to (`/etc/localtime`),
-    which the core reads without `TZ`. The built core carries the AI
+    which the core reads without `TZ`. On such a server, the later of the two
+    `state`s a channel's turn sent, after the text and after the answer, given
+    back in a `resume` on another channel brings `resumed`, and that channel's
+    next request carries the first channel's text and answer before its own;
+    standard error's `[core:chat:state] sent` and `[core:chat:resume] success`
+    lines carry the bytes and message counts, no key, text or answer reaches
+    standard error, and no `state` holds the key. The built core carries the AI
     Gateway's OIDC code; the turns run with an expired Vercel CLI login in
     the core's `HOME` and a `.vercel/project.json` in its working directory,
     and both files keep their bytes and modification times. As the control,

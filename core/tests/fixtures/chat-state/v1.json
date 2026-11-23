@@ -1,0 +1,145 @@
+{
+  "anthropic": {
+    "format": "sherpa.chat.state.v1",
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5",
+    "fingerprint": "d4d87d11f5838957098a7591a357e468d5a4e4050d30aba20af2cdf5657be130",
+    "full": false,
+    "pending": [],
+    "messages": [
+      {
+        "role": "user",
+        "content": "[Current time: 2026-11-22T21:56:31+09:00 (Sunday), time zone: Asia/Seoul]\n\n내일 일정 알려줘"
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "custom",
+            "kind": "anthropic.message_start",
+            "providerOptions": {
+              "anthropic": {
+                "id": "msg_1",
+                "model": "claude-sonnet-5-5",
+                "usage": {
+                  "input_tokens": 11
+                }
+              }
+            }
+          },
+          {
+            "type": "reasoning",
+            "text": "Let me see",
+            "providerOptions": {
+              "anthropic": {
+                "signature": "sig-1"
+              }
+            }
+          },
+          {
+            "type": "text",
+            "text": "Hi"
+          }
+        ]
+      }
+    ]
+  },
+  "openai": {
+    "format": "sherpa.chat.state.v1",
+    "provider": "openai",
+    "model": "gpt-5.1",
+    "fingerprint": "d4d87d11f5838957098a7591a357e468d5a4e4050d30aba20af2cdf5657be130",
+    "full": false,
+    "pending": [],
+    "messages": [
+      {
+        "role": "user",
+        "content": "[Current time: 2026-11-22T21:56:31+09:00 (Sunday), time zone: Asia/Seoul]\n\n내일 일정 알려줘"
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "reasoning",
+            "text": "",
+            "providerOptions": {
+              "openai": {
+                "itemId": "rs_1",
+                "reasoningEncryptedContent": "enc-1"
+              }
+            }
+          },
+          {
+            "type": "text",
+            "text": "Hi",
+            "providerOptions": {
+              "openai": {
+                "itemId": "msg_1"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "google": {
+    "format": "sherpa.chat.state.v1",
+    "provider": "google",
+    "model": "gemini-3.5-flash",
+    "fingerprint": "d4d87d11f5838957098a7591a357e468d5a4e4050d30aba20af2cdf5657be130",
+    "full": false,
+    "pending": [],
+    "messages": [
+      {
+        "role": "user",
+        "content": "[Current time: 2026-11-22T21:56:31+09:00 (Sunday), time zone: Asia/Seoul]\n\n내일 일정 알려줘"
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "reasoning",
+            "text": "",
+            "providerOptions": {
+              "google": {
+                "signature": "sig-g"
+              }
+            }
+          },
+          {
+            "type": "text",
+            "text": "Hi"
+          }
+        ]
+      }
+    ]
+  },
+  "openai-compatible": {
+    "format": "sherpa.chat.state.v1",
+    "provider": "openai-compatible",
+    "base_url": "https://models.example/v1",
+    "model": "m-1",
+    "fingerprint": "d4d87d11f5838957098a7591a357e468d5a4e4050d30aba20af2cdf5657be130",
+    "full": false,
+    "pending": [],
+    "messages": [
+      {
+        "role": "user",
+        "content": "[Current time: 2026-11-22T21:56:31+09:00 (Sunday), time zone: Asia/Seoul]\n\n내일 일정 알려줘"
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "reasoning",
+            "text": "Let me see"
+          },
+          {
+            "type": "text",
+            "text": "Hi"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 /**
  * What each provider's server streams, as its package 4.x reads it, for the chat tests: a text
- * answer, an answer that calls tools, and a failure the AI SDK sends again. Every response counts
- * 11 tokens in and 3 out.
+ * answer, one after the model's reasoning with what the provider takes back, an answer that calls
+ * tools, and a failure the AI SDK sends again. Every response counts 11 tokens in and 3 out.
  */
 import type { ServerEvent } from "./chat.ts";
 
@@ -137,6 +137,88 @@ export const chat = (texts: string[], finish = "stop"): ServerEvent[] => [
     },
   },
   { data: "[DONE]" },
+];
+
+/** Moves the events of output block `from` to `to`, under the key a provider numbers them by. */
+const moved = (events: ServerEvent[], key: string, from: number, to: number) =>
+  events.map((event) => {
+    const data = event.data as Record<string, unknown>;
+    return data[key] === from ? { ...event, data: { ...data, [key]: to } } : event;
+  });
+
+/** An Anthropic answer after a thinking block, whose signature the next request gives back. */
+export const anthropicThinking = (texts: string[], signature = "sig-1"): ServerEvent[] => {
+  const answer = moved(anthropic(texts), "index", 0, 1);
+  return [
+    answer[0]!,
+    {
+      event: "content_block_start",
+      data: {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "thinking", thinking: "" },
+      },
+    },
+    {
+      event: "content_block_delta",
+      data: {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "thinking_delta", thinking: "Let me see" },
+      },
+    },
+    {
+      event: "content_block_delta",
+      data: {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "signature_delta", signature },
+      },
+    },
+    { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
+    ...answer.slice(1),
+  ];
+};
+
+/** An OpenAI Responses answer after a reasoning item, whose encrypted content comes back. */
+export const openaiReasoning = (texts: string[], encrypted = "enc-1"): ServerEvent[] => {
+  const answer = moved(openai(texts), "output_index", 0, 1);
+  return [
+    ...answer.slice(0, 2),
+    {
+      data: {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: { type: "reasoning", id: "rs_1", encrypted_content: null },
+      },
+    },
+    {
+      data: {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: { type: "reasoning", id: "rs_1", encrypted_content: encrypted, summary: [] },
+      },
+    },
+    ...answer.slice(2),
+  ];
+};
+
+/** A Google Interactions answer after a thought, whose signature the next request gives back. */
+export const googleThought = (texts: string[], signature = "sig-g"): ServerEvent[] => {
+  const answer = moved(google(texts), "index", 0, 1);
+  return [
+    answer[0]!,
+    { data: { event_type: "step.start", index: 0, step: { type: "thought", signature } } },
+    { data: { event_type: "step.stop", index: 0 } },
+    ...answer.slice(1),
+  ];
+};
+
+/** An OpenAI-compatible answer after the model's reasoning, which the next request gives back. */
+export const chatReasoning = (texts: string[], reasoning = "Let me see"): ServerEvent[] => [
+  chunk({ role: "assistant", reasoning_content: reasoning }),
+  ...texts.map((content) => chunk({ content })),
+  ...chat([]),
 ];
 
 /** An Anthropic answer that calls tools, after the text before them if there is any. */

@@ -154,15 +154,41 @@ describe("a turn's room", () => {
     expect(conversation.resendable()).toBe(true);
     start.room.request();
     expect(start.room.answers(LIMIT)).toBe(false);
+    expect(conversation.full).toBe(true);
     expect(conversation.resendable()).toBe(false);
-    expect(conversation.start(IDENTITY, "more", "[time]")).toEqual({
+    // The turn filled the chat: no refusal after it does.
+    const refused = { type: "refused", reason: "conversation_limit", filled: false };
+    expect(conversation.start(IDENTITY, "more", "[time]")).toEqual(refused);
+    expect(conversation.again(IDENTITY)).toEqual(refused);
+  });
+
+  test("that a turn's text would pass at its start fills its chat once, without the text", () => {
+    const conversation = new Conversation();
+    const start = conversation.start(IDENTITY, "hello", "[time]");
+    if (start.type !== "started") throw new Error("expected the turn to start");
+    conversation.keep([{ role: "assistant", content: "hi" }]);
+    const before = [...conversation.kept];
+    expect(conversation.start(IDENTITY, "x".repeat(LIMIT), "[time]")).toEqual({
       type: "refused",
       reason: "conversation_limit",
+      filled: true,
     });
-    expect(conversation.again(IDENTITY)).toEqual({
-      type: "refused",
-      reason: "conversation_limit",
-    });
+    expect(conversation.full).toBe(true);
+    expect(conversation.kept).toEqual(before);
+    expect(conversation.resendable()).toBe(false);
+    const refused = { type: "refused", reason: "conversation_limit", filled: false };
+    expect(conversation.start(IDENTITY, "more", "[time]")).toEqual(refused);
+    expect(conversation.again(IDENTITY)).toEqual(refused);
+  });
+
+  test("of a chat a full state gave back has no room: no turn starts, and none fills it again", () => {
+    const conversation = new Conversation();
+    conversation.resume(IDENTITY, [{ role: "user", content: "hello" }], true);
+    expect(conversation.full).toBe(true);
+    expect(conversation.resendable()).toBe(false);
+    const refused = { type: "refused", reason: "conversation_limit", filled: false };
+    expect(conversation.start(IDENTITY, "more", "[time]")).toEqual(refused);
+    expect(conversation.again(IDENTITY)).toEqual(refused);
   });
 });
 

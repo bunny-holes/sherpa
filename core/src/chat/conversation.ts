@@ -2,8 +2,9 @@
  * One chat's conversation in the core's memory (ADR-0012 "앱과 코어 사이 채널", "대화 기록",
  * "메모리와 크기"): the person's texts and the messages of the steps that finished. The chat's
  * first turn fixes its provider, base URL and model, since the provider takes back values it
- * left in the conversation; a turn for another is not this chat's. Its limit holds at a turn's
- * start and while the turn runs (§7.11 "대화 한도").
+ * left in the conversation; a turn for another is not this chat's. A chat a `resume` gave back
+ * is fixed by its state instead (§7.11 "이어 쓰기"). Its limit holds at a turn's start and while
+ * the turn runs (§7.11 "대화 한도").
  */
 import type { ModelMessage } from "ai";
 import { chatLimits } from "./protocol.ts";
@@ -17,13 +18,22 @@ export interface ChatIdentity {
 }
 
 /**
- * Why a chat takes no turn: another provider, base URL or model, a turn without text whose
- * conversation ends with nothing a model answers, or a conversation too large.
+ * Why a chat takes no turn: another provider, base URL or model than its first turn's or than its
+ * state's, a turn without text whose conversation ends with nothing a model answers, or a
+ * conversation too large.
  */
-export type TurnRefusal = "other_chat" | "nothing_to_retry" | "conversation_limit";
+export type TurnRefusal =
+  | "other_chat"
+  | "state_mismatch"
+  | "nothing_to_retry"
+  | "conversation_limit";
 
 export type TurnStart =
-  | { type: "refused"; reason: TurnRefusal }
+  /**
+   * `filled`: the refusal filled the chat, which took turns until then (§7.11 "대화 한도"): the
+   * chat says so once, in a `state`.
+   */
+  | { type: "refused"; reason: TurnRefusal; filled: boolean }
   /**
    * The messages to send: the conversation, the person's text of the turn last when it has one;
    * and what the conversation's limit leaves the turn.
@@ -101,7 +111,39 @@ export class TurnRoom {
 export class Conversation {
   private readonly messages: ModelMessage[] = [];
   private identity: ChatIdentity | null = null;
-  private full = false;
+  private isFull = false;
+  /** A `resume` gave the chat back, and its state fixed it. */
+  private resumed = false;
+
+  /** The messages the conversation holds, which a `state` carries (src/chat/state.ts). */
+  get kept(): readonly ModelMessage[] {
+    return this.messages;
+  }
+
+  /**
+   * The chat takes no later turn: a turn passed its limit, or would at its start, or its state
+   * would not fit one `data` (§7.4). A `state` carries it.
+   */
+  get full(): boolean {
+    return this.isFull;
+  }
+
+  /**
+   * Takes the conversation a `resume` gave back, which fixes the chat as its first turn would
+   * (§7.11 "이어 쓰기"), and full when its state says so. The session takes a `resume` only
+   * before the channel's first turn, so the conversation holds nothing yet.
+   */
+  resume(identity: ChatIdentity, messages: readonly ModelMessage[], full: boolean): void {
+    this.identity = identity;
+    this.messages.push(...messages);
+    this.resumed = true;
+    this.isFull = full;
+  }
+
+  /** The chat takes no later turn: its state would not fit one `data` (§7.4). */
+  fill(): void {
+    this.isFull = true;
+  }
 
   /**
    * Takes the person's text for a turn, which stays whatever the turn ends with (ADR-0012 "상태를
@@ -138,17 +180,22 @@ export class Conversation {
         chat.baseURL !== identity.baseURL ||
         chat.model !== identity.model)
     ) {
-      return { type: "refused", reason: "other_chat" };
+      return {
+        type: "refused",
+        reason: this.resumed ? "state_mismatch" : "other_chat",
+        filled: false,
+      };
     }
     const measured = this.measure(said);
     if ("refusal" in measured) {
-      if (measured.refusal === "conversation_limit") this.full = true;
-      return { type: "refused", reason: measured.refusal };
+      const filled = measured.refusal === "conversation_limit" && !this.isFull;
+      if (filled) this.isFull = true;
+      return { type: "refused", reason: measured.refusal, filled };
     }
     this.identity ??= identity;
     if (said !== null) this.messages.push(said);
     const room = new TurnRoom(measured.bytes, () => {
-      this.full = true;
+      this.isFull = true;
     });
     return { type: "started", messages: [...this.messages], room };
   }
@@ -160,8 +207,8 @@ export class Conversation {
    */
   private measure(
     said: ModelMessage | null,
-  ): { refusal: Exclude<TurnRefusal, "other_chat"> } | { bytes: number } {
-    if (this.full) return { refusal: "conversation_limit" };
+  ): { refusal: Exclude<TurnRefusal, "other_chat" | "state_mismatch"> } | { bytes: number } {
+    if (this.isFull) return { refusal: "conversation_limit" };
     if (said === null && !answerable(this.messages.at(-1))) return { refusal: "nothing_to_retry" };
     const bytes = jsonBytes(said === null ? this.messages : [...this.messages, said]);
     return bytes > chatLimits.conversationBytes ? { refusal: "conversation_limit" } : { bytes };

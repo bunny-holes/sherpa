@@ -22,7 +22,11 @@ const TEXT = "stdio-chat-text-marker";
 const ANSWER = "stdio-chat-answer-marker";
 const LOCATOR = "stdio-chat-locator-marker";
 
-const isChat = (frame: CoreFrame) => frame.channel === 1 && frame.type === "data";
+/** A message of the chat other than the conversation's `state` (tests/stdio/egress.test.ts). */
+const isChat = (frame: CoreFrame) =>
+  frame.channel === 1 &&
+  frame.type === "data" &&
+  (frame.body as { type?: unknown } | null)?.type !== "state";
 const isConfirm = (frame: CoreFrame) => frame.channel === 0 && frame.type === "confirm";
 const isWithdraw = (frame: CoreFrame) => frame.channel === 0 && frame.type === "withdraw";
 

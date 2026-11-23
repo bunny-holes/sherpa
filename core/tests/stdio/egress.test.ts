@@ -91,8 +91,13 @@ test("the built core holds no internet socket and listens on nothing while it se
 
 /** A key that must reach no frame and no log line. */
 const KEY = "sk-sherpa-stdio-marker";
+const isState = (frame: CoreFrame) => (frame.body as { type?: unknown } | null)?.type === "state";
+/** A message of a chat channel other than the conversation's `state`. */
 const isChat = (channel: number) => (frame: CoreFrame) =>
-  frame.channel === channel && frame.type === "data";
+  frame.channel === channel && frame.type === "data" && !isState(frame);
+/** A `state` of a chat channel. */
+const isStateOf = (channel: number) => (frame: CoreFrame) =>
+  frame.channel === channel && frame.type === "data" && isState(frame);
 
 /** A local provider of the test process, and how many requests its handler saw. */
 function localProvider(tls?: { cert: string; key: string }) {
@@ -622,6 +627,96 @@ test("a turn for an https loopback origin the core trusts streams its answer fro
     expect(JSON.stringify(app.log)).not.toContain(KEY);
   } finally {
     release();
+    await server.stop(true);
+  }
+});
+
+test("a chat's state from one channel of the built core resumes on another, whose next request goes on the conversation, and the log names only its bytes", async () => {
+  const { ca, ...tls } = await trustedCertificate();
+  const seen: { role: string; content: string }[][] = [];
+  const encoder = new TextEncoder();
+  const event = (data: unknown) => encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
+  const chunk = (fields: Record<string, unknown>) =>
+    event({ id: "c1", object: "chat.completion.chunk", created: 1, model: "m-1", ...fields });
+  const ANSWER = "stdio-resume-answer-marker";
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    tls,
+    fetch: async (request) => {
+      const body = (await request.json()) as { messages: { role: string; content: string }[] };
+      seen.push(body.messages);
+      const delta = (value: Record<string, unknown>, finish: string | null = null) =>
+        chunk({ choices: [{ index: 0, delta: value, finish_reason: finish }] });
+      return new Response(
+        new Blob([
+          delta({ role: "assistant", content: ANSWER }),
+          delta({}, "stop"),
+          chunk({
+            choices: [],
+            usage: { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 },
+          }),
+          encoder.encode("data: [DONE]\n\n"),
+        ]),
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    },
+  });
+  const TEXT = "stdio-resume-text-marker";
+  const SECOND = "stdio-resume-second-marker";
+  const message = {
+    type: "turn",
+    provider: "openai-compatible",
+    base_url: `https://127.0.0.1:${server.port}/v1`,
+    api_key: KEY,
+    model: "m-1",
+    text: TEXT,
+  };
+  const done = { type: "done", reason: "stop", input_tokens: 11, output_tokens: 3, resend: false };
+  try {
+    const app = launch({ LOG_LEVEL: "debug", NODE_EXTRA_CA_CERTS: ca });
+    apps.push(app);
+    await app.handshake();
+    app.frame(1, "open", { kind: "chat" });
+    app.frame(1, "data", message);
+    expect((await app.next(isChat(1))).body).toEqual({ type: "delta", text: ANSWER });
+    expect((await app.next(isChat(1))).body).toEqual(done);
+    // The state once the text was in the conversation, and the state after the answer.
+    const states = [await app.next(isStateOf(1)), await app.next(isStateOf(1))].map(
+      (frame) => (frame.body as { state: string }).state,
+    );
+    app.frame(1, "close");
+    app.frame(2, "open", { kind: "chat" });
+    app.frame(2, "data", { type: "resume", state: states[1] });
+    expect((await app.next(isChat(2))).body).toEqual({ type: "resumed", resend: false });
+    app.frame(2, "data", { ...message, text: SECOND });
+    expect((await app.next(isChat(2))).body).toEqual({ type: "delta", text: ANSWER });
+    expect((await app.next(isChat(2))).body).toEqual(done);
+    expect(seen).toHaveLength(2);
+    expect(seen[1]!.map((kept) => kept.role)).toEqual(["system", "user", "assistant", "user"]);
+    expect(seen[1]![1]).toEqual(seen[0]![1]);
+    expect(seen[1]![2]!.content).toBe(ANSWER);
+    expect(seen[1]![3]!.content).toMatch(new RegExp(`\\n\\n${SECOND}$`));
+    app.closeInput();
+    expect(await app.exited).toBe(0);
+    const stderr = app.stderr.join("");
+    for (const [n, state] of states.entries()) {
+      expect(stderr).toContain(
+        `debug [core:chat:state] sent channel=1 bytes=${JSON.stringify({ type: "state", state }).length} messages=${n + 1} full=false pending=0\n`,
+      );
+    }
+    expect(stderr).toMatch(
+      new RegExp(
+        `info \\[core:chat:resume\\] success channel=2 provider=openai-compatible messages=2 bytes=${states[1]!.length} fingerprint=same pruned=0 full=false ms=\\d+\\n`,
+      ),
+    );
+    expect(stderr).not.toContain("[core:chat:sdk-warning]");
+    for (const secret of [KEY, TEXT, SECOND, ANSWER]) expect(stderr).not.toContain(secret);
+    for (const state of states) {
+      expect(Buffer.from(state, "base64").toString()).not.toContain(KEY);
+    }
+    expect(JSON.stringify(app.log)).not.toContain(KEY);
+  } finally {
     await server.stop(true);
   }
 });

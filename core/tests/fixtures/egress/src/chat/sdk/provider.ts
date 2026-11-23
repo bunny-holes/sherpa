@@ -4,7 +4,14 @@
 import * as anthropic from "@ai-sdk/anthropic";
 import * as gateway from "@ai-sdk/gateway"; // expect: eslint(no-restricted-imports)
 import * as mcp from "@ai-sdk/mcp"; // expect: eslint(no-restricted-imports)
-import { jsonSchema, tool, type LanguageModel } from "ai";
+import {
+  fingerprintTools,
+  jsonSchema,
+  modelMessageSchema,
+  pruneMessages,
+  tool,
+  type LanguageModel,
+} from "ai";
 import type { ModelMessage } from "ai";
 import { streamText } from "ai"; // expect: eslint(no-restricted-imports)
 import { generateText as generate } from "ai"; // expect: eslint(no-restricted-imports)
@@ -28,7 +35,10 @@ export {
   anthropic,
   gateway,
   mcp,
+  fingerprintTools,
   jsonSchema,
+  modelMessageSchema,
+  pruneMessages,
   tool,
   streamText,
   generate,
