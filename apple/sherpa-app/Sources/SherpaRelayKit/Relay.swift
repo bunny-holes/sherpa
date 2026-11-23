@@ -34,8 +34,12 @@ public enum Relay {
                     remedy: "run sherpa-relay with no arguments"), logger: logger)
         }
         do {
-            let session = try connect(environment: environment, logger: logger)
-            session.copy()
+            switch try connect(environment: environment, logger: logger) {
+            case let .ready(session):
+                session.copy()
+            case let .mcpDisabled(appVersion, failure):
+                MCPDisabledSession.serve(version: appVersion, failure: failure, logger: logger)
+            }
         } catch let failure as RelayFailure {
             fail(failure, logger: logger)
         } catch {
@@ -51,8 +55,13 @@ public enum Relay {
         exit(failure.exit.rawValue)
     }
 
-    /// Path, connect, signature, preface. Returns a session ready to copy.
-    static func connect(environment: [String: String], logger: SherpaLogger) throws -> CopySession {
+    private enum Connection {
+        case ready(CopySession)
+        case mcpDisabled(version: String, failure: RelayFailure)
+    }
+
+    /// Path, connect, signature, preface. Only a verified app can report that MCP is off.
+    private static func connect(environment: [String: String], logger: SherpaLogger) throws -> Connection {
         let location: SocketLocation
         do {
             location = try SocketLocation.resolve(environment: environment)
@@ -105,15 +114,24 @@ public enum Relay {
         }
         logger.debug("relay:signature:check", "status=accepted \(check.logFields)")
 
-        let (reading, leftover) = try readPreface(socket: socket)
+        let (reading, leftover): (PrefaceReading, Data)
+        do {
+            (reading, leftover) = try readPreface(socket: socket)
+        } catch {
+            close(socket)
+            throw error
+        }
         if let failure = RelayExitTable.preface(reading) {
             close(socket)
+            if case let .unavailable(reason, appVersion) = reading, reason == AppPreface.Reason.mcpDisabled.rawValue {
+                return .mcpDisabled(version: appVersion, failure: failure)
+            }
             throw failure
         }
         if case let .ready(appVersion) = reading {
             logger.info("relay:session:open", "socket=\(location.logValue) app_version=\(logToken(appVersion))")
         }
-        return CopySession(socket: socket, leftover: leftover, logger: logger)
+        return .ready(CopySession(socket: socket, leftover: leftover, logger: logger))
     }
 
     /// The app's requirement: the production one, or a DEBUG build's `SHERPA_APP_REQUIREMENT`.

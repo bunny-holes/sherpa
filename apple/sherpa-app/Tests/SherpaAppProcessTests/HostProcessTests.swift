@@ -436,7 +436,7 @@ private let capabilities =
 
     // MARK: the MCP switch (contract §2, §5, §7.6, §9)
 
-    @Test func turnsEveryRelayAwayWhileMCPIsOffAsAtTheFirstLaunch() async throws {
+    @Test func respondsLocallyWhileMCPIsOffAsAtTheFirstLaunch() async throws {
         let rig = try Rig()
         defer { rig.tearDown() }
         let host = try await rig.startHost(mcp: nil)
@@ -445,10 +445,45 @@ private let capabilities =
             try rig.directPreface()
                 == #"{"sherpa_app":1,"status":"refused","reason":"peer_signature","version":"0.9.0"}"#)
         let relay = try rig.startRelay()
+        try relay.write(Data(#"{"jsonrpc":"2.0","id":1,"method":"server/"#.utf8))
+        try relay.send(#"discover"}"#)
+        let discovery = try #require(MCP.object(await relay.line()))
+        let result = try #require(discovery["result"] as? [String: Any])
+        let capabilities = try #require(result["capabilities"] as? [String: Any])
+        #expect(discovery["id"] as? Int == 1)
+        #expect(result["resultType"] as? String == "complete")
+        #expect(result["ttlMs"] as? Int == 0)
+        #expect(result["cacheScope"] as? String == "private")
+        #expect(result["supportedVersions"] as? [String] == ["2026-07-28"])
+        #expect(capabilities["tools"] as? [String: String] == [:])
+        let meta = try #require(result["_meta"] as? [String: [String: String]])
+        #expect(meta["io.modelcontextprotocol/serverInfo"] == ["name": "sherpa", "version": Rig.appVersion])
+
+        try relay.send(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)
+        for id in 2...3 {
+            try relay.send(MCP.call(id, "tools/list"))
+            let reply = try #require(MCP.object(await relay.line()))
+            #expect(reply["id"] as? Int == id)
+            let error = try #require(reply["error"] as? [String: Any])
+            #expect(error["code"] as? Int == -32000)
+            #expect((error["message"] as? String)?.contains("Sherpa.app has MCP turned off: turn on MCP") == true)
+        }
+        try relay.closeInput()
         #expect(await relay.exitStatus() == 75)
         #expect(relay.errorText.contains(#"reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP"#))
         #expect(await host.waitForError("[app:session:open] status=unavailable reason=mcp_disabled"))
         #expect(rig.coreLog.allSatisfy { !$0.hasPrefix("open ") })
+    }
+
+    @Test func stopsReadingAnOversizedLineWhileMCPIsOff() async throws {
+        let rig = try Rig()
+        defer { rig.tearDown() }
+        _ = try await rig.startHost(mcp: false)
+        let relay = try rig.startRelay()
+        try relay.write(Data(repeating: 0x61, count: MuxLimits.data))
+        try relay.write(Data([0x61]))
+        #expect(await relay.exitStatus() == 76)
+        #expect(relay.errorText.contains("reason=message_too_large"))
     }
 
     @Test func servesRelaysOnceMCPIsTurnedOn() async throws {
@@ -456,6 +491,7 @@ private let capabilities =
         defer { rig.tearDown() }
         let host = try await rig.startHost(mcp: false)
         let refused = try rig.startRelay()
+        try refused.closeInput()
         #expect(await refused.exitStatus() == 75)
         #expect(refused.errorText.contains("app_reason=mcp_disabled"))
 
@@ -491,6 +527,10 @@ private let capabilities =
                 lines.contains("close 1 reason=mcp_disabled") && lines.contains("close 2 reason=mcp_disabled")
             })
         let late = try rig.startRelay()
+        try late.send(MCP.call(3, "tools/list"))
+        let reply = try #require(MCP.object(await late.line()))
+        #expect((reply["error"] as? [String: Any])?["code"] as? Int == -32000)
+        try late.closeInput()
         #expect(await late.exitStatus() == 75)
         #expect(late.errorText.contains("app_reason=mcp_disabled"))
 
