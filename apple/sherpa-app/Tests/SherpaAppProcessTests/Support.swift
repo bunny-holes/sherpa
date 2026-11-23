@@ -311,6 +311,7 @@ final class Rig: @unchecked Sendable {
         _ arguments: [String] = [],
         mcp: Bool? = true,
         core: String? = nil,
+        version: String = Rig.appVersion,
         relayRequirement: String? = Program.relay.testRequirement,
         coreRequirement: String? = Program.core.testRequirement,
         listening: Bool = true
@@ -322,7 +323,7 @@ final class Rig: @unchecked Sendable {
         if let coreRequirement { environment["SHERPA_CORE_REQUIREMENT"] = coreRequirement }
         let switchArguments = mcp.map { ["--mcp", $0 ? "on" : "off"] } ?? []
         let host = try launch(
-            try Program.host.path, ["--version", Self.appVersion] + switchArguments + arguments, environment)
+            try Program.host.path, ["--version", version] + switchArguments + arguments, environment)
         if listening, !(await host.waitForError("[app:socket:listen] status=listening")) {
             throw ProcessTestError("the host did not listen: \(host.errorText)")
         }

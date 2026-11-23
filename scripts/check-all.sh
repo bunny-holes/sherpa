@@ -228,6 +228,12 @@ printf '%s' "$raw" | grep -Eq '^sherpa [0-9]+\.[0-9]+\.[0-9]+$' \
   || fail "reason=version_format_broken output=$raw"
 cli_version="$(printf '%s' "$raw" | awk '{print $2}')"
 
+log info "check:app-core:start" "sessions=3"
+SHERPA_INTEGRATION_CORE="$binary" SHERPA_INTEGRATION_VERSION="$cli_version" \
+  swift test --skip-build --package-path "$APP_PACKAGE" --filter servesThreeConcurrentMCPClientsThroughTheBuiltCore \
+  || fail "reason=app_core_integration_failed"
+log info "check:app-core:success" "sessions=3"
+
 [ "$("$SHERPA_APPLE_BIN" --version)" = "sherpa-apple $cli_version" ] \
   || fail "reason=helper_version_mismatch cli=$cli_version"
 

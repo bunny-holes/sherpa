@@ -2130,9 +2130,9 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 
 ### 13.3 두 작업이 합쳐진 뒤
 
-- DEBUG 앱, 빌드한 코어, 중계(시험 요건)로 세 세션이 동시에 `server/discover`, `tools/list`, 읽기 호출을 한다.
-  나중에 병합되는 쪽이 게이트에 더한다. [계약] 2026-11-22 에 이 시험이 게이트에 없음을 확인했다. 앱의 프로세스 시험은
-  가짜 코어(`sherpa-fake-core`)만 띄운다. [실측: `apple/sherpa-app/Tests/SherpaAppProcessTests/Support.swift`]
+- 게이트는 배포 방식으로 코어를 빌드한 뒤, DEBUG 앱 시험 호스트와 중계(시험 서명 요건)를 연결한다. 세 세션이 동시에
+  `server/discover`, `tools/list`, `reminder_authorization_status` 를 호출한다. 시험은 모든 요청의 응답 ID,
+  도구 목록과 읽기 성공, 서로 다른 작업 ID, 정상 종료를 확인한다. 접근 승인 상태의 값은 Mac 의 설정에 맡긴다. [계약]
 
 ### 13.4 소유자 실기
 
