@@ -98,10 +98,15 @@ func runTool(_ path: String, _ arguments: [String]) -> Int32 {
     var actions: posix_spawn_file_actions_t?
     posix_spawn_file_actions_init(&actions)
     defer { posix_spawn_file_actions_destroy(&actions) }
+    posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0)
     posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0)
     posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0)
+    var attributes: posix_spawnattr_t?
+    posix_spawnattr_init(&attributes)
+    defer { posix_spawnattr_destroy(&attributes) }
+    posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT))
     var pid: pid_t = 0
-    guard posix_spawn(&pid, path, &actions, nil, argv, environ) == 0 else { return -1 }
+    guard posix_spawn(&pid, path, &actions, &attributes, argv, environ) == 0 else { return -1 }
     var status: Int32 = 0
     while waitpid(pid, &status, 0) == -1, errno == EINTR {}
     let signal = status & 0x7f
@@ -364,6 +369,7 @@ final class Rig: @unchecked Sendable {
         try makeRunDirectory()
         guard var address = unixSocketAddress(socket) else { throw ProcessTestError("socket path too long") }
         let descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC)
         defer { close(descriptor) }
         let bound = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -377,6 +383,7 @@ final class Rig: @unchecked Sendable {
     func directPreface() throws -> String {
         guard var address = unixSocketAddress(socket) else { throw ProcessTestError("socket path too long") }
         let descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC)
         defer { close(descriptor) }
         var timeout = timeval(tv_sec: 10, tv_usec: 0)
         setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))

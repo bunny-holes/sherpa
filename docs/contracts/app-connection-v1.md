@@ -297,6 +297,13 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   동시 3개, 8분 동안 연이어 48개다. [실측]
 - 소켓과 파이프를 읽는 루프는 반복마다 autorelease 풀을 비운다. 시험 빌드의 첫 20분 실행에서 풀 없는 읽기
   스레드가 호스트를 약 78 MB 키웠고, 풀을 넣은 뒤에는 8분 동안 5.2 MB 로 고정됐다. [실측]
+- 자식 프로세스와 `CLOEXEC`: `Sherpa.app` 은 코어(`CoreProcess.spawn`, `POSIX_SPAWN_CLOEXEC_DEFAULT`) 밖에는
+  프로세스 안에서 자식을 띄우지 않는다(`App/Permissions.swift` 의 설정·대상 앱 열기는 LaunchServices XPC 인
+  `NSWorkspace` 이고, `SherpaAppPlanner` 는 같은 프로세스 안의 EventKit 호출이다). macOS 는 `pipe(2)`·
+  `socket(2)`·`accept(2)` 에 원자적 `CLOEXEC` 이 없어 `fcntl(F_SETFD, FD_CLOEXEC)` 앞의 짧은 틈이 남는다.
+  앞으로 앱에 자식 실행을 더할 때는 기본 속성의 `posix_spawn` 이나 직접 `fork` 를 쓰지 않고 반드시
+  `POSIX_SPAWN_CLOEXEC_DEFAULT` 와 필요한 파일 동작만 지정한다. [계약; 코드 확인: `apple/sherpa-app/Sources/`,
+  `apple/sherpa-app/App/`, bunny-holes/sherpa#83]
 
 ## 4. 서명 확인
 
