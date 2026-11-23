@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import SherpaAppConnection
 import Testing
 
 // The DEBUG test host (Sherpa.app's server without its menu) with signed relays and the fake

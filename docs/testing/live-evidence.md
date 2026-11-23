@@ -33,6 +33,13 @@ the built relay. No model was called.
   result`. Adding private, noncacheable discovery fields made the same client
   show the `-32000` remedy. The DEBUG process test pins these fields and the
   signed app version. The remedy has no semicolon.
+- A second run started the same host with `--mcp on` and sent `mcp off`
+  over the test-host control pipe after each client had connected. The app
+  logged one closed session for each switch. Claude Code's `/mcp` page
+  showed `failed` for the previously connected session, with no reason.
+  Codex's next `mcpServerStatus/list` opened a new connection and returned
+  the c3 remedy. That status request did not demonstrate recovery of the
+  thread's previously connected session.
 
 ## 2026-11-23 — Large relay frames no longer accumulate in the app's allocator cache (bunny-holes/sherpa#46)
 
