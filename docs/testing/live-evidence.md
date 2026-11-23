@@ -9,6 +9,38 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-23 — The relay's c3 response reaches both MCP clients (bunny-holes/sherpa#111)
+
+This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52, Swift 6.4.2), with Claude
+Code 2.1.330 and Codex 0.171.0. `swift build --package-path apple/sherpa-app`
+built the DEBUG app test host and relay. Both and the Bun 1.4.5 core built
+from `5ae73fb` were ad-hoc signed for a private test socket. The host started
+with `--mcp off`. The two clients used scratch configuration directories and
+the built relay. No model was called.
+
+- Codex ran `app-server` with the MCP 2026 feature and the server's version
+  environment option enabled. An ephemeral thread reported `failed` in
+  `mcpServer/startupStatus/updated`. Both its error and
+  `mcpServerStatus/list`'s `toolsError` carried `-32000`, the remedy in the
+  message, and `reason: mcp_disabled` in the error data.
+- Claude Code loaded the server from a scratch plugin in an interactive
+  terminal. The debug log recorded a modern 2026-07-28 connection and four
+  failed `tools/list` requests. The `/mcp` server page showed
+  `connected · couldn't load tools` and the off message with its remedy.
+  The scratch profile contained no MCP failure-cache file after exit.
+- Corrected path: a discovery response without `ttlMs` and `cacheScope`
+  led Codex to report a handshake error containing `expect initialized
+  result`. Adding private, noncacheable discovery fields made the same client
+  show the `-32000` remedy. The DEBUG process test pins these fields and the
+  signed app version. The remedy has no semicolon.
+- A second run started the same host with `--mcp on` and sent `mcp off`
+  over the test-host control pipe after each client had connected. The app
+  logged one closed session for each switch. Claude Code's `/mcp` page
+  showed `failed` for the previously connected session, with no reason.
+  Codex's next `mcpServerStatus/list` opened a new connection and returned
+  the c3 remedy. That status request did not demonstrate recovery of the
+  thread's previously connected session.
+
 ## 2026-11-23 — Large relay frames no longer accumulate in the app's allocator cache (bunny-holes/sherpa#46)
 
 This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52, Apple Swift 6.4.2).

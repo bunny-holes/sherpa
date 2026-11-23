@@ -51,7 +51,7 @@ public struct AppPreface: Equatable, Sendable {
 public enum PrefaceReading: Equatable, Sendable {
     case ready(version: String)
     case refused(reason: String)
-    case unavailable(reason: String)
+    case unavailable(reason: String, version: String)
     /// Not JSON, not the four keys, or `sherpa_app` is not 1.
     case invalid(PrefaceDefect)
 }
@@ -84,7 +84,7 @@ public extension AppPreface {
         case let ("refused", .string(reason)?) where isReasonCode(reason):
             return .refused(reason: reason)
         case let ("unavailable", .string(reason)?) where isReasonCode(reason):
-            return .unavailable(reason: reason)
+            return .unavailable(reason: reason, version: version)
         default:
             return .invalid(.wrongShape)
         }

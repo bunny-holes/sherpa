@@ -386,6 +386,13 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   요건을 인자로 받았다. 이 계약은 둘을 중계 안에 고정한다(§2). [계약]
 - 흐름: 경로 계산 → connect → 서명 확인 → 머리말 → 양방향 복사. 복사는 MCP 를 해석하지 않고 64 KiB 단위로
   읽는다. [실측: 시험 빌드의 동작과 버퍼 크기]
+- 서명을 확인한 앱이 `unavailable`·`mcp_disabled` 를 보내면 중계는 소켓을 닫고 표준 입출력에 직접 답한다(#111).
+  `server/discover` 에는 `supportedVersions: ["2026-07-28"]`, `capabilities: {"tools":{}}`, 앱 머리말의 버전으로
+  지은 `serverInfo`, `resultType: "complete"`, `ttlMs: 0`, `cacheScope: "private"` 를 보낸다. 그 밖의 요청에는 원래
+  ID 를 단 JSON-RPC 오류 `-32000`, message `Sherpa.app has MCP turned off: <remedy>`, data
+  `{"reason":"mcp_disabled","remedy":"<remedy>"}` 를 보낸다. ID 없는 알림이나 읽을 수 없는 줄은 버린다. 줄은 LF
+  전까지 4 MiB 이고, 넘으면 76 으로 끝난다. 표준 입력 EOF 에는 75 로 끝난다. 새 연결은 스위치를 다시 읽는다.
+  [계약; [MCP Discovery](https://modelcontextprotocol.io/specification/2026-07-28/server/discover)]
 - 표준 입력이 EOF 가 되면 소켓의 쓰기 쪽을 닫고(`shutdown(SHUT_WR)`), 소켓이 EOF 가 될 때까지 읽어 옮긴 뒤 0
   으로 끝난다. [실측]
 - 표준 입력이 열린 채 소켓이 EOF 가 되면 앱이 세션을 끝낸 것이다. 75 로 끝난다. [계약]
@@ -406,8 +413,8 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
 | 69 | `EX_UNAVAILABLE` | 앱이 떠 있지 않다. 소켓이 없다(`ENOENT`) 또는 거부됐다(`ECONNREFUSED`) | 실측 |
 | 70 | `EX_SOFTWARE` | 중계 내부 오류 | 계약 |
 | 74 | `EX_IOERR` | 소켓이나 표준 입출력의 EOF·`EPIPE` 아닌 입출력 오류 | 계약 |
-| 75 | `EX_TEMPFAIL` | 앱은 있지만 세션을 열 수 없거나 앱이 세션을 끝냈다. 머리말 `unavailable`(MCP 가 꺼진 `mcp_disabled` 포함), 머리말 15초 초과, 입력이 열린 채 소켓 EOF(MCP 를 끄거나 코어가 끝나 앱이 닫음) | 계약 |
-| 76 | `EX_PROTOCOL` | 머리말이 없거나 JSON 이 아니거나 `sherpa_app` 이 1 이 아니다 | 계약 |
+| 75 | `EX_TEMPFAIL` | 머리말 `unavailable`(MCP 가 꺼진 때는 표준 입력 EOF 에 종료), 머리말 15초 초과, 입력이 열린 채 소켓 EOF(MCP 를 끄거나 코어가 끝나 앱이 닫음) | 계약 |
+| 76 | `EX_PROTOCOL` | 머리말이 없거나 JSON 이 아니거나 `sherpa_app` 이 1 이 아니다. MCP 가 꺼진 때는 입력 줄 4 MiB 초과도 포함한다 | 계약 |
 | 77 | `EX_NOPERM` | 앱 서명이 요건에 맞지 않는다. 또는 앱이 이 중계를 거부했다(머리말 `refused`) | 앞은 실측, 뒤는 계약 |
 | 78 | `EX_CONFIG` | 소켓 경로가 103 바이트를 넘는다 | 계약 |
 
@@ -417,11 +424,11 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   줄을 반드시 쓰고 `reason` 과 사람이 할 일 `remedy` 를 단다. 예:
   `error [relay:socket:connect] reason=app_not_running remedy="start Sherpa.app"`. [계약] 시험 빌드는
   `app_not_running` 과 `server_signature_rejected` 를 썼다. [실측]
-- MCP 가 꺼진 앱에 붙으면 75 로 끝나며 이 줄을 쓴다:
-  `error [relay:preface:read] reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP in Sherpa.app, then reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)"`.
+- MCP 가 꺼진 앱에 붙은 중계는 표준 입력 EOF 에 이 줄을 쓰고 75 로 끝난다.
+  `error [relay:preface:read] reason=app_unavailable app_reason=mcp_disabled remedy="turn on MCP in Sherpa.app, then reconnect the server (Claude Code: use Reconnect in /mcp. Codex: start a new session.)"`.
   켜진 채 연결된 중계는 사람이 MCP 를 끄면 75 로 끝나며 아래 줄을 쓴다. 중계는 앱이 왜 닫았는지 모르므로 MCP 를 끈
   경우를 먼저 적는다:
-  `error [relay:session:copy] reason=app_closed_session remedy="if you turned MCP off in Sherpa.app, turn it on first; then reconnect the server (Claude Code: /mcp, then Reconnect; Codex: start a new session)"`.
+  `error [relay:session:copy] reason=app_closed_session remedy="if you turned MCP off in Sherpa.app, turn it on first, then reconnect the server (Claude Code: use Reconnect in /mcp. Codex: start a new session.)"`.
   모르는 사유의 `remedy` 는 `restart Sherpa.app, then reconnect` 다. [계약]
 - 다시 붙는 법은 에이전트가 앞선 실패를 기억하든 아니든 맞게 적는다. Claude Code 는 `/mcp` 의 Reconnect, Codex 는 새
   세션이다. 앱의 연결 방법(§2)도 같다. [계약]
@@ -430,7 +437,7 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   다시 붙지 않으며, `/mcp` 의 Reconnect 로 붙는다. 그 서버 페이지에는 `Issue`·`Log` 가 없고, 디버그 로그와 서버의
   MCP 로그에도 중계의 줄과 닫힘이 남지 않는다. 그래서 Claude Code 에서는 이 remedy 가 사람에게 보이지 않는다.
   [실측: live-evidence 2026-11-22 "The Mux 2 bundle"]
-- MCP 가 꺼진 앱(75)이나 떠 있지 않은 앱(69)에서 중계가 끝나면 Claude Code 2.1.326 과 2.1.330 대화형은 그 시도 안에서
+- 앱이 떠 있지 않아 중계가 69 로 끝나면 Claude Code 2.1.326 과 2.1.330 대화형은 그 시도 안에서
   서버를 옛 규격으로 고정해 한 번 다시 띄운다. 다시 띄운 중계는 `initialize`(2025-11-25)를 받고 같은 이유로 끝난다.
   플러그인 범위, 사용자 범위, `--mcp-config` 동적 서버가 같았다(2.1.330 은 앞의 두 범위만 쟀다). 로그는 다음 순서다.
   [실측: live-evidence 2026-11-22 "Claude Code against a relay turned away", "Claude Code and Codex after a relay that
@@ -438,7 +445,7 @@ env = { CODEX_MCP_PROTOCOL_VERSION = "2026-07-28" }
   - `version negotiation probe closed the stdio server (rmcp-class pre-init hard close); respawning pinned legacy`
   - 중계의 줄을 담은 `Server stderr:`
   - `Connection failed (CONNECTION_CLOSED)`
-- 그 고정은 그 시도로 끝난다. 75·69 뒤에 Claude Code 는 7일 생략의 기억(설정 폴더의
+- 그 고정은 그 시도로 끝난다. 69 뒤에 Claude Code 는 7일 생략의 기억(설정 폴더의
   `state/mcp-discover-verdicts.json`)을 남기지 않았고, 다음 시도는 다시 `server/discover` 부터 물었다. 플러그인 범위는
   실패를 15분 실패 캐시(`mcp-needs-auth-cache.json`)에 적어 그동안 새 세션이 서버를 띄우지 않는다(§2). 사용자 범위와
   동적 서버는 적지 않았다. MCP 를 켠 뒤에는 `/mcp` 의 Reconnect(서버 페이지의 메뉴와 `/mcp reconnect <서버>`)와 새
@@ -2089,7 +2096,8 @@ stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). �
   멈추지 않음, 16개 초과 거부, 확인 요청에 시험용 결정기로 답함(결정기는 채널 번호와 그 종류 `mcp` 를 받는다).
 - MCP 스위치(§2, §5, §7.6, §9): 시험 호스트는 `--mcp on|off` 로 시작하고, 없으면 앱의 첫 실행처럼 꺼진 채
   시작한다. 표준 입력의 `mcp on`·`mcp off` 한 줄이 앱의 스위치처럼 바꾼다. 꺼진 호스트에서 직접 연결은 여전히
-  `peer_signature` 이고, 중계는 75·`mcp_disabled` 로 끝나며 코어에 `open` 이 가지 않음. 켜면 같은 호스트가 중계에
+  `peer_signature` 이고, 중계는 §6 의 discovery 및 `-32000` 으로 답하며 코어에 `open` 이 가지 않음. 중계는 표준
+  입력 EOF 에 75 로 끝남. 단위 시험은 remedy 에 세미콜론이 없음과 알림에 응답하지 않음을 본다. 켜면 같은 호스트가 중계에
   채널을 엶. 켜진 채 끄면 열린 중계 둘이 75(`app_closed_session`), 코어가 `mcp` 채널마다 `close`
   `{"reason":"mcp_disabled"}` 를 받고, 떠 있던 `mcp` 채널의 확인 창이 그 `id` 로 닫히며(한꺼번에 거두지 않는다), 새
   중계는 `mcp_disabled`. 다시 켜면 같은 코어의 다음 채널. 끈 뒤 도착한 확인 요청은 창 없이 `unavailable`
@@ -2235,7 +2243,7 @@ DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TES
 ```text
 {"sherpa_app":1,"status":"ready","reason":null,"version":"0.9.0"}\n                 이어서 옮긴다
 {"sherpa_app":1,"status":"unavailable","reason":"core_starting","version":"0.9.0"}\n 75
-{"sherpa_app":1,"status":"unavailable","reason":"mcp_disabled","version":"0.9.0"}\n  75
+{"sherpa_app":1,"status":"unavailable","reason":"mcp_disabled","version":"0.9.0"}\n  §6 의 로컬 응답, 입력 EOF 에 75
 {"sherpa_app":1,"status":"refused","reason":"peer_signature","version":"0.9.0"}\n    77
 {"sherpa_app":2,"status":"ready","reason":null,"version":"9.0.0"}\n                 76
 not json\n                                                                           76
@@ -2267,10 +2275,8 @@ not json\n                                                                      
 - Claude Code 가 기능 플래그로 서버를 옛 규격에 두어 2025-11-25 `initialize` 로 붙고 거부되는 일(ADR-0011 의 위험). 7일
   생략은 2026-11-22 에 답도 종료도 없는 시험 서버에서만 일어났고, 켜진 앱에서는 그 연결 안에서 풀렸다(§6). Codex 가
   2025-06-18 로 내려가는 조건도 시험 서버로 쟀다(ADR-0011 의 위험). 설치한 `sherpa` 항목으로는 재지 않았다.
-- MCP 가 꺼졌거나 앱이 없을 때 remedy 를 두 에이전트의 화면에 보이는 응답 모양. 지금은 둘 다 연결이 닫혔다고만
-  보인다(§6). 시험 서버로 잰 세 후보는 live-evidence 2026-11-22 "Claude Code and Codex after a relay that ended" 에,
-  Claude Code 2.1.330 의 서버 페이지·Reconnect·모델 알림으로 다시 잰 것은 "Claude Code 2.1.330 after a relay that ended"
-  에 있다. 켜진 채 끈 뒤에는 Claude Code 가 그 줄조차 남기지 않는다(§6).
+- #111 의 응답을 배포 번들로 설치한 뒤 두 에이전트에서 다시 연결하는 실기. 앱이 떠 있지 않을 때는 69 로 끝나며, 연결이
+  열린 뒤 끄면 75 로 끝난다. Claude Code 가 열린 세션의 종료 이유를 화면에서 보이는 경로는 여전히 확인 전이다(#84).
 - Codex 가 같은 세션 안에서 실패한 서버를 다시 띄우는 길. app-server 에 `config/mcpServer/reload` 가 있으나 부르지
   않았다.
 - 이 Mac 의 선 위에서 Claude Code 와 Codex 가 2026-07-28 봉투의 `clientCapabilities` 에 선언하는 elicitation(Claude
