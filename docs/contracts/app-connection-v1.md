@@ -638,6 +638,9 @@ body    = 1*(%x00-09 / %x0B-FF)       ; LF 없는 UTF-8 JSON 값 하나
   `{"reason":"slow_consumer"}` 로 끝낸다. 한 에이전트가 읽지 않아도 다른 채널이 멈추지 않는다. [계약]
 - 앱에서 코어 입력으로 가는 대기열이 16 MiB 를 넘으면 앱은 중계 소켓 읽기를 멈추고, 줄어들면 다시 읽는다. 소켓
   버퍼가 에이전트에게 압력을 되돌린다. [계약]
+- 앱이 코어 파이프와 중계 소켓에서 모으는 줄은 64 KiB 를 넘으면 익명 메모리 매핑으로 옮긴다. 본문을 대기열로
+  넘길 때 매핑을 함께 넘기고 마지막 참조가 사라지면 `munmap` 한다. 대기열은 머리, 본문, 끝 바이트를 이어서
+  쓰므로 큰 본문을 합친 두 번째 버퍼를 만들지 않는다. 대기열 한도에는 모든 조각의 바이트가 들어간다. [계약]
 
 ### 7.8 코어가 끝나거나 다시 뜰 때
 
@@ -2117,6 +2120,13 @@ stdio 시험(`core/tests/stdio/**`, `bun run build` 뒤 `bun run test:stdio`). �
 DEBUG 빌드만 읽는 시험용 변수: 앱은 `SHERPA_APP_SOCKET`, `SHERPA_TEST_CORE_BIN`, `SHERPA_RELAY_REQUIREMENT`,
 `SHERPA_CORE_REQUIREMENT`, 중계는 `SHERPA_APP_SOCKET`, `SHERPA_APP_REQUIREMENT`. 릴리스 빌드에는 컴파일되지
 않는다. 코어 요건을 바꿀 수 있어야 게이트에서 ad-hoc 서명한 가짜 코어를 띄울 수 있다. [계약]
+
+- 큰 줄 시험은 DEBUG 호스트, 중계, 가짜 코어로 4,000,000 바이트 내용을 양방향으로 보내고, 여러 조각으로 쓴
+  응답의 바이트와 순서를 확인한다. 단위 시험은 매핑 전환과 복사 분리, 한 줄 한도와 쓰기 뒤 본문 해제를 확인한다.
+  이 경로의 버퍼 보관을 바꿀 때는 가짜 코어의 `flood` 로 세션마다 4,000,000 바이트 본문 두 개를 읽고 연결을
+  닫는다. 30개를 마친 유휴 앱의 `vmmap -summary` 에서 처음보다 physical footprint 가 8 MiB 이내로
+  늘고, 그 세션에 해당하는 `Malloc Large (empty)` 누적이 없는지 확인한다. [계약; 실측:
+  live-evidence 2026-11-23 "Large relay frames no longer accumulate in the app's allocator cache"]
 
 ### 13.3 두 작업이 합쳐진 뒤
 

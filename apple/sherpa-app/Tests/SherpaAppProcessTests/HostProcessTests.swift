@@ -254,6 +254,29 @@ private let capabilities =
         #expect(relay.errorText.contains("app_reason=core_starting"))
     }
 
+    @Test func movesMultiMegabyteLinesInBothDirections() async throws {
+        let rig = try Rig()
+        defer { rig.tearDown() }
+        _ = try await rig.startHost()
+        let relay = try rig.startRelay()
+
+        let filler = String(repeating: "x", count: 4_000_000)
+        let echo = MCP.call(1, "echo", #"{"fill":"\#(filler)"}"#)
+        try relay.send(echo)
+        let reply = try #require(await relay.line())
+        #expect(reply.contains(#""channel":1"#))
+        #expect(await rig.waitForCoreLog { $0.contains("data 1 method=echo bytes=\(echo.utf8.count)") })
+
+        try relay.send(MCP.call(2, "flood", #"{"frames":2,"bytes":4000000}"#))
+        for index in 0..<2 {
+            let expected =
+                #"{"jsonrpc":"2.0","method":"flood","params":{"index":\#(index),"fill":"\#(filler)"}}"#
+            #expect(await relay.line() == expected)
+        }
+        try relay.closeInput()
+        #expect(await relay.exitStatus() == 0)
+    }
+
     @Test func closesASlowConsumerWithoutStallingTheOthers() async throws {
         let rig = try Rig()
         defer { rig.tearDown() }

@@ -320,4 +320,17 @@ public extension WorkerOutput {
         body.append(0x7d)
         return body
     }
+
+    /// The complete `0	response	{"id":N,…}\n` frame split into prefix, payload, and suffix
+    /// so an 8 MiB planner response is written without copying it into a second buffer.
+    func responseFrameParts(id: UInt64) -> [Data] {
+        switch self {
+        case let .response(data):
+            precondition(!data.contains(0x0a), "a frame body never holds a line feed")
+            return [Data("0\tresponse\t{\"id\":\(id),\"response\":".utf8), data, Data("}\n".utf8)]
+        case let .report(data):
+            precondition(!data.contains(0x0a), "a frame body never holds a line feed")
+            return [Data("0\tresponse\t{\"id\":\(id),\"report\":".utf8), data, Data("}\n".utf8)]
+        }
+    }
 }

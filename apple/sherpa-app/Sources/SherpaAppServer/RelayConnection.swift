@@ -49,6 +49,11 @@ final class RelayConnection: @unchecked Sendable {
         outbox?.enqueue(bytes) ?? false
     }
 
+    /// Writes `parts` back-to-back without concatenating them into a new buffer.
+    func send(_ parts: [Data]) -> Bool {
+        outbox?.enqueue(parts) ?? false
+    }
+
     /// Writes what is queued, then ends both directions; the relay reads end of file.
     func closeAfterFlush() {
         guard let outbox else {
@@ -82,7 +87,7 @@ final class RelayConnection: @unchecked Sendable {
         ended: @escaping @Sendable (_ errno: Int32?) -> Void
     ) {
         Thread.detachNewThread { [self] in
-            var pending = Data()
+            var pending = LineBuffer()
             var buffer = [UInt8](repeating: 0, count: Self.readBytes)
             readLoop: while true {
                 waitForCapacity()
@@ -94,21 +99,34 @@ final class RelayConnection: @unchecked Sendable {
                     var start = 0
                     while start < count {
                         if let feed = buffer[start..<count].firstIndex(of: 0x0a) {
-                            pending.append(contentsOf: buffer[start..<feed])
-                            if pending.count > MuxLimits.data {
+                            let pieceCount = feed - start
+                            if pending.count + pieceCount > MuxLimits.data {
+                                pending.reset()
                                 tooLarge()
                                 break readLoop
                             }
-                            if !pending.isEmpty { line(pending) }
-                            pending = Data()
+                            if pieceCount > 0 {
+                                buffer.withUnsafeBytes { raw in
+                                    pending.append(UnsafeRawBufferPointer(rebasing: raw[start..<feed]))
+                                }
+                            }
+                            if !pending.isEmpty {
+                                line(pending.takeData())
+                            } else {
+                                pending.reset()
+                            }
                             start = feed + 1
                         } else {
-                            pending.append(contentsOf: buffer[start..<count])
-                            start = count
-                            if pending.count > MuxLimits.data {
+                            let pieceCount = count - start
+                            if pending.count + pieceCount > MuxLimits.data {
+                                pending.reset()
                                 tooLarge()
                                 break readLoop
                             }
+                            buffer.withUnsafeBytes { raw in
+                                pending.append(UnsafeRawBufferPointer(rebasing: raw[start..<count]))
+                            }
+                            start = count
                         }
                     }
                 case .endOfFile:
@@ -119,6 +137,7 @@ final class RelayConnection: @unchecked Sendable {
                     break readLoop
                 }
             }
+            pending.reset()
             release()
         }
     }

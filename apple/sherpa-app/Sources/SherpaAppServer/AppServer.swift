@@ -425,9 +425,7 @@ public final class AppServer: @unchecked Sendable {
                     return nil
                 }
                 logger.debug("app:mux:route", "channel=\(frame.channel) type=data bytes=\(body.count)")
-                var line = body
-                line.append(0x0a)
-                if !connection.send(line) {
+                if !connection.send([body, Data([0x0a])]) {
                     channels[frame.channel] = nil
                     connections[connection.id] = nil
                     status.sessions = connections.count
@@ -462,7 +460,7 @@ public final class AppServer: @unchecked Sendable {
             }
             if shuttingDown {
                 // Not started: the app is ending (§7.10).
-                process.send(MuxFrame(channel: 0, type: "response", body: workers.refuse(job).frameBody(id: job.id)))
+                process.send(workers.refuse(job).responseFrameParts(id: job.id))
             } else {
                 workers.enqueue(job)
             }
@@ -592,7 +590,7 @@ public final class AppServer: @unchecked Sendable {
             logger.warn("app:worker:response", "id=\(job.id) status=dropped reason=core_gone")
             return
         }
-        core.send(MuxFrame(channel: 0, type: "response", body: output.frameBody(id: job.id)))
+        core.send(output.responseFrameParts(id: job.id))
     }
 
     // MARK: relays

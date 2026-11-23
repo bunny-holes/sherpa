@@ -9,6 +9,34 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-23 — Large relay frames no longer accumulate in the app's allocator cache (bunny-holes/sherpa#46)
+
+This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52, Apple Swift 6.4.2).
+Built `5ae73fb` and the mmap change with `swift build --package-path apple/sherpa-app`.
+The DEBUG host, relay and fake core were ad-hoc signed with their production
+identifiers and run on a temporary socket as in §13.2. Each relay requested two
+`flood` notifications, verified both payloads and their order, then closed stdin
+and exited 0. Measured only the host with `vmmap -summary PID`, after it logged
+zero open sessions.
+
+| Two 4,000,000-byte payloads per session | Start | 5 | 30 | 120 | 240 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Baseline | 2928K | 45.8M | 238.7M | 255.3M | 255.3M |
+| Baseline with `MallocLargeCache=0` | 2880K | 3072K | 3200K | — | — |
+| Mapped frames, default allocator settings | 2880K | 3504K | 3760K | 3920K | — |
+
+The baseline's empty large malloc regions rose to 245.0M resident across 444
+regions by session 60 and stayed at that count through session 240. The mapped
+run had no empty large malloc regions at the sampled idle points. A second
+workload with two 1 MiB payloads per session ended at 17.5M after 120 sessions
+on the baseline and 4000K with mapped frames. These are synthetic MCP payloads.
+The test did not measure a live tool result size distribution or
+`MallocLargeCache=0` under LaunchServices with hardened runtime.
+
+The gate exercises fragmented multi-megabyte lines in both directions with the
+DEBUG host and byte-for-byte checks the two forwarded results. Contract §13.2
+also requires the footprint probe when app frame buffering changes.
+
 ## 2026-11-22 — Bun's fetch idle timeout against a loopback server that goes quiet (bunny-holes/sherpa#66)
 
 This Mac (macOS 27.3 26C5035r, Bun 1.4.5), run by the bunny-holes/sherpa#66
