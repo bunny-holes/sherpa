@@ -1,8 +1,10 @@
 ---
-id: ROADMAP-SHERPA
-title: Sherpa Core Roadmap
-status: active
-owner: maintainer
+uuid: 38b1feb3-a50f-4509-8f70-ce32cd9324e8
+type: guide
+audience: "Sherpa 단계별 구현 순서와 완료 기준을 확인하는 유지보수자와 에이전트"
+goal: "결정적 게이트와 실기 게이트를 기준으로 현재 로드맵을 파악하게 한다"
+tone: "기술 영문 로드맵"
+manner: "단계와 완료 모델만 적고 세부 실행 상태는 HANDOFF.md에 둔다"
 ---
 
 # Sherpa Core Roadmap

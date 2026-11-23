@@ -1,8 +1,10 @@
 ---
-id: TEST-HEXAGONAL-MODULARIZATION
-title: Hexagonal Modularization Test Plan
-status: superseded
-owner: maintainer
+uuid: e005013b-fdcc-418b-b90d-67680b5b5297
+type: spec
+audience: "과거 cargo xtask 기반 모듈화 테스트 계획 이력을 확인하는 사람"
+goal: "scripts/check-all.sh로 대체된 옛 테스트 계획 기록을 보존한다"
+tone: "기술 영문 문서에 한국어 대체 안내를 얹는다"
+manner: "원문을 보존하고 대체 사실을 상단 인용으로 남긴다"
 ---
 
 # Hexagonal Modularization Test Plan

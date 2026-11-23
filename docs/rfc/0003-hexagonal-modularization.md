@@ -1,8 +1,10 @@
 ---
-id: RFC-0003
-title: Incremental Hexagonal Modularization
-status: superseded
-owner: maintainer
+uuid: d67d80a6-f139-4688-bc94-7b2c0dab6eaa
+type: spec
+audience: "과거 Rust 크레이트 모듈화 기준의 이력을 확인하는 사람"
+goal: "런타임 전환으로 대체된 헥사고날 모듈화 RFC 기록을 보존한다"
+tone: "기술 영문 RFC에 한국어 대체 안내를 얹는다"
+manner: "원문을 보존하고 대체 사실을 상단 인용으로 남긴다"
 ---
 
 # Incremental Hexagonal Modularization

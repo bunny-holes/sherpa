@@ -1,8 +1,10 @@
 ---
-id: CONTRACT-DOMAIN-LANGUAGE-V1
-title: Sherpa Domain Language Contract
-status: approved
-owner: maintainer
+uuid: 45612729-64b2-4e74-87a4-bf0c65087f0a
+type: spec
+audience: "Sherpa 공개 인터페이스와 워커 계약의 용어를 맞추는 유지보수자와 에이전트"
+goal: "공개·워커 경계에서 쓰는 표준 도메인 어휘를 통일한다"
+tone: "규범적 영문 계약"
+manner: "표준 용어와 경계 의미를 간결히 정의한다"
 ---
 
 # Sherpa Domain Language Contract

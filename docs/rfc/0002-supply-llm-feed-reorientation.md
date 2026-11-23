@@ -1,8 +1,10 @@
 ---
-id: RFC-0002
-title: Reorient Supply from a Canonical Crawler to an LLM Evidence Feed
-status: superseded
-owner: maintainer
+uuid: 9847bd67-6b3f-42f8-a173-899eae19111f
+type: spec
+audience: "제거된 Supply 재정향 제안의 이력을 확인하는 사람"
+goal: "Supply 기능 제거로 대체된 RFC-0002 기록을 보존한다"
+tone: "기술 영문 RFC에 한국어 대체 안내를 얹는다"
+manner: "원문을 보존하고 대체 사실을 상단 인용으로 남긴다"
 ---
 
 # Reorient Supply from a Canonical Crawler to an LLM Evidence Feed

@@ -1,8 +1,10 @@
 ---
-id: REQ-PLANNER-AUTHORITY
-title: Planner Authority Requirements
-status: approved
-owner: maintainer
+uuid: 68db4acc-d781-48c8-98d5-1638c4241ce3
+type: spec
+audience: "Apple Calendar·Reminders 제어와 안전 실행 요구사항을 검증하는 사람"
+goal: "Planner Authority의 기능·안전 요구사항(FR-PA, SR-PA)을 기준으로 삼게 한다"
+tone: "규범적 영문 요구사항"
+manner: "식별자별 요구사항만 적고 검증 근거는 verification-matrix.md에 둔다"
 ---
 
 # Planner Authority Requirements

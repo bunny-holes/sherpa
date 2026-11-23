@@ -1,8 +1,10 @@
 ---
-id: DESIGN-NATIVE-FRESH-CONTEXT
-title: Native Fresh Read Context Design
-status: active
-owner: maintainer
+uuid: b95f1e7b-4eb1-412a-9730-2db47d8d1750
+type: spec
+audience: "Native Fresh Read Context 파이프라인을 설계·구현하는 유지보수자와 에이전트"
+goal: "수집·에페메랄 증거·단계적 라우팅·조정 컴포넌트 흐름을 설명한다"
+tone: "기술 영문 설계 문서"
+manner: "컴포넌트 흐름과 경계 책임을 적고 규범 스키마는 docs/contracts/에 둔다"
 ---
 
 # Native Fresh Read Context Design

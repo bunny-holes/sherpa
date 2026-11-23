@@ -1,8 +1,10 @@
 ---
-id: ADR-0006-SWIFT-PLANNER-WORKER-V2
-title: Swift Planner Semantic Authority and Worker Protocol V2
-status: accepted
-owner: maintainer
+uuid: 906934ac-becf-4087-bee4-1d2cbafa4168
+type: adr
+audience: "Planner 의미 권한과 Worker Protocol V2 채택 배경을 확인하는 사람"
+goal: "Swift Planner 의미 권한과 Worker Protocol V2 경계가 어떻게 도입되고 현재 구조로 이어졌는지 확인하게 한다"
+tone: "규범적 영문 ADR에 한국어 후속 메모를 덧붙인다"
+manner: "결정 원문을 보존하고 이후 런타임 변경을 상단 인용으로 적는다"
 ---
 
 # Swift Planner Semantic Authority and Worker Protocol V2

@@ -1,8 +1,10 @@
 ---
-id: RFC-0004
-title: Calendar Invitation Authority Boundary
-status: draft
-owner: maintainer
+uuid: 11e293b1-0e37-4ad0-8717-9317e8d21358
+type: spec
+audience: "캘린더 초대·참석자 협업 기능 경계를 검토하는 사람"
+goal: "현재 미지원인 캘린더 초대 권한 경계와 향후 제품 계획의 초안을 남긴다"
+tone: "기술 영문 RFC 초안"
+manner: "명시적 비목표와 향후 경계 조건을 정리한다"
 ---
 
 # Calendar Invitation Authority Boundary

@@ -1,8 +1,10 @@
 ---
-id: CONTRACT-PUBLIC-OUTPUT-V1
-title: Sherpa Public Output Contracts
-status: approved
-owner: maintainer
+uuid: 5a3405cf-151c-46f6-bc00-13cec0cc6e0e
+type: spec
+audience: "Sherpa CLI 공개 출력 형식과 JSON 투영을 바꾸는 유지보수자와 에이전트"
+goal: "모든 공개 JSON 응답이 명시적 sherpa.*.vN 스키마와 프레젠테이션 투영을 따르게 한다"
+tone: "규범적 영문 계약"
+manner: "출력 스키마 규칙과 금지 사항만 적는다"
 ---
 
 # Sherpa Public Output Contracts
