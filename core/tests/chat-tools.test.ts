@@ -11,7 +11,7 @@ import { chatLimits } from "../src/chat/protocol.ts";
 import { type ChatOptions, ChatSessions } from "../src/chat/session.ts";
 import { ChatTurn } from "../src/chat/turn.ts";
 import { installWarningLog } from "../src/chat/warnings.ts";
-import type { CoreCommands } from "../src/commands.ts";
+import { CHECKPOINT_CONFIRMATION, type CoreCommands } from "../src/commands.ts";
 import { type CapabilityDescriptor, reconcile } from "../src/mcp/registry.ts";
 import { resolveTools } from "../src/mcp/tools.ts";
 import { SHERPA_VERSION } from "../src/version.ts";
@@ -233,6 +233,76 @@ const remove = (id = "call_1"): ModelCall => ({
   id,
   name: "event_delete",
   input: { native_locator: "event-1", span: "this" },
+});
+
+const saved = (value: string) =>
+  JSON.parse(Buffer.from(value, "base64").toString("utf8")) as {
+    pending: { tool: string; operation_id: string | null }[];
+  };
+
+test("a planner mutation waits for its pending state to finish writing", async () => {
+  const { open, asked } = world((_, n) => sse(n === 1 ? chatCalls([create()]) : chat(["Done"])));
+  const channel = open();
+  const write = channel.send.bind(channel);
+  const published = Promise.withResolvers<void>();
+  const drained = Promise.withResolvers<void>();
+  vi.spyOn(channel, "send").mockImplementation(async (body) => {
+    await write(body);
+    const message = JSON.parse(body) as { type: string; state?: string };
+    if (message.type === "state" && saved(message.state!).pending.length > 0) {
+      published.resolve();
+      await drained.promise;
+    }
+  });
+  channel.write(compatible());
+  await published.promise;
+  expect(saved(channel.states.at(-1)!).pending).toEqual([
+    { tool: "event_create", operation_id: "op-1" },
+  ]);
+  expect(asked()).toEqual([]);
+  drained.resolve();
+  for (
+    let message = await channel.next();
+    message.type !== "done";
+    message = await channel.next()
+  ) {
+    expect(message.type).not.toBe("error");
+  }
+  expect(asked()).toEqual(["event.create"]);
+  expect(channel.states.map((value) => saved(value).pending)).toEqual([
+    [],
+    [{ tool: "event_create", operation_id: "op-1" }],
+    [],
+    [],
+  ]);
+});
+
+test("a core mutation with no operation ID writes a pending marker before running", async () => {
+  const checkpoint: ModelCall = {
+    id: "call_1",
+    name: "kakaotalk_checkpoint",
+    input: { token: "test-token", confirm: CHECKPOINT_CONFIRMATION },
+  };
+  const outcomes: unknown[] = [];
+  const { open } = world((_, n) => sse(n === 1 ? chatCalls([checkpoint]) : chat(["Done"])), {
+    commands: {
+      kakaotalkCheckpoint: async () => {
+        outcomes.push(saved(channel.states.at(-1)!).pending);
+        return "{}";
+      },
+    },
+  });
+  const channel = open();
+  channel.write(compatible());
+  for (
+    let message = await channel.next();
+    message.type !== "done";
+    message = await channel.next()
+  ) {
+    expect(message.type).not.toBe("error");
+  }
+  expect(outcomes).toEqual([[{ tool: "kakaotalk_checkpoint", operation_id: null }]]);
+  expect(saved(channel.states.at(-1)!).pending).toEqual([]);
 });
 
 /** A model that calls these tools after each of the person's texts, and answers with their results. */
@@ -924,7 +994,8 @@ describe("a prompt the core built wrong", () => {
       {
         said: false,
         keep: (messages) => void kept.push(messages),
-        state: () => ({ full: false, write: () => {} }),
+        commit: () => {},
+        state: () => ({ full: false, write: async () => true }),
       },
     );
     expect(end).toEqual({
@@ -1544,9 +1615,16 @@ describe("the conversation's limit within a turn that calls tools", () => {
       {
         said: false,
         keep: (messages) => void kept.push(messages),
+        commit: () => {},
         state: () => {
           const full = room.passed;
-          return { full, write: () => void states.push(full) };
+          return {
+            full,
+            write: async () => {
+              states.push(full);
+              return true;
+            },
+          };
         },
       },
     );

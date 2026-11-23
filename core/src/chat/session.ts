@@ -13,6 +13,7 @@ import { type ChatErrorCode, ChatFailure } from "./errors.ts";
 import { loadChat } from "./load.ts";
 import { listModels, type ModelSource } from "./models.ts";
 import { systemTimeZone, timeNote } from "./now.ts";
+import { type PendingChange, type ReadMutationStatuses, recoveryNote } from "./pending.ts";
 import {
   type ChatEvent,
   chatLimits,
@@ -48,6 +49,8 @@ export interface ChatOptions {
   timeZone?: () => string;
   /** The most bytes of a `data` body the core writes (§7.4); tests lower it. */
   dataBytes?: number;
+  /** Tests can read recovery status from a temporary journal. */
+  readMutationStatuses?: ReadMutationStatuses;
 }
 
 const errorType = (error: unknown) => (error instanceof Error ? error.name : typeof error);
@@ -76,6 +79,7 @@ const REFUSAL_CODES: Readonly<Record<TurnRefusal, ChatErrorCode>> = {
   other_chat: "invalid_message",
   state_mismatch: "chat_state_mismatch",
   nothing_to_retry: "invalid_message",
+  pending_changes: "invalid_message",
   conversation_limit: "conversation_limit",
 };
 
@@ -111,6 +115,7 @@ class ChatSession {
     private readonly clock: () => Date,
     private readonly timeZone: () => string,
     private readonly dataBytes: number,
+    private readonly readMutationStatuses: ReadMutationStatuses | undefined,
     onEnd: () => void,
   ) {
     channel.onmessage = (body) => this.receive(body);
@@ -225,6 +230,7 @@ class ChatSession {
       | {
           identity: ChatIdentity;
           full: boolean;
+          pending: readonly PendingChange[];
           messages: ModelMessage[];
           fingerprint: string;
           same: boolean;
@@ -236,14 +242,14 @@ class ChatSession {
         taken = decoded;
       } else {
         const [{ state: sdk }, tools] = await Promise.all([loadChat(), this.tools()]);
-        const { identity, fingerprint, full, messages } = decoded.state;
+        const { identity, fingerprint, full, pending, messages } = decoded.state;
         const checked = sdk.checkMessages(messages);
         if ("refusal" in checked) {
           taken = checked;
         } else {
           const current = await sdk.fingerprint(tools);
           const same = current === fingerprint;
-          const chat = { identity, full, fingerprint: current, same };
+          const chat = { identity, full, pending, fingerprint: current, same };
           taken =
             !same && identity.provider === "anthropic"
               ? { ...chat, ...sdk.withoutReasoning(checked.messages) }
@@ -262,7 +268,7 @@ class ChatSession {
       log.warn(`[core:chat:resume] refused channel=${id} reason=${taken.refusal} bytes=${bytes}`);
       return errorEvent("resume", "chat_state_invalid");
     }
-    this.conversation.resume(taken.identity, taken.messages, taken.full);
+    this.conversation.resume(taken.identity, taken.messages, taken.full, taken.pending);
     this.fingerprint = taken.fingerprint;
     log.info(
       `[core:chat:resume] success channel=${id} provider=${taken.identity.provider} messages=${taken.messages.length} bytes=${bytes} fingerprint=${taken.same ? "same" : "changed"} pruned=${taken.pruned} full=${taken.full} ms=${Date.now() - started}`,
@@ -309,7 +315,12 @@ class ChatSession {
     const start =
       request.text === undefined
         ? this.conversation.again(identity)
-        : this.conversation.start(identity, request.text, timeNote(this.clock(), this.timeZone()));
+        : this.conversation.start(
+            identity,
+            request.text,
+            timeNote(this.clock(), this.timeZone()),
+            () => recoveryNote(this.conversation.pending, id, this.readMutationStatuses),
+          );
     if (start.type === "refused") {
       // A chat whose app holds no state of it has none to correct.
       if (start.filled && this.fingerprint !== null) {
@@ -318,7 +329,7 @@ class ChatSession {
           refuse(start.reason, errorEvent("turn", "internal"));
           return;
         }
-        state.write();
+        void state.write();
       }
       refuse(start.reason, errorEvent("turn", REFUSAL_CODES[start.reason]));
       return;
@@ -344,6 +355,7 @@ class ChatSession {
         {
           said: request.text !== undefined,
           keep: (messages) => this.conversation.keep(messages),
+          commit: (change) => this.conversation.commit(change),
           state: (fingerprint) => this.stateWriter(identity, fingerprint),
         },
       )
@@ -373,12 +385,14 @@ class ChatSession {
   private stateWriter(
     identity: ChatIdentity,
     fingerprint: string,
-  ): { full: boolean; write(): void } | null {
+  ): { full: boolean; write(): Promise<boolean> } | null {
     const messages = this.conversation.kept;
     const full = this.conversation.full;
+    const pending = this.conversation.pending;
+    const pendingCount = pending.length;
     const event: ChatEvent = {
       type: "state",
-      state: encodeState({ identity, fingerprint, full, messages }),
+      state: encodeState({ identity, fingerprint, full, pending, messages }),
     };
     const body = JSON.stringify(event);
     // Base64 and the keys around it are ASCII: each character is a byte.
@@ -393,22 +407,28 @@ class ChatSession {
     return {
       full,
       write: () => {
-        log.debug(`[core:chat:state] sent ${fields} messages=${count} full=${full} pending=0`);
-        this.write(body);
+        log.debug(
+          `[core:chat:state] sent ${fields} messages=${count} full=${full} pending=${pendingCount}`,
+        );
+        return this.write(body);
       },
     };
   }
 
   private reply(event: ChatEvent): void {
-    this.write(JSON.stringify(event));
+    void this.write(JSON.stringify(event));
   }
 
-  private write(body: string): void {
-    this.channel.send(body).catch((error: unknown) => {
+  private async write(body: string): Promise<boolean> {
+    try {
+      await this.channel.send(body);
+      return true;
+    } catch (error) {
       log.error(
         `[core:chat:send] failure channel=${this.channel.id} error_type=${errorType(error)}`,
       );
-    });
+      return false;
+    }
   }
 }
 
@@ -454,6 +474,7 @@ export class ChatSessions {
       this.options.clock ?? (() => new Date()),
       this.options.timeZone ?? systemTimeZone,
       this.options.dataBytes ?? chatLimits.dataBytes,
+      this.options.readMutationStatuses,
       () => this.open.delete(session),
     );
     this.open.add(session);

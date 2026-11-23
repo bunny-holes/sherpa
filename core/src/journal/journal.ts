@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { chmodSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { codes, SherpaError } from "../cli/errors.ts";
@@ -52,6 +52,29 @@ export class MutationJournal {
 
   static openDefault(): MutationJournal {
     return new MutationJournal(MutationJournal.defaultPath());
+  }
+
+  /** A recovery lookup does not create the journal or write to it. A missing row is unknown. */
+  static readStatuses(
+    this: void,
+    operationIDs: readonly string[],
+    path = MutationJournal.defaultPath(),
+  ): ReadonlyMap<string, MutationStatus> {
+    const statuses = new Map<string, MutationStatus>();
+    if (operationIDs.length === 0 || !existsSync(path)) return statuses;
+    const db = new Database(path, { readonly: true, strict: true });
+    try {
+      const query = db.query<{ status: MutationStatus }, [string]>(
+        "SELECT status FROM native_mutations WHERE operation_id=?",
+      );
+      for (const id of new Set(operationIDs)) {
+        const row = query.get(id);
+        if (row) statuses.set(id, row.status);
+      }
+      return statuses;
+    } finally {
+      db.close();
+    }
   }
 
   start(capability: string, operationID = `op-${crypto.randomUUID()}`): string {

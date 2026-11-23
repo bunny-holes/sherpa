@@ -19,6 +19,7 @@ import {
 } from "../tools/outcome.ts";
 import { SHERPA_VERSION } from "../version.ts";
 import type { TurnRoom } from "./conversation.ts";
+import type { PendingChange } from "./pending.ts";
 import { type ChatEvent, chatLimits, type ToolStatus } from "./protocol.ts";
 import type { TurnTools } from "./sdk/turn.ts";
 
@@ -49,6 +50,7 @@ export interface CallsContext {
   number(): number;
   /** Writes a `tool` message, after the answer's text that waits. */
   send(event: ChatEvent): void;
+  commit(change: PendingChange): Promise<void>;
 }
 
 /** The call that runs: whether it only reads, whether it has committed, and what withdraws it. */
@@ -165,8 +167,10 @@ export class TurnCalls implements TurnTools {
           signal: AbortSignal.any([signal, running.withdraw.signal]),
           channel: this.context.channel,
           client: CLIENT,
-          committed: () => {
+          committed: (operationID) => {
             running.committed = true;
+            if (!running.read)
+              return this.context.commit({ tool: name, operation_id: operationID });
           },
         },
         { module: "chat", limit: chatLimits.toolResultBytes },

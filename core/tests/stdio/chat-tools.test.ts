@@ -1,4 +1,7 @@
+import { join } from "node:path";
 import { afterEach, expect, test } from "vite-plus/test";
+import { MutationJournal } from "../../src/journal/journal.ts";
+import { defaultPlanner } from "../support/planner.ts";
 import type { ConfirmHandler, CoreFrame, FakeApp } from "./fake-app.ts";
 import { cleanHomes, launch } from "./launch.ts";
 import { trustedCertificate } from "./tls.ts";
@@ -39,7 +42,10 @@ interface ModelMessage {
  * An OpenAI-compatible server that calls `event_delete` after the person's text and answers once
  * it reads a result, each request's messages kept.
  */
-async function modelServer() {
+async function modelServer(
+  name = "event_delete",
+  args: Record<string, unknown> = { native_locator: LOCATOR, span: "this" },
+) {
   const { ca, ...tls } = await trustedCertificate();
   const requests: ModelMessage[][] = [];
   const encoder = new TextEncoder();
@@ -53,8 +59,8 @@ async function modelServer() {
     id: "call_1",
     type: "function",
     function: {
-      name: "event_delete",
-      arguments: JSON.stringify({ native_locator: LOCATOR, span: "this" }),
+      name,
+      arguments: JSON.stringify(args),
     },
   };
   const server = Bun.serve({
@@ -64,8 +70,10 @@ async function modelServer() {
     fetch: async (request) => {
       const { messages } = (await request.json()) as { messages: ModelMessage[] };
       requests.push(messages);
+      const last = messages.at(-1)!;
+      const recovered = String(last.content).includes("these changes ran:");
       const answer =
-        messages.at(-1)!.role === "user"
+        last.role === "user" && !recovered
           ? [delta({ role: "assistant", tool_calls: [call] }), delta({}, "tool_calls")]
           : [delta({ role: "assistant", content: ANSWER }), delta({}, "stop")];
       const usage = chunk({
@@ -154,6 +162,72 @@ test("a delete the person approves runs under the operation id of the window the
   ]);
   expect(requests).toHaveLength(2);
   expect(outcome(requests[1]!)).toMatchObject({ status: "succeeded", operation_id: id });
+  quiet(app);
+});
+
+test("a mutation state precedes dispatch and the next channel recovers its outcome by ID", async () => {
+  const { ca, requests, base_url } = await modelServer("event_create", {
+    title: "Lunch",
+    start: "2026-11-23T12:00:00+09:00",
+    end: "2026-11-23T13:00:00+09:00",
+  });
+  let journalPath = "";
+  const app = launch({ LOG_LEVEL: "debug", NODE_EXTRA_CA_CERTS: ca }, (home) => {
+    journalPath = join(home, "Library/Application Support/Sherpa/native.sqlite3");
+  });
+  apps.push(app);
+  app.planner = (request) =>
+    request.capability === "event.create" ? null : defaultPlanner(request);
+  await app.handshake();
+  const turn = {
+    type: "turn",
+    provider: "openai-compatible",
+    base_url,
+    api_key: KEY,
+    model: "m-1",
+  };
+  app.frame(1, "open", { kind: "chat" });
+  app.frame(1, "data", { ...turn, text: TEXT });
+  const dispatched = await app.next(
+    (frame) =>
+      frame.channel === 0 &&
+      frame.type === "request" &&
+      (frame.body as { request: { capability: string } }).request.capability === "event.create",
+  );
+  const id = (dispatched.body as { request: { operation_id: string } }).request.operation_id;
+  const pendingFrame = app.log.at(app.log.indexOf(dispatched) - 1)!;
+  expect(pendingFrame).toMatchObject({ channel: 1, type: "data", body: { type: "state" } });
+  const state = (pendingFrame.body as { state: string }).state;
+  const decoded = JSON.parse(Buffer.from(state, "base64").toString("utf8"));
+  expect(decoded.pending).toEqual([{ tool: "event_create", operation_id: id }]);
+
+  app.frame(1, "close");
+  app.frame(2, "open", { kind: "chat" });
+  app.frame(2, "data", { type: "resume", state });
+  const second = (type: string) => (frame: CoreFrame) =>
+    frame.channel === 2 && frame.type === "data" && (frame.body as { type: string }).type === type;
+  expect((await app.next(second("resumed"))).body).toEqual({ type: "resumed", resend: false });
+
+  app.frame(2, "data", turn);
+  expect((await app.next(second("error"))).body).toMatchObject({
+    code: "invalid_message",
+    resend: false,
+  });
+  expect(requests).toHaveLength(1);
+  const journal = new MutationJournal(journalPath);
+  try {
+    journal.start("event.create", id);
+    journal.finish(id, "completed", null);
+  } finally {
+    journal.close();
+  }
+
+  app.frame(2, "data", { ...turn, text: "What happened?" });
+  const newState = (await app.next(second("state"))).body as { state: string };
+  expect(JSON.parse(Buffer.from(newState.state, "base64").toString("utf8")).pending).toEqual([]);
+  expect((await app.next(second("done"))).body).toMatchObject({ reason: "stop" });
+  expect(requests.at(-1)!.at(-1)!.content).toContain(`event_create ${id} applied`);
+  expect(app.requested()).toEqual(["capabilities", "event.create"]);
   quiet(app);
 });
 

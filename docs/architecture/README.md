@@ -53,7 +53,8 @@ sherpa — Bun + TypeScript core (one compiled executable, core/)
     |-- chat/ ------------- egress, the core's only way to the network (ADR-0012);
     |                       chat sessions, model lists, and turns through the
     |                       AI SDK, whose model calls the MCP tools, and the
-    |                       state the app keeps to resume a chat
+    |                       state the app keeps to resume a chat and
+    |                       recover an interrupted tool call
     |                       (app-connection-v1 §7.11)
     `-- apple/ ------------ hands Worker Protocol V2 requests to the helper
             |
@@ -198,8 +199,8 @@ planner/port                      -> no Sherpa module
 commands                          -> journal, mail, imessage, kakaotalk, cli/errors
 core adapters (mail, imessage, kakaotalk) -> cli/errors, process/runner, log
 journal                                   -> cli/errors, log
-chat (session, turn, calls, sdk, models, protocol, providers, state, errors)
-                                          -> chat/egress, tools, version, log
+chat (session, turn, calls, sdk, models, protocol, providers, state, pending, errors)
+                                          -> chat/egress, tools, journal, version, log
 chat/egress                               -> cli/errors, log
 
 SherpaNative (helper composition root)

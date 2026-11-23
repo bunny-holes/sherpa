@@ -7,6 +7,7 @@
  * the turn runs (§7.11 "대화 한도").
  */
 import type { ModelMessage } from "ai";
+import type { PendingChange } from "./pending.ts";
 import { chatLimits } from "./protocol.ts";
 import type { Provider } from "./providers.ts";
 
@@ -26,6 +27,7 @@ export type TurnRefusal =
   | "other_chat"
   | "state_mismatch"
   | "nothing_to_retry"
+  | "pending_changes"
   | "conversation_limit";
 
 export type TurnStart =
@@ -112,6 +114,7 @@ export class Conversation {
   private readonly messages: ModelMessage[] = [];
   private identity: ChatIdentity | null = null;
   private isFull = false;
+  private changes: PendingChange[] = [];
   /** A `resume` gave the chat back, and its state fixed it. */
   private resumed = false;
 
@@ -128,16 +131,31 @@ export class Conversation {
     return this.isFull;
   }
 
+  get pending(): readonly PendingChange[] {
+    return this.changes;
+  }
+
   /**
    * Takes the conversation a `resume` gave back, which fixes the chat as its first turn would
    * (§7.11 "이어 쓰기"), and full when its state says so. The session takes a `resume` only
    * before the channel's first turn, so the conversation holds nothing yet.
    */
-  resume(identity: ChatIdentity, messages: readonly ModelMessage[], full: boolean): void {
+  resume(
+    identity: ChatIdentity,
+    messages: readonly ModelMessage[],
+    full: boolean,
+    pending: readonly PendingChange[] = [],
+  ): void {
     this.identity = identity;
     this.messages.push(...messages);
     this.resumed = true;
     this.isFull = full;
+    this.changes = [...pending];
+  }
+
+  /** Starts tracking a committed change until its step or a recovery note is saved. */
+  commit(change: PendingChange): void {
+    this.changes.push(change);
   }
 
   /** The chat takes no later turn: its state would not fit one `data` (§7.4). */
@@ -151,8 +169,11 @@ export class Conversation {
    * provider takes. A conversation that would pass its limit ends the chat: it takes no later turn,
    * as when a turn passes it.
    */
-  start(identity: ChatIdentity, text: string, note: string): TurnStart {
-    return this.take(identity, { role: "user", content: `${note}\n\n${text}` });
+  start(identity: ChatIdentity, text: string, note: string, recover?: () => string): TurnStart {
+    return this.take(identity, () => {
+      const recovery = this.changes.length > 0 && recover ? `\n${recover()}` : "";
+      return { role: "user", content: `${note}${recovery}\n\n${text}` };
+    });
   }
 
   /**
@@ -172,7 +193,7 @@ export class Conversation {
     return "bytes" in this.measure(null);
   }
 
-  private take(identity: ChatIdentity, said: ModelMessage | null): TurnStart {
+  private take(identity: ChatIdentity, message: (() => ModelMessage) | null): TurnStart {
     const chat = this.identity;
     if (
       chat &&
@@ -186,6 +207,7 @@ export class Conversation {
         filled: false,
       };
     }
+    const said = this.isFull ? null : (message?.() ?? null);
     const measured = this.measure(said);
     if ("refusal" in measured) {
       const filled = measured.refusal === "conversation_limit" && !this.isFull;
@@ -193,7 +215,10 @@ export class Conversation {
       return { type: "refused", reason: measured.refusal, filled };
     }
     this.identity ??= identity;
-    if (said !== null) this.messages.push(said);
+    if (said !== null) {
+      this.messages.push(said);
+      this.changes = [];
+    }
     const room = new TurnRoom(measured.bytes, () => {
       this.isFull = true;
     });
@@ -209,6 +234,7 @@ export class Conversation {
     said: ModelMessage | null,
   ): { refusal: Exclude<TurnRefusal, "other_chat" | "state_mismatch"> } | { bytes: number } {
     if (this.isFull) return { refusal: "conversation_limit" };
+    if (said === null && this.changes.length > 0) return { refusal: "pending_changes" };
     if (said === null && !answerable(this.messages.at(-1))) return { refusal: "nothing_to_retry" };
     const bytes = jsonBytes(said === null ? this.messages : [...this.messages, said]);
     return bytes > chatLimits.conversationBytes ? { refusal: "conversation_limit" } : { bytes };
@@ -217,5 +243,6 @@ export class Conversation {
   /** Keeps the messages of a step that finished. */
   keep(messages: ModelMessage[]): void {
     this.messages.push(...messages);
+    this.changes = [];
   }
 }

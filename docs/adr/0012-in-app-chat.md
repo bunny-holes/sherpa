@@ -9,11 +9,20 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 
 # 앱 안 채팅은 코어의 새 경계에서 AI SDK 로 돌고, 코어가 여는 연결은 고른 제공자의 HTTPS 뿐이다
 
+> **정정 (2026-11-23, #66, 커밋 복구와 실측).** 코어는 변경 요청이나 명령을 시작하기 전에 `pending` 에 도구 이름과
+> 작업 ID 를 담아 `state` 를 쓰고 기다린다. 작업 ID 가 없는 KakaoTalk 체크포인트는 `null` 이다. 끝난 단계를 남기면
+> 목록을 비운다. 미결이 남은 대화는 `resend` 가 거짓이다. 첫 글 차례에 코어가 기록부를 작업 ID 로 읽어, 변경이
+> 적용됐는지 알 수 있는 만큼을 사람의 글 앞에 한 줄로 더한다. 모르는 결과는 적용됐을 수도 있다고 알린다. 기록을
+> 다시 열고 늦은 상태가 도착하는 경합과 코어 명령이 앱의 디스크 저장을 기다리지 않는 틈은 계약 §16 에 둔다.
+> [계약 §7.11; 실측: `core/tests/stdio/chat-tools.test.ts`] 이 Mac 의 서명된 릴리스 코어는 첫 차례 뒤 25.3M,
+> 1,985,918 바이트 상태가 남은 대화 뒤 45.7M 이었다(`vmmap -summary`, 3회 중앙값). 바이트코드는 실험으로 쟀고
+> 배포 빌드 설정은 그대로다. [실측: live-evidence 2026-11-23 "The chat core after its first and long turns"]
+>
 > **정정 (2026-11-23, #66, 대화 상태).** 구현 단계 4 의 아홉째 몫이 PR #110 으로 들어갔다. 코어는 채팅의 대화가 바뀔
 > 때마다 그 전체를 `{"type":"state","state":"<S 의 base64>"}` 로 앱에 넘긴다. 바뀌는 때는 사람의 글을 더한 뒤 첫
 > 요청 전과 남긴 단계마다이고, 단계의 `state` 는 그 단계의 `delta`·`tool` 과 AI SDK 가 돌리지 않은 호출의 `tool` 둘
 > 뒤에 온다. S 는 `format`, `provider`, `base_url`(OpenAI 호환만), `model`, `fingerprint`, `full`(채팅이 찼는지),
-> `pending`(이 판은 늘 빈 배열), `messages` 의 JSON 이고, 앱은 받은 문자열을 해석하지 않고 그대로 둔다. 채팅이 차는
+> `pending`, `messages` 의 JSON 이고, 앱은 받은 문자열을 해석하지 않고 그대로 둔다. 채팅이 차는
 > 때, 곧 차례 안에서 대화 한도를 넘은 때와 차례를 시작할 때 넘어 거절한 때 코어는 `full` 이 참인 `state` 를 한 번,
 > 그 `turn` 을 끝내는 메시지 앞에 쓴다. 그 상태로 이어 쓴 채팅은 `resumed` 의 `resend` 가 거짓이고 어느 `turn` 도
 > 요청 없이 `conversation_limit` 다. 4 MiB `data` 를 넘을 `state` 는 코어의 결함이라 쓰지 않고 그 `turn` 을
@@ -29,7 +38,7 @@ manner: "결정 본문은 고치지 않고 바뀐 사실은 정정으로 덧붙�
 > `core/tests/chat-state.test.ts`, `core/tests/chat-tools.test.ts`, `core/tests/chat-turn.test.ts`,
 > `core/tests/chat-limit.test.ts`, `core/tests/stdio/egress.test.ts`] 아래 본문이
 > 적은 봉투의 `origin`, `resume` 이 채널의 첫 메시지라는 것, 이어 쓰기가 크기를 본다는 것, 정정의 "`state` 는 아직
-> 없어" 는 이제 맞지 않는다. 진행 중인 변경(`pending`)과 기록부 줄은 다음 몫이다. 그 메시지를 읽는 앱이 아직 없어
+> 없어" 는 이제 맞지 않는다. 그 메시지를 읽는 앱이 아직 없어
 > `sherpa.chat.v1` 의 판은 그대로다. [설계] 계약 §7.11 의 "대화 상태" 와 "이어 쓰기" 가 이것을 싣는다. 고친 곳은
 > 상태 줄, "앱과 코어 사이 채널", "스트리밍", "코어가 끝나거나 다시 뜰 때", "무엇을 저장하나", "상태를 넘기는 때",
 > "이어 쓰기", "로그", "메모리와 크기", 위험 11·12·13, "구현 단계" 4, "아직 확인 전" 이다.
@@ -790,7 +799,7 @@ Compatible](https://ai-sdk.dev/providers/openai-compatible-providers) 제공자 
   `src/interactions/convert-to-google-interactions-input.ts`] (정정 2026-11-23, #66, 대화 상태: 봉투는
   `{format, provider, base_url, model, fingerprint, full, pending, messages}` 이고 코어는 키를 그 차례로 적는다.
   `origin` 대신 채팅이 요청을 시작하는 `base_url` 을 OpenAI 호환에만 싣는다. 앞의 세 제공자는 이름이 출처를 정한다.
-  `pending` 은 진행 중인 변경이고 이 판의 코어는 늘 빈 배열을 적는다. `full` 은 채팅이 찼는지의 불리언이고 코어는 늘
+  `pending` 은 결과가 단계에 남기 전의 변경이다. `full` 은 채팅이 찼는지의 불리언이고 코어는 늘
   싣는다("상태를 넘기는 때"). 앱이 받는 값은 S 의 UTF-8 바이트를 base64 로 적은 것이다. 상태에 키가 없음은
   `core/tests/chat-state.test.ts` 와 `core/tests/stdio/egress.test.ts` 가 본다. [설계;
   계약 §7.11 "대화 상태"])
@@ -1271,7 +1280,7 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
   단계 끝의 재기, `chat.conversation_limit`)는 PR #107 이 넣었다(정정 2026-11-23, #66). 대화 상태와 이어
   쓰기(`state`·`resume`, 엄격한 풀기, 지문과 Anthropic 의 reasoning 빼기, 채팅이 찬 것을 싣는 `full`,
   `chat_state_invalid` 와 `chat_state_mismatch`, 4 MiB 울타리)는 PR #110 이 넣었다(정정 2026-11-23, #66). 진행 중인
-  변경(`pending`)과 그 기록부 줄은 다음 몫이다.
+  변경(`pending`)과 그 기록부 줄은 "커밋 복구와 실측" 정정에 있다.
 5. **앱 채팅 화면:** 첫 화면의 두 타일, 동의, 제공자·모델 고르기, 원격 자원 없는 마크다운, 한글 입력, 확인
    창과의 포커스. 계약 §2 의 첫 화면도 이 단계가 싣는다(정정 2026-11-22, #63: 단계 1 에서 옮겼다). MCP 를 끈 동안 채팅 호출의
    확인 창이 뜨는지와 스위치를 끌 때 그 창이 남는지를 끝까지 보는 시험도 이 단계가 더한다. 단계 4 의 앱은 채팅
@@ -1286,7 +1295,7 @@ Swift 6.4.2 로 버리는 폴더에서 잰 것이고, 키체인과 Time Machine 
 - **단계 4, #66:** `sherpa.chat.v1` 의 `state`·`resume` 와 `chat_state_invalid`·`chat_state_mismatch`, 상태
   봉투와 지문, 끝난 단계만 넣기와 거절 단계 빼기, Anthropic 의 reasoning 빼기, 상태 크기와 대화 크기 한도,
   상태에 키가 없다는 시험, 계약 §7.4·§12 고침. (정정 2026-11-23, #66: PR #110 이 모두 넣었다. 봉투에는 `pending` 이
-  더해졌고, 그 내용과 기록부 줄은 다음 몫이다.)
+  더해졌다. 그 내용과 기록부 줄은 "커밋 복구와 실측" 정정에 있다.)
 - **단계 5, #67:** 앱의 기록 저장소(AES-GCM, 파일 배치, POSIX 쓰기, 폴더 검사, 백업 제외), 목록·이어 쓰기·읽기
   전용, 보관 기한 설정과 기한 지우기, 지우기 화면, 동의의 보관 줄, 실제 `chats/` 에서 `tmutil isexcluded`, 계약
   §3 의 `chats/`.

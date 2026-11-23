@@ -22,7 +22,7 @@ export interface ToolCall {
    * takes back, after which a change it asks for may happen whether or not anyone waits for it
    * (§7.8). The chat lets such a call end when the person cancels (§7.11); MCP passes none.
    */
-  committed?(): void;
+  committed?(operationID: string | null): void | Promise<void>;
 }
 
 /** What the lifecycle needs of a tool. `null` means the call was abandoned and is not answered. */

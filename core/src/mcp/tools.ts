@@ -158,7 +158,8 @@ function plannerTool(
         operationID,
       );
       // The request is the step nothing takes back: the app runs it to its end (§7.8).
-      call.committed?.();
+      const committed = call.committed?.(operationID);
+      if (committed) await committed;
       return plannerOutcome(
         entry.capability,
         request,
@@ -346,7 +347,8 @@ function coreTool(
           }
         }
         // The command is the step nothing takes back: it runs to its own limit.
-        call.committed?.();
+        const committed = call.committed?.(operationID || null);
+        if (committed) await committed;
         return coreSuccess(entry, kind, await entry.run(dependencies.commands, args, operationID));
       } catch (error) {
         return coreFailure(entry.capability, kind, error);
