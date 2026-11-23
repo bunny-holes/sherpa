@@ -9,6 +9,43 @@ manner: "Newest entry first; each entry names its device, build, commands, and e
 
 # Sherpa Owner-Operated Live Evidence
 
+## 2026-11-23 — The chat core after its first and long turns (bunny-holes/sherpa#66)
+
+This Mac (macOS 27.3 26C5035r, Bun 1.4.5, Xcode 27.2 27B52, Swift 6.4.2).
+Built the `89976a9` baseline and the pending-recovery core with
+`bun run build`, and that same recovery core with
+`--bytecode --format=esm` plus the normal compile options. The hardened
+core came from `xcodebuild build -scheme Sherpa -configuration Release`,
+with the Developer ID signature, runtime flag and no JIT entitlement.
+Started the executables in `/` with a scratch home. Used 35 interleaved
+starts after three warm-ups per build.
+
+| Core | Bytes | `--version`, median / p90 | Time to Mux hello, median / p90 |
+| --- | ---: | ---: | ---: |
+| Baseline | 90,200,322 | 31.00 / 31.94 ms | 30.63 / 31.82 ms |
+| Recovery | 92,726,658 | 47.27 / 48.67 ms | 46.70 / 48.39 ms |
+| Recovery, hardened | 92,205,856 | 48.36 / 50.00 ms | 47.81 / 49.89 ms |
+| Recovery, bytecode | 99,595,650 | 16.57 / 17.16 ms | 15.54 / 16.12 ms |
+
+`vmmap -summary` physical footprint per process, median of three. The first
+turn had a two-byte message. Each of the next 33 turns added 60,000 bytes of
+plain text. The OpenAI-compatible HTTPS server ran on loopback, used a
+temporary CA passed to the core for this run, and always answered `OK`. The
+decoded final state was 1,985,918 bytes. Measured 130 ms after each selected turn
+and after the initial handshake. No request reached a remote model.
+
+| Core | Idle | After first turn | After long chat |
+| --- | ---: | ---: | ---: |
+| Baseline | 18.3M | — | — |
+| Recovery | 21.5M | 30.8M | 102.2M (53.0–113.7M) |
+| Recovery, hardened | 16.9M | 25.3M | 45.7M (44.8–45.7M) |
+| Recovery, bytecode | 18.5M | 28.1M | 55.0M (54.8–101.0M) |
+
+Bytecode improved time to hello in this experiment and added 6,868,992 bytes
+to the ad-hoc executable. The release still uses the standard compile
+options. Long-chat footprint varied between runs. The hardened test used the
+bundled executable over its pipes, independent of the installed app.
+
 ## 2026-11-23 — The relay's c3 response reaches both MCP clients (bunny-holes/sherpa#111)
 
 This Mac (macOS 27.3 26C5035r, Xcode 27.2 27B52, Swift 6.4.2), with Claude
