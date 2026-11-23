@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { SherpaError } from "../cli/errors.ts";
 import { log } from "../log.ts";
-import { isPlistDictionary, tryParseBinaryPlist } from "./bplist.ts";
+import { isPlistDictionary, tryParseBinaryPlist } from "../plist/plist.ts";
 import {
   decodePoll,
   isPollCandidate,

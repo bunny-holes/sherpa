@@ -4,7 +4,7 @@ import {
   PlistUID,
   type PlistValue,
   tryParseBinaryPlist,
-} from "./bplist.ts";
+} from "../plist/plist.ts";
 
 /**
  * Native iMessage polls (`com.apple.messages.Polls`). The poll itself sits in

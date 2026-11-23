@@ -16,7 +16,7 @@ import {
   hashedDeviceUUID,
   secureKey,
 } from "../src/kakaotalk/key-derivation.ts";
-import { parseBinaryPlist, readPlistFile } from "../src/kakaotalk/plist.ts";
+import { parseBinaryPlist, readPlistFile } from "../src/plist/plist.ts";
 import { searchPreimage } from "../src/kakaotalk/preimage-search.ts";
 
 // Synthetic vectors: kakaocli 0.6.0 KeyDerivation.swift compiled with swiftc and run on
